@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import { extractProfile, threeMf, bboxOf, type Placement } from "../src/export";
+import { readStoredProfile } from "../src/profile";
 
 const PROFILE = `{"printer_settings_id":"Bambu Lab P1S 0.4 nozzle","layer_height":"0.28","filament_type":["PETG"]}`;
 
@@ -44,4 +45,26 @@ test("a 3MF built without a profile has no profile entry", () => {
 
 test("a profile survives the round trip back out through extractProfile", () => {
   expect(extractProfile(threeMf(placed, BED, { profile: PROFILE }))).toBe(PROFILE);
+});
+
+// A profile is a cached convenience. Nothing about it may stop the page loading.
+test("a well-formed stored profile is returned", () => {
+  const stored = { name: "myprofile.3mf", config: PROFILE };
+  expect(readStoredProfile(JSON.stringify(stored))).toEqual(stored);
+});
+
+test("nothing stored yields no profile", () => {
+  expect(readStoredProfile(null)).toBeNull();
+});
+
+test("a corrupt stored profile is discarded rather than thrown", () => {
+  expect(readStoredProfile("{not json")).toBeNull();
+});
+
+test("a stored profile missing its config is discarded", () => {
+  expect(readStoredProfile(JSON.stringify({ name: "myprofile.3mf" }))).toBeNull();
+});
+
+test("a stored profile that is not an object is discarded", () => {
+  expect(readStoredProfile(`"just a string"`)).toBeNull();
 });

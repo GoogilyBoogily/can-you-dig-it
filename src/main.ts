@@ -3,6 +3,7 @@ import { fitSpace, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, type Placement } from "./export";
+import { readStoredProfile, PROFILE_KEY, type StoredProfile } from "./profile";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -162,8 +163,7 @@ $("dlstl").addEventListener("click", () => { if (!built) return; setStatus("Pack
 
 // ------------------------------------------------------------- slicer profile
 // Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
-const PROFILE_KEY = "cansys.profile";
-let profile: { name: string; config: string } | null = null;
+let profile: StoredProfile | null = null;
 
 // textContent, not innerHTML: the file name is whatever the user named the file.
 function showProfile() {
@@ -175,8 +175,8 @@ function showProfile() {
 $("profileClear").addEventListener("click", () => { profile = null; localStorage.removeItem(PROFILE_KEY); showProfile(); });
 
 function loadProfile() {
-  const raw = localStorage.getItem(PROFILE_KEY);
-  if (raw) profile = JSON.parse(raw);
+  profile = readStoredProfile(localStorage.getItem(PROFILE_KEY));
+  if (!profile) localStorage.removeItem(PROFILE_KEY); // don't re-read a value we already rejected
   showProfile();
 }
 
