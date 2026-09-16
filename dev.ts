@@ -26,6 +26,19 @@ async function rebuild(): Promise<boolean> {
   return exitCode === 0;
 }
 
+/** Serve dist/ on `port`. The UI tests use this too, so they hit the same server you do. */
+export function serveDist(port: number) {
+  return Bun.serve({
+    port,
+    async fetch(request) {
+      const path = resolveStaticPath(new URL(request.url).pathname);
+      if (!path) return new Response("not found", { status: 404 });
+      const file = Bun.file(path);
+      return (await file.exists()) ? new Response(file) : new Response("not found", { status: 404 });
+    },
+  });
+}
+
 if (import.meta.main) {
   await rebuild();
 
@@ -38,15 +51,6 @@ if (import.meta.main) {
     });
   }
 
-  Bun.serve({
-    port: PORT,
-    async fetch(request) {
-      const path = resolveStaticPath(new URL(request.url).pathname);
-      if (!path) return new Response("not found", { status: 404 });
-      const file = Bun.file(path);
-      return (await file.exists()) ? new Response(file) : new Response("not found", { status: 404 });
-    },
-  });
-
+  serveDist(PORT);
   console.log(`serving dist/ on http://localhost:${PORT} - watching ${WATCHED.join(", ")}`);
 }

@@ -8,6 +8,15 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `bun run dev` — builds, serves `dist/` on :3000, rebuilds on save. `dev.ts` shells out to
   `build.ts` rather than reimplementing it, so dev and Pages serve identical bytes. One
   bundler on purpose: no Vite.
+- Two suites. `bun test test/` is the fast unit one (no browser, ~0.5 s) and is what CI
+  gates on. `bun run test:ui` drives `test-ui/` in Playwright against a real build; it
+  needs `bunx playwright install chromium` once, and runs as its own CI job so a flaky
+  browser can't block a deploy. Keep the trailing slashes — `bun test test` also matches
+  `test-ui/`.
+- The UI suite exists for what unit tests structurally cannot reach: state read from
+  `localStorage` at module load, a file name reaching the DOM, and the bytes a slicer
+  actually receives. A corrupt stored profile once white-screened the whole app and no
+  unit test saw it.
 - Geometry: `manifold-3d` (WASM) in a Web Worker. Viewer: three.js. ZIP: fflate.
 - `ref.json` holds volumes/bounds from the Python reference `cansys.py` (trimesh + the
   same manifold kernel). `test/regress.test.ts` must stay green: every part within 1 %
