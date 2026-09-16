@@ -8,16 +8,16 @@ const DIST = resolve("dist");
 const PORT = 3000;
 const WATCHED = ["src", "index.html", "styles.css"];
 
-/** URL path → a file inside dist/, or null when it climbs out. */
-export function resolveStaticPath(urlPath: string): string | null {
+/** URL path → a file inside `root`, or null when it climbs out. `root` must be absolute. */
+export function resolveStaticPath(urlPath: string, root: string = DIST): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(urlPath);
   } catch {
     return null; // malformed percent-encoding is not a path we can serve
   }
-  const candidate = resolve(join(DIST, decoded === "/" ? "index.html" : decoded));
-  return candidate === DIST || candidate.startsWith(DIST + "/") ? candidate : null;
+  const candidate = resolve(join(root, decoded === "/" ? "index.html" : decoded));
+  return candidate === root || candidate.startsWith(root + "/") ? candidate : null;
 }
 
 async function rebuild(): Promise<boolean> {
@@ -26,12 +26,16 @@ async function rebuild(): Promise<boolean> {
   return exitCode === 0;
 }
 
-/** Serve dist/ on `port`. The UI tests use this too, so they hit the same server you do. */
-export function serveDist(port: number) {
+/**
+ * Serve `root` on `port`. The UI tests use this too, so they hit the same server you do,
+ * and `test/dev.test.ts` points it at a throwaway directory to prove the path guard.
+ * Pass port 0 to get any free port; the returned server reports which one.
+ */
+export function serveDist(port: number, root: string = DIST) {
   return Bun.serve({
     port,
     async fetch(request) {
-      const path = resolveStaticPath(new URL(request.url).pathname);
+      const path = resolveStaticPath(new URL(request.url).pathname, root);
       if (!path) return new Response("not found", { status: 404 });
       const file = Bun.file(path);
       return (await file.exists()) ? new Response(file) : new Response("not found", { status: 404 });

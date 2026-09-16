@@ -5,7 +5,7 @@ import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./
 
 export type Req =
   | { type: "build"; id: number; options: Options }
-  | { type: "export"; id: number; format: "3mf" | "stl"; profile?: string };
+  | { type: "export"; id: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
 export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; role: "lane" | "lip" | "riser" | "cover" }
 export type Res =

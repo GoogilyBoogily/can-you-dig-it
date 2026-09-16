@@ -1,4 +1,4 @@
-import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { zipSync, unzipSync, strToU8 } from "fflate";
 
 export interface MeshData {
   name: string;
@@ -107,18 +107,23 @@ function objXml(id: number, m: MeshData, dx: number, dy: number): string {
 
 const PROFILE = "Metadata/project_settings.config";
 
-/** Lift the print profile out of a 3MF the user saved from their slicer. */
-export function extractProfile(bytes: Uint8Array): string {
+/**
+ * Lift the print profile out of a 3MF the user saved from their slicer.
+ * Returns the raw bytes: decoding them to a string and re-encoding on the way out
+ * eats a UTF-8 BOM and mangles anything that is not UTF-8, so the profile the slicer
+ * gets back would not be the one it wrote.
+ */
+export function extractProfile(bytes: Uint8Array): Uint8Array {
   // Inflate only the entry we want, and only if it is a plausible size: a 1 MB
   // zip of nested zeroes expands to gigabytes and takes the tab with it.
   const entry = unzipSync(bytes, { filter: (f) => f.name === PROFILE && f.originalSize! < 4e6 })[PROFILE];
   if (!entry) throw new Error(`no ${PROFILE} in that file - save a project from Bambu Studio or Orca, not an exported plate`);
   if (!entry.length) throw new Error(`${PROFILE} in that file is empty - the slicer may not have finished saving`);
-  return strFromU8(entry);
+  return entry;
 }
 
 /** Multi-plate Bambu/Orca project: geometry baked onto Bambu's plate grid + model_settings.config. */
-export function threeMf(placed: Placement[], bed: [number, number, number], opts: { profile?: string } = {}): Uint8Array {
+export function threeMf(placed: Placement[], bed: [number, number, number], opts: { profile?: Uint8Array } = {}): Uint8Array {
   const { profile } = opts;
   const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
   const objs: string[] = [], build: string[] = [], cfg: string[] = [];
@@ -144,6 +149,6 @@ export function threeMf(placed: Placement[], bed: [number, number, number], opts
     "3D/3dmodel.model": strToU8(model),
     "Metadata/model_settings.config": strToU8(`<?xml version="1.0" encoding="UTF-8"?><config>${cfg.join("")}</config>`),
   };
-  if (profile !== undefined) files[PROFILE] = strToU8(profile);
+  if (profile !== undefined) files[PROFILE] = profile; // byte for byte, exactly as the slicer wrote it
   return zipSync(files, { level: 6 });
 }
