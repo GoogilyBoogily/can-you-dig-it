@@ -16,7 +16,7 @@
     "three": "^0.186.0"
   },
   "scripts": {
-    "dev": "bun run build.ts && bunx serve dist",
+    "dev": "bun run dev.ts",
     "build": "bun run build.ts",
     "test": "bun test",
     "check": "tsc -p ."

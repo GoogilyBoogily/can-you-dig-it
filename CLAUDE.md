@@ -5,6 +5,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 
 ## Stack and commands
 - Bun + TypeScript. `bun install`, `bun test`, `bun run build.ts` → `dist/` (static, GitHub Pages).
+- `bun run dev` — builds, serves `dist/` on :3000, rebuilds on save. `dev.ts` shells out to
+  `build.ts` rather than reimplementing it, so dev and Pages serve identical bytes. One
+  bundler on purpose: no Vite.
 - Geometry: `manifold-3d` (WASM) in a Web Worker. Viewer: three.js. ZIP: fflate.
 - `ref.json` holds volumes/bounds from the Python reference `cansys.py` (trimesh + the
   same manifold kernel). `test/regress.test.ts` must stay green: every part within 1 %
