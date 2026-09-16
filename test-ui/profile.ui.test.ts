@@ -1,6 +1,11 @@
 // Browser tests for the slicer-profile UI. Kept out of test/ so `bun test test`
 // stays fast and needs no browser; run these with `bun run test:ui`.
 //
+// That script passes --timeout because bun's default is 5 s per test, which
+// silently caps the waits below. A CI runner renders WebGL in software and
+// takes longer than a laptop to build the geometry, so the default fails there
+// while passing locally.
+//
 // These cover what unit tests structurally cannot: stored state read at module
 // load, a file name reaching the DOM, and the real download a slicer receives.
 import { test, expect, beforeAll, afterAll } from "bun:test";

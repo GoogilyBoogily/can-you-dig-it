@@ -20,7 +20,7 @@
     "dev": "bun run dev.ts",
     "build": "bun run build.ts",
     "test": "bun test test/",
-    "test:ui": "bun test test-ui/",
+    "test:ui": "bun test test-ui/ --timeout 120000",
     "check": "tsc -p ."
   }
 }
