@@ -44,3 +44,19 @@ Plates follow Bambu Studio's own grid (`compute_colum_count` = ceil√n columns,
 stride = bed × 1.2, rows toward −Y) and are declared in
 `Metadata/model_settings.config`, so the file opens with parts already on plates.
 Load a project 3MF saved from your slicer and its `project_settings.config` rides into the export, so the file opens on your printer and filament. Import nothing and the slicer's own defaults apply.
+
+## Known gaps, in order
+
+1. Print plate 13 (the lips) and one `lane-rear` before anything else. The `fit` slider
+   exists because tolerance is the #1 complaint on every comparable model, and nothing
+   here has been checked against a real printer yet.
+2. Mixed-width ganging (slim + standard side by side). Bigger than it looks: `gangPitch`
+   in `src/geometry.ts` derives from a single `canD`/`canL`, so this wants a second can
+   spec threaded through `solve()`, not just a dovetail-height change.
+3. Odd cascade tier counts load from the back. Either warn harder or offer a "loader
+   slot" cover.
+4. Packing is a shelf sort. `maxrects-packer` with rotation would tighten plates 9–13.
+
+Two things left undone on purpose: no side-printed lane variant (thin-sheet, lighter —
+it conflicts with upright honeycomb, and would be a separate part architecture), and no
+OpenSCAD port for MakerWorld's Parametric Model Maker.
