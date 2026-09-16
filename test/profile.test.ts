@@ -29,7 +29,7 @@ test("extractProfile fails loudly on something that is not a zip", () => {
 const BED: [number, number, number] = [256, 256, 256];
 const pos = new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]);
 const placed: Placement[] = [
-  { name: "end-lip", pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos), plate: 0, offset: [0, 0, 0] },
+  { name: "end-lip", pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos), plate: 0 },
 ];
 
 test("a 3MF built with a profile carries it through byte for byte", () => {

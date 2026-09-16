@@ -8,8 +8,7 @@ export interface MeshData {
 }
 
 export interface Placement extends MeshData {
-  plate: number;                 // 0-based
-  offset: [number, number, number]; // translation applied to place on its plate (plate-local)
+  plate: number; // 0-based; pos is already on the plate, there is nothing left to apply
 }
 
 export function bboxOf(pos: Float32Array): MeshData["bbox"] {
@@ -48,7 +47,7 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
     const off: [number, number, number] = [margin + cx - lo[0], margin + cy - lo[1], -lo[2]];
     const placed = new Float32Array(pos.length);
     for (let i = 0; i < pos.length; i += 3) { placed[i] = pos[i] + off[0]; placed[i + 1] = pos[i + 1] + off[1]; placed[i + 2] = pos[i + 2] + off[2]; }
-    out.push({ name, pos: placed, idx: mesh.idx, bbox: bboxOf(placed), plate, offset: off });
+    out.push({ name, pos: placed, idx: mesh.idx, bbox: bboxOf(placed), plate });
     cx += ex + gap; rowh = Math.max(rowh, ey);
   }
   return out;
@@ -119,20 +118,19 @@ export function extractProfile(bytes: Uint8Array): string {
 }
 
 /** Multi-plate Bambu/Orca project: geometry baked onto Bambu's plate grid + model_settings.config. */
-export function threeMf(placed: Placement[], bed: [number, number, number], opts: { single?: boolean; profile?: string } = {}): Uint8Array {
-  const { single = false, profile } = opts;
-  const nplates = single ? 1 : Math.max(...placed.map((p) => p.plate)) + 1;
+export function threeMf(placed: Placement[], bed: [number, number, number], opts: { profile?: string } = {}): Uint8Array {
+  const { profile } = opts;
+  const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
   const objs: string[] = [], build: string[] = [], cfg: string[] = [];
   const plates = new Map<number, number[]>();
   placed.forEach((p, i) => {
     const id = i + 1;
-    const [ox, oy] = single ? [0, 0] : plateOrigin(p.plate, nplates, bed);
+    const [ox, oy] = plateOrigin(p.plate, nplates, bed);
     objs.push(objXml(id, p, ox, oy));
     build.push(`<item objectid="${id}" transform="1 0 0 0 1 0 0 0 1 0 0 0" printable="1"/>`);
     cfg.push(`<object id="${id}"><metadata key="name" value="${p.name}"/><metadata key="extruder" value="1"/><part id="${id}" subtype="normal_part"><metadata key="name" value="${p.name}"/><metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/><mesh_stat edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/></part></object>`);
-    const k = single ? 0 : p.plate;
-    if (!plates.has(k)) plates.set(k, []);
-    plates.get(k)!.push(id);
+    if (!plates.has(p.plate)) plates.set(p.plate, []);
+    plates.get(p.plate)!.push(id);
   });
   for (const k of [...plates.keys()].sort((a, b) => a - b)) {
     cfg.push(`<plate><metadata key="plater_id" value="${k + 1}"/><metadata key="plater_name" value=""/><metadata key="locked" value="false"/>`);

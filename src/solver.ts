@@ -1,18 +1,14 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
-import { DEFAULTS, solve, check, type Options, type Derived } from "./geometry";
+import { solve, check, type Options, type Derived } from "./geometry";
 
 export interface Space { w: number; d: number; h: number }
 
 export interface Layout {
-  options: Options;
-  derived: Derived;
+  options: Options;  // lanesWide, tiers and the rest live here - never copied out
+  derived: Derived;  // L, and every other dimension solve() produced
   cans: number;
-  lanesWide: number;
-  tiers: number;
-  length: number;
   footprint: [number, number, number]; // w, d, h of the assembly incl. risers
-  plates: number; // rough: one plate per lane half + one for small parts
   gramsEst: number; // rough, from the lane count (refined after geometry)
   warnings: string[];
   style: "cascade" | "flat";
@@ -57,11 +53,9 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
         const cans = perLane * lanesMax;
         const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H);
         const lanes = lanesMax * tiers;
-        const halves = d.split ? 2 : 1;
         out.push({
-          options: o, derived: d, cans, lanesWide: lanesMax, tiers, length: d.L,
+          options: o, derived: d, cans,
           footprint: [lanesMax * d.gangPitch, d.L, height],
-          plates: lanes * halves + (o.cover ? lanesMax * halves : 0) + 1,
           gramsEst: lanes * (d.L / 480) * 250 + lanesMax * 30,
           warnings: w, style,
         });
@@ -72,7 +66,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   // two best of each style so the flat/cascade trade-off is always visible
   const seen = new Map<string, Layout>();
   for (const l of out) {
-    const k = `${l.style}:${l.lanesWide}:${l.tiers}:${l.length}`;
+    const k = `${l.style}:${l.options.lanesWide}:${l.options.tiers}:${l.derived.L}`;
     const prev = seen.get(k);
     if (!prev || l.footprint[2] < prev.footprint[2]) seen.set(k, l);
   }
@@ -82,4 +76,3 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   return picked.sort((a, b) => b.cans - a.cans || a.footprint[2] - b.footprint[2]);
 }
 
-export { DEFAULTS };
