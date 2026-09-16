@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cansys — printable can storage, sized to your shelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="masthead">
+  <h1>cansys</h1>
+  <p>Measure the shelf, pick the can, download the plates. Everything runs in your browser.</p>
+</header>
+
+<main class="app">
+  <form class="controls" id="form" autocomplete="off">
+    <fieldset>
+      <legend>Shelf space</legend>
+      <div class="dims">
+        <label>Width <input name="w" type="number" min="100" step="1" value="300"><span>mm</span></label>
+        <label>Depth <input name="d" type="number" min="100" step="1" value="520"><span>mm</span></label>
+        <label>Height <input name="h" type="number" min="60" step="1" value="240"><span>mm</span></label>
+      </div>
+      <p class="hint">Inside clearances. Depth is front to back; 40 mm is kept free at the front for your hand.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Can</legend>
+      <div class="row">
+        <label class="grow">Preset
+          <select name="preset">
+            <option value="66,122.5">12 oz / 355 ml standard</option>
+            <option value="66.3,115.2">330 ml Euro</option>
+            <option value="66,157">16 oz tallboy</option>
+            <option value="53,134">Slim 250–355 ml</option>
+            <option value="53.5,92">7.5–8 oz mini</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+      </div>
+      <div class="dims">
+        <label>Diameter <input name="canD" type="number" min="40" max="120" step="0.1" value="66"><span>mm</span></label>
+        <label>Length <input name="canL" type="number" min="60" max="220" step="0.1" value="122.5"><span>mm</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Printer</legend>
+      <div class="dims">
+        <label>Bed X <input name="bedX" type="number" min="100" step="1" value="256"><span>mm</span></label>
+        <label>Bed Y <input name="bedY" type="number" min="100" step="1" value="256"><span>mm</span></label>
+        <label>Z <input name="bedZ" type="number" min="100" step="1" value="256"><span>mm</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Options</legend>
+      <label class="check"><input name="cascade" type="checkbox" checked> Auto-feed between tiers (cascade)</label>
+      <label class="check"><input name="cover" type="checkbox" checked> Cover plate on the top tier</label>
+      <label class="check"><input name="solid" type="checkbox"> Solid walls instead of honeycomb</label>
+      <label class="check"><input name="feet" type="checkbox"> 24 mm feet under the bottom tier (for wire shelves or a lip that needs clearing)</label>
+      <label class="fit">Fit
+        <input name="fit" type="range" min="-0.2" max="0.3" step="0.05" value="0">
+        <output name="fitOut">0.00</output>
+        <span class="hint">Added to every clearance. Nudge + if joints bind, − if they rattle.</span>
+      </label>
+    </fieldset>
+
+    <section class="layouts" id="layouts" aria-live="polite"></section>
+  </form>
+
+  <section class="stage">
+    <div class="viewer" id="viewer"></div>
+    <div class="stagebar">
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div class="status" id="status">Enter your shelf size to begin.</div>
+    </div>
+  </section>
+
+  <aside class="results" id="results" hidden>
+    <div class="summary" id="summary"></div>
+    <div class="plates" id="plates"></div>
+    <div class="actions">
+      <button type="button" class="primary" id="dl3mf">Download 3MF project</button>
+      <button type="button" id="dlstl">Download STL zip</button>
+      <p class="hint">The 3MF opens in Bambu Studio or Orca with every part already on a plate. Suggested settings: 2 walls, 6 % gyroid, 0.28 mm layers, PETG.</p>
+    </div>
+  </aside>
+</main>
+
+<footer class="foot">
+  <p>Parts lock together with dovetails and pegs; no glue. Long lanes split into two keyed halves at the bed size.
+     Source: <a href="https://github.com/">cansys-web</a>.</p>
+</footer>
+<script type="module" src="main.js"></script>
+</body>
+</html>

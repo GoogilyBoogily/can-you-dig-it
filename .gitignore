@@ -1,0 +1,8 @@
+node_modules
+dist
+*.map
+
+# Local agent-tool state, not project files
+.claude/
+.headroom/
+.serena/

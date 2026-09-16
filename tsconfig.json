@@ -1,0 +1,1 @@
+{ "compilerOptions": { "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "lib": ["ES2022","DOM","WebWorker"], "strict": true, "noEmit": true, "types": ["bun-types"], "resolveJsonModule": true, "skipLibCheck": true } }
