@@ -28,13 +28,15 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   for (const style of styles) {
     const usableD = space.d - HAND_GAP;
     const seedD = solve({ ...base, chute: style === "flat" ? 0 : -1, length: 480 });
-    const lanesMax = Math.max(1, Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch));
+    const lanesMax = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, then one can shorter, and the single-plate size
     const lengths = new Set<number>();
     const maxLen = Math.min(usableD, 2 * (base.bed[0] - 2 * base.bedMargin - 10));
     lengths.add(Math.floor(maxLen));
     lengths.add(Math.floor(maxLen - base.canD));
-    lengths.add(Math.floor(base.bed[0] - 2 * base.bedMargin));
+    // The single-plate size is only a candidate while it still fits the shelf.
+    lengths.add(Math.floor(Math.min(maxLen, base.bed[0] - 2 * base.bedMargin)));
     for (const length of lengths) {
       if (length < 120) continue;
       for (const slope of [3, 3.5, 4]) {

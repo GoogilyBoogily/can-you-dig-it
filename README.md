@@ -42,4 +42,4 @@ locate the tier above. One `fit` value is added to every clearance.
 Plates follow Bambu Studio's own grid (`compute_colum_count` = ceil√n columns,
 stride = bed × 1.2, rows toward −Y) and are declared in
 `Metadata/model_settings.config`, so the file opens with parts already on plates.
-No `project_settings.config` is written: your current printer/process profile applies.
+Load a project 3MF saved from your slicer and its `project_settings.config` rides into the export, so the file opens on your printer and filament. Import nothing and the slicer's own defaults apply.

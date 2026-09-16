@@ -41,6 +41,8 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
       for (let i = 0; i < pos.length; i += 3) { pos[i] = -mesh.pos[i + 1]; pos[i + 1] = mesh.pos[i]; pos[i + 2] = mesh.pos[i + 2]; }
       const b2 = bboxOf(pos); lo = [b2[0], b2[1], b2[2]];
     }
+    if (ex > W + 1e-6 || ey > D + 1e-6)
+      throw new Error(`${name} is ${ex.toFixed(0)} × ${ey.toFixed(0)} mm and fits no plate on a ${bed[0]} × ${bed[1]} mm bed`);
     if (cx + ex > W + 1e-6) { cx = 0; cy += rowh + gap; rowh = 0; }
     if (cy + ey > D + 1e-6) { plate++; cx = 0; cy = 0; rowh = 0; }
     const off: [number, number, number] = [margin + cx - lo[0], margin + cy - lo[1], -lo[2]];
@@ -108,8 +110,11 @@ const PROFILE = "Metadata/project_settings.config";
 
 /** Lift the print profile out of a 3MF the user saved from their slicer. */
 export function extractProfile(bytes: Uint8Array): string {
-  const entry = unzipSync(bytes)[PROFILE];
+  // Inflate only the entry we want, and only if it is a plausible size: a 1 MB
+  // zip of nested zeroes expands to gigabytes and takes the tab with it.
+  const entry = unzipSync(bytes, { filter: (f) => f.name === PROFILE && f.originalSize! < 4e6 })[PROFILE];
   if (!entry) throw new Error(`no ${PROFILE} in that file - save a project from Bambu Studio or Orca, not an exported plate`);
+  if (!entry.length) throw new Error(`${PROFILE} in that file is empty - the slicer may not have finished saving`);
   return strFromU8(entry);
 }
 
@@ -141,6 +146,6 @@ export function threeMf(placed: Placement[], bed: [number, number, number], opts
     "3D/3dmodel.model": strToU8(model),
     "Metadata/model_settings.config": strToU8(`<?xml version="1.0" encoding="UTF-8"?><config>${cfg.join("")}</config>`),
   };
-  if (profile) files[PROFILE] = strToU8(profile);
+  if (profile !== undefined) files[PROFILE] = strToU8(profile);
   return zipSync(files, { level: 6 });
 }

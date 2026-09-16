@@ -89,6 +89,11 @@ export function check(o: Options, d: Derived): string[] {
   const big = Math.max(d.usableX, d.usableY);
   if (d.plateX > big) w.push(`FAIL lane half ${d.plateX.toFixed(0)} mm is longer than the bed - shorten the lane`);
   if (d.plateY > big) w.push(`FAIL lane width ${d.plateY.toFixed(0)} mm is wider than the bed - can is too long for this printer`);
+  // Each side can clear the long bed axis while the pair still fits no orientation.
+  const fitsSquare = d.plateX <= d.usableX && d.plateY <= d.usableY;
+  const fitsTurned = d.plateY <= d.usableX && d.plateX <= d.usableY;
+  if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
+  if (d.Hb > o.bed[2]) w.push(`FAIL lane ${d.Hb.toFixed(0)} mm is taller than the printer's ${o.bed[2]} mm of Z`);
   if (d.inset && d.inset - o.wall < o.canD + 4) w.push(`FAIL chute ${(d.inset - o.wall).toFixed(0)} mm is narrower than a can - cans would jam at the drop`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");

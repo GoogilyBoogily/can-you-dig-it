@@ -228,8 +228,15 @@ class Spec:
         if d["plate_y"] > big:
             w.append("FAIL lane width %.0f > usable bed %.0f - can too long for this bed"
                      % (d["plate_y"], big))
-        if d["L"] > d["usable_x"] and d["plate_y"] > d["usable_y"]:
-            w.append("FAIL lane does not fit the bed in either orientation")
+        # Each side can clear the long bed axis while the pair still fits no orientation.
+        fits_square = d["plate_x"] <= d["usable_x"] and d["plate_y"] <= d["usable_y"]
+        fits_turned = d["plate_y"] <= d["usable_x"] and d["plate_x"] <= d["usable_y"]
+        if not fits_square and not fits_turned:
+            w.append("FAIL lane %.0f x %.0f fits the %.0f x %.0f bed in neither orientation"
+                     % (d["plate_x"], d["plate_y"], d["usable_x"], d["usable_y"]))
+        if d["H_b"] > self.bed[2]:
+            w.append("FAIL lane %.0f is taller than the printer's %.0f mm of Z"
+                     % (d["H_b"], self.bed[2]))
         if d["inset"] and d["inset"] - self.wall < self.can_d + 4:
             w.append("FAIL chute clear %.1f < can dia + 4 - cans jam at the drop"
                      % (d["inset"] - self.wall))

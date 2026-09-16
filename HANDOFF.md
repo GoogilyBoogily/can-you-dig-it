@@ -1,7 +1,7 @@
 # Handoff — 2026-09-16
 
 ## State
-Working, tested, builds to `dist/`. 19 tests pass (13 regression + 6 profile). Verified in
+Working, tested, builds to `dist/`. 58 tests pass: 45 unit (`bun test test/`) + 13 browser (`bun run test:ui`). Verified in
 headless Chromium: form → layouts → worker build (~1.2 s) → assembly/part/plate views →
 3MF + STL downloads. The 3MF was read back with trimesh: 30 objects, all watertight,
 all inside Bambu's 4×4 plate grid.

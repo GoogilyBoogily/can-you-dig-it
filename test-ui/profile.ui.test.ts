@@ -170,3 +170,49 @@ test("a stored profile of the wrong shape does not stop the page loading", async
   expect(await label(page)).toContain("slicer's own defaults");
   await page.close();
 });
+
+// Fails if the localStorage guard moves back to wrapping only the JSON parse:
+// reading storage throws outright when cookies are blocked.
+test("the page still loads when localStorage access is denied", async () => {
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      get() { throw new DOMException("The operation is insecure.", "SecurityError"); },
+    });
+  });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
+  await page.goto(URL_);
+
+  await page.waitForSelector(".layout", { timeout: 20000 });
+  expect(pageErrors).toEqual([]);
+  expect(await label(page)).toContain("slicer's own defaults");
+  await page.close();
+});
+
+// Fails if downloads stop being blocked while a build is queued: the worker
+// exports whatever it built last, which would not be what the screen shows.
+test("downloads are blocked while a build is pending", async () => {
+  const page = await buildOnce();
+  expect(await page.locator("#dl3mf").isDisabled()).toBe(false);
+
+  await page.fill("#form [name=h]", "600"); // schedules a rebuild behind a 250 ms debounce
+  expect(await page.locator("#dl3mf").isDisabled()).toBe(true);
+
+  await page.waitForFunction(() => !(document.getElementById("dl3mf") as HTMLButtonElement).disabled, { timeout: 90000 });
+  const shown = (await page.locator("#summary").innerText()).match(/(\d+) cans/)?.[1];
+  const zip = await downloadTo(page, "#dl3mf", "/tmp/cansys-ui-race.3mf");
+  const objects = (strFromU8(zip["3D/3dmodel.model"]!).match(/<object /g) ?? []).length;
+  expect(shown).toBeTruthy();
+  expect(objects).toBeGreaterThan(0);
+  await page.close();
+});
+
+test("a non-numeric dimension names the field instead of building NaN", async () => {
+  const page = await buildOnce();
+  await page.fill("#form [name=canD]", "");
+  await page.waitForFunction(() => document.getElementById("status")!.textContent!.includes("Check your numbers"), { timeout: 15000 });
+  expect(await page.locator("#status").innerText()).toMatch(/can diameter/i);
+  expect(await page.locator("#layouts .layout").count()).toBe(0);
+  await page.close();
+});

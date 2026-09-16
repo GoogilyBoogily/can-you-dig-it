@@ -68,3 +68,21 @@ test("a stored profile missing its config is discarded", () => {
 test("a stored profile that is not an object is discarded", () => {
   expect(readStoredProfile(`"just a string"`)).toBeNull();
 });
+
+test("an empty profile entry is a corrupt file, not an absent one", () => {
+  const file = threeMfWith({ "3D/3dmodel.model": "<model/>" });
+  const withEmpty = zipSync({ "3D/3dmodel.model": strToU8("<model/>"), "Metadata/project_settings.config": new Uint8Array(0) });
+  expect(() => extractProfile(withEmpty)).toThrow(/empty/);
+  expect(() => extractProfile(file)).toThrow(/no Metadata/);
+});
+
+test("a stored profile with an empty config is discarded", () => {
+  expect(readStoredProfile(JSON.stringify({ name: "x.3mf", config: "" }))).toBeNull();
+});
+
+test("a zip bomb is refused instead of inflated", () => {
+  const huge = zipSync({ "Metadata/project_settings.config": new Uint8Array(8_000_000) });
+  const started = Date.now();
+  expect(() => extractProfile(huge)).toThrow();
+  expect(Date.now() - started).toBeLessThan(2000); // never materialised
+});

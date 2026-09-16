@@ -3,7 +3,8 @@ import { fitSpace, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, type Placement } from "./export";
-import { readStoredProfile, PROFILE_KEY, type StoredProfile } from "./profile";
+import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
+import { readNumbers, LIMITS } from "./validate";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -13,12 +14,16 @@ const worker = new Worker(new URL("worker.js", document.baseURI), { type: "modul
 let layouts: Layout[] = [];
 let chosen: Layout | null = null;
 let built: { parts: PartOut[]; placed: Placement[]; nplates: number; layout: Layout } | null = null;
-let reqId = 0, buildTimer = 0;
+let buildId = 0, exportId = 0, buildTimer = 0;
+let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
 
 // ------------------------------------------------------------- inputs
 function readOptions(): { space: Space; base: Options; cascade: boolean } {
   const f = new FormData(form);
-  const num = (k: string) => parseFloat(String(f.get(k)));
+  const raw: Record<string, number> = {};
+  for (const k of Object.keys(LIMITS)) raw[k] = parseFloat(String(f.get(k)));
+  readNumbers(raw); // throws naming the offending field
+  const num = (k: string) => raw[k] ?? parseFloat(String(f.get(k)));
   const base: Options = {
     ...DEFAULTS,
     canD: num("canD"), canL: num("canL"),
@@ -47,8 +52,16 @@ form.addEventListener("submit", (e) => e.preventDefault());
 
 // ------------------------------------------------------------- layouts
 function refit() {
-  const { space, base, cascade } = readOptions();
-  if (!(space.w > 0 && space.d > 0 && space.h > 0)) return;
+  let space: Space, base: Options, cascade: boolean;
+  try {
+    ({ space, base, cascade } = readOptions());
+  } catch (err: any) {
+    // Say which field is wrong rather than building nothing and staying quiet.
+    setStatus(`Check your numbers: ${err?.message ?? err}`);
+    $("layouts").innerHTML = "";
+    chosen = null;
+    return;
+  }
   layouts = fitSpace(space, base, { cascade });
   const box = $("layouts");
   box.innerHTML = "";
@@ -74,7 +87,14 @@ function refit() {
 function choose(l: Layout) {
   chosen = l;
   clearTimeout(buildTimer);
+  setBuildPending(true);
   buildTimer = window.setTimeout(build, 250);
+}
+
+/** Downloads export whatever the worker built last, so block them until it matches the screen. */
+function setBuildPending(pending: boolean) {
+  buildPending = pending;
+  for (const id of ["dl3mf", "dlstl"]) $<HTMLButtonElement>(id).disabled = pending;
 }
 
 // ------------------------------------------------------------- build
@@ -82,7 +102,8 @@ function setStatus(text: string, busy = false) { const s = $("status"); s.textCo
 
 function build() {
   if (!chosen) return;
-  const id = ++reqId;
+  const id = ++buildId;
+  setBuildPending(true);
   setStatus("Building parts…", true);
   const req: Req = { type: "build", id, options: chosen.options };
   worker.postMessage(req);
@@ -90,9 +111,10 @@ function build() {
 
 worker.onmessage = (e: MessageEvent<Res>) => {
   const r = e.data;
-  if (r.type === "error") { setStatus(`Couldn't build: ${r.message}`); return; }
-  if (r.type === "file") { download(r.name, r.bytes); setStatus("Download ready."); return; }
-  if (r.id !== reqId || !chosen) return;
+  if (r.type === "error") { setBuildPending(false); setStatus(`Something went wrong: ${r.message}`); return; }
+  if (r.type === "file") { if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); } return; }
+  if (r.id !== buildId || !chosen) return; // a newer build is already on its way
+  setBuildPending(false);
   built = { parts: r.parts, placed: r.placed, nplates: r.nplates, layout: chosen };
   viewer.reset();
   renderTabs(); renderResults();
@@ -100,6 +122,12 @@ worker.onmessage = (e: MessageEvent<Res>) => {
   const grams = r.parts.reduce((a, p) => a + p.grams * p.qty, 0);
   setStatus(`${built.layout.cans} cans · ${r.nplates} plates · ~${(grams / 1000).toFixed(2)} kg · built in ${(r.ms / 1000).toFixed(1)} s`);
 };
+
+worker.onerror = (e) => {
+  setBuildPending(false);
+  setStatus(`The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`);
+};
+worker.onmessageerror = () => setStatus("The geometry engine sent something unreadable - reload the page.");
 
 // ------------------------------------------------------------- stage
 function renderTabs() {
@@ -158,8 +186,8 @@ function download(name: string, bytes: Uint8Array) {
   const a = document.createElement("a"); a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
-$("dl3mf").addEventListener("click", () => { if (!built) return; setStatus("Packing 3MF…", true); worker.postMessage({ type: "export", id: ++reqId, format: "3mf", profile: profile?.config } satisfies Req); });
-$("dlstl").addEventListener("click", () => { if (!built) return; setStatus("Packing STL zip…", true); worker.postMessage({ type: "export", id: ++reqId, format: "stl" } satisfies Req); });
+$("dl3mf").addEventListener("click", () => { if (!built || buildPending) return; setStatus("Packing 3MF…", true); worker.postMessage({ type: "export", id: ++exportId, format: "3mf", profile: profile?.config } satisfies Req); });
+$("dlstl").addEventListener("click", () => { if (!built || buildPending) return; setStatus("Packing STL zip…", true); worker.postMessage({ type: "export", id: ++exportId, format: "stl" } satisfies Req); });
 
 // ------------------------------------------------------------- slicer profile
 // Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
@@ -172,11 +200,11 @@ function showProfile() {
     : "Your 3MF opens with the slicer's own defaults.";
   $("profileClear").hidden = !profile;
 }
-$("profileClear").addEventListener("click", () => { profile = null; localStorage.removeItem(PROFILE_KEY); showProfile(); });
+$("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
 
 function loadProfile() {
-  profile = readStoredProfile(localStorage.getItem(PROFILE_KEY));
-  if (!profile) localStorage.removeItem(PROFILE_KEY); // don't re-read a value we already rejected
+  profile = loadStoredProfile();
+  if (!profile) clearStoredProfile(); // don't re-read a value we already rejected
   showProfile();
 }
 
@@ -184,18 +212,25 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
+  let loaded: StoredProfile;
   try {
-    const config = extractProfile(new Uint8Array(await file.arrayBuffer()));
-    profile = { name: file.name, config };
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    setStatus(`Print settings loaded from ${file.name}.`);
-    showProfile();
+    loaded = { name: file.name, config: extractProfile(new Uint8Array(await file.arrayBuffer())) };
   } catch (err: any) {
     // A bad drop keeps whatever profile was already working.
     setStatus(`Couldn't read that 3MF: ${err?.message ?? err}`);
+    input.value = "";
+    return;
   }
+  // State and label move together, so the two can never disagree.
+  profile = loaded;
+  showProfile();
+  const failure = saveStoredProfile(loaded);
+  setStatus(failure
+    ? `Using ${file.name} for this session; couldn't save it for next time: ${failure}`
+    : `Print settings loaded from ${file.name}.`);
   input.value = "";
 });
+
 loadProfile();
 
 // ------------------------------------------------------------- url state
