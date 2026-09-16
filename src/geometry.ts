@@ -48,7 +48,7 @@ export interface Derived {
   L: number; IW: number; OW: number; H: number; Hb: number;
   run: number; dhi: number; dhiB: number; tan: number; inset: number;
   xd: number; px: number; py: number; lipy: number; lipx: number; railHy: number;
-  gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number;
+  gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
 }
 
 export function solve(o: Options): Derived {
@@ -56,6 +56,9 @@ export function solve(o: Options): Derived {
   const inset = o.cascade ? o.canD + 6 + o.wall : 0;
   const usableX = o.bed[0] - 2 * o.bedMargin;
   const usableY = o.bed[1] - 2 * o.bedMargin;
+  // One margin, not two: a part has an edge at each end of X and Y, but it sits on the
+  // bed, so the only thing to keep clear in Z is headroom under the gantry.
+  const usableZ = o.bed[2] - o.bedMargin;
   const L = Math.min(o.length, 2 * (usableX - K.lapLen));
   const n = Math.floor((L - inset - o.wall - K.slack) / o.canD);
   const split = L > usableX;
@@ -73,7 +76,7 @@ export function solve(o: Options): Derived {
     lipy: IW / 2 - 14, lipx: -L / 2 + inset + 8, railHy: IW / 2 - 20,
     gangPitch: OW + K.dovetail,
     plateX: split ? L / 2 + K.lapLen : L, plateY: OW + K.dovetail,
-    usableX, usableY,
+    usableX, usableY, usableZ,
   };
 }
 
@@ -86,7 +89,7 @@ export function check(o: Options, d: Derived): string[] {
   const fitsSquare = d.plateX <= d.usableX && d.plateY <= d.usableY;
   const fitsTurned = d.plateY <= d.usableX && d.plateX <= d.usableY;
   if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
-  if (d.Hb > o.bed[2]) w.push(`FAIL lane ${d.Hb.toFixed(0)} mm is taller than the printer's ${o.bed[2]} mm of Z`);
+  if (d.Hb > d.usableZ) w.push(`FAIL lane ${d.Hb.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
   if (d.inset && d.inset - o.wall < o.canD + 4) w.push(`FAIL chute ${(d.inset - o.wall).toFixed(0)} mm is narrower than a can - cans would jam at the drop`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");

@@ -40,6 +40,24 @@ test("check() rejects a lane taller than the printer", () => {
   expect(check(options, derived).some((w) => w.startsWith("FAIL") && w.includes("taller"))).toBe(true);
 });
 
+// Z used to be measured against the raw bed height while X and Y both got their margin,
+// so a lane could clear the check and then meet the gantry. One margin in Z, not two:
+// the part sits on the bed, so only the headroom above it has to be kept clear.
+test("the Z limit leaves the same headroom X and Y get at each edge", () => {
+  const derived = solve({ ...DEFAULTS, bed: [256, 256, 256], bedMargin: 3 });
+  expect(derived.usableZ).toBe(253);
+  expect(derived.usableX).toBe(250);
+});
+
+test("check() rejects a lane that fits the bed height but not the margin", () => {
+  // Hb is the tallest part; put the bed exactly at it so only the margin can reject it.
+  const tallest = solve({ ...DEFAULTS, bedMargin: 4 }).Hb;
+  const options: Options = { ...DEFAULTS, bed: [256, 256, tallest], bedMargin: 4 };
+  const derived = solve(options);
+  expect(derived.Hb).toBeGreaterThan(derived.usableZ);
+  expect(check(options, derived).some((w) => w.startsWith("FAIL") && w.includes("taller"))).toBe(true);
+});
+
 test("pack() refuses a part that fits no plate rather than placing it off the bed", () => {
   const pos = new Float32Array([0, 0, 0, 400, 0, 0, 0, 400, 0]);
   const oversized: MeshData = { name: "too-big", pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos) };
