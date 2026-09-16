@@ -2,7 +2,7 @@ import { DEFAULTS, type Options } from "./geometry";
 import { fitSpace, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
-import type { Placement } from "./export";
+import { extractProfile, type Placement } from "./export";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -157,8 +157,46 @@ function download(name: string, bytes: Uint8Array) {
   const a = document.createElement("a"); a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
-$("dl3mf").addEventListener("click", () => { if (!built) return; setStatus("Packing 3MF…", true); worker.postMessage({ type: "export", id: ++reqId, format: "3mf" } satisfies Req); });
+$("dl3mf").addEventListener("click", () => { if (!built) return; setStatus("Packing 3MF…", true); worker.postMessage({ type: "export", id: ++reqId, format: "3mf", profile: profile?.config } satisfies Req); });
 $("dlstl").addEventListener("click", () => { if (!built) return; setStatus("Packing STL zip…", true); worker.postMessage({ type: "export", id: ++reqId, format: "stl" } satisfies Req); });
+
+// ------------------------------------------------------------- slicer profile
+// Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
+const PROFILE_KEY = "cansys.profile";
+let profile: { name: string; config: string } | null = null;
+
+// textContent, not innerHTML: the file name is whatever the user named the file.
+function showProfile() {
+  $("profileNow").textContent = profile
+    ? `Using settings from ${profile.name}.`
+    : "Your 3MF opens with the slicer's own defaults.";
+  $("profileClear").hidden = !profile;
+}
+$("profileClear").addEventListener("click", () => { profile = null; localStorage.removeItem(PROFILE_KEY); showProfile(); });
+
+function loadProfile() {
+  const raw = localStorage.getItem(PROFILE_KEY);
+  if (raw) profile = JSON.parse(raw);
+  showProfile();
+}
+
+$<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const config = extractProfile(new Uint8Array(await file.arrayBuffer()));
+    profile = { name: file.name, config };
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    setStatus(`Print settings loaded from ${file.name}.`);
+    showProfile();
+  } catch (err: any) {
+    // A bad drop keeps whatever profile was already working.
+    setStatus(`Couldn't read that 3MF: ${err?.message ?? err}`);
+  }
+  input.value = "";
+});
+loadProfile();
 
 // ------------------------------------------------------------- url state
 const KEYS = ["w", "d", "h", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "feet", "fit"];

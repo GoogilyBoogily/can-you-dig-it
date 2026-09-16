@@ -85,6 +85,11 @@
     <div class="actions">
       <button type="button" class="primary" id="dl3mf">Download 3MF project</button>
       <button type="button" id="dlstl">Download STL zip</button>
+      <p class="profile">
+        <label class="profilePick">Load print settings from 3MF<input type="file" id="profileIn" accept=".3mf"></label>
+        <span id="profileNow"></span>
+        <button type="button" id="profileClear" hidden>Clear</button>
+      </p>
       <p class="hint">The 3MF opens in Bambu Studio or Orca with every part already on a plate. Suggested settings: 2 walls, 6 % gyroid, 0.28 mm layers, PETG.</p>
     </div>
   </aside>

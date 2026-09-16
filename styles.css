@@ -95,3 +95,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .foot { padding: 10px 24px; border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-2); }
 .foot p { margin: 0; } .foot a { color: inherit; }
+
+/* Load-print-settings row: a footnote under the download buttons, not a third action. */
+.profile { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.profilePick { display: block; margin-bottom: 4px; cursor: pointer; }
+.profilePick input { display: block; margin-top: 4px; font: inherit; font-size: 12px; }
+.actions .profile button { font-size: 12px; padding: 2px 8px; }

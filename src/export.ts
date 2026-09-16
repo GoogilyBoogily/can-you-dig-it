@@ -1,4 +1,4 @@
-import { zipSync, strToU8 } from "fflate";
+import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 
 export interface MeshData {
   name: string;
@@ -104,8 +104,18 @@ function objXml(id: number, m: MeshData, dx: number, dy: number): string {
   return parts.join("");
 }
 
+const PROFILE = "Metadata/project_settings.config";
+
+/** Lift the print profile out of a 3MF the user saved from their slicer. */
+export function extractProfile(bytes: Uint8Array): string {
+  const entry = unzipSync(bytes)[PROFILE];
+  if (!entry) throw new Error(`no ${PROFILE} in that file - save a project from Bambu Studio or Orca, not an exported plate`);
+  return strFromU8(entry);
+}
+
 /** Multi-plate Bambu/Orca project: geometry baked onto Bambu's plate grid + model_settings.config. */
-export function threeMf(placed: Placement[], bed: [number, number, number], single = false): Uint8Array {
+export function threeMf(placed: Placement[], bed: [number, number, number], opts: { single?: boolean; profile?: string } = {}): Uint8Array {
+  const { single = false, profile } = opts;
   const nplates = single ? 1 : Math.max(...placed.map((p) => p.plate)) + 1;
   const objs: string[] = [], build: string[] = [], cfg: string[] = [];
   const plates = new Map<number, number[]>();
@@ -125,10 +135,12 @@ export function threeMf(placed: Placement[], bed: [number, number, number], sing
     cfg.push("</plate>");
   }
   const model = `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="${NS}"><metadata name="Application">cansys-web</metadata><resources>${objs.join("")}</resources><build>${build.join("")}</build></model>`;
-  return zipSync({
+  const files: Record<string, Uint8Array> = {
     "[Content_Types].xml": strToU8(CT),
     "_rels/.rels": strToU8(RELS),
     "3D/3dmodel.model": strToU8(model),
     "Metadata/model_settings.config": strToU8(`<?xml version="1.0" encoding="UTF-8"?><config>${cfg.join("")}</config>`),
-  }, { level: 6 });
+  };
+  if (profile) files[PROFILE] = strToU8(profile);
+  return zipSync(files, { level: 6 });
 }

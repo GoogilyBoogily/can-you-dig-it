@@ -5,7 +5,7 @@ import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./
 
 export type Req =
   | { type: "build"; id: number; options: Options }
-  | { type: "export"; id: number; format: "3mf" | "stl" };
+  | { type: "export"; id: number; format: "3mf" | "stl"; profile?: string };
 
 export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; role: "lane" | "lip" | "riser" | "cover" }
 export type Res =
@@ -62,7 +62,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
     } else if (req.type === "export") {
       if (!last) throw new Error("nothing built yet");
       const bytes = req.format === "3mf"
-        ? threeMf(last.placed, last.options.bed)
+        ? threeMf(last.placed, last.options.bed, { profile: req.profile })
         : stlZip(last.parts.map((p) => p.mesh));
       const res: Res = { type: "file", id: req.id, name: req.format === "3mf" ? "can-system.3mf" : "can-system-stl.zip", bytes };
       (self as any).postMessage(res, [bytes.buffer]);

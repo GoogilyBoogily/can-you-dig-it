@@ -1,0 +1,47 @@
+import { test, expect } from "bun:test";
+import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { extractProfile, threeMf, bboxOf, type Placement } from "../src/export";
+
+const PROFILE = `{"printer_settings_id":"Bambu Lab P1S 0.4 nozzle","layer_height":"0.28","filament_type":["PETG"]}`;
+
+const threeMfWith = (entries: Record<string, string>) =>
+  zipSync(Object.fromEntries(Object.entries(entries).map(([k, v]) => [k, strToU8(v)])));
+
+test("extractProfile pulls project_settings.config out of a slicer 3MF", () => {
+  const file = threeMfWith({
+    "3D/3dmodel.model": "<model/>",
+    "Metadata/project_settings.config": PROFILE,
+    "Metadata/slice_info.config": "<config/>",
+  });
+  expect(extractProfile(file)).toBe(PROFILE);
+});
+
+test("extractProfile names the missing entry when the 3MF has no profile", () => {
+  const file = threeMfWith({ "3D/3dmodel.model": "<model/>" });
+  expect(() => extractProfile(file)).toThrow(/Metadata\/project_settings\.config/);
+});
+
+test("extractProfile fails loudly on something that is not a zip", () => {
+  expect(() => extractProfile(strToU8("not a 3mf"))).toThrow();
+});
+
+const BED: [number, number, number] = [256, 256, 256];
+const pos = new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]);
+const placed: Placement[] = [
+  { name: "end-lip", pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos), plate: 0, offset: [0, 0, 0] },
+];
+
+test("a 3MF built with a profile carries it through byte for byte", () => {
+  const out = unzipSync(threeMf(placed, BED, { profile: PROFILE }));
+  expect(strFromU8(out["Metadata/project_settings.config"])).toBe(PROFILE);
+});
+
+test("a 3MF built without a profile has no profile entry", () => {
+  const out = unzipSync(threeMf(placed, BED));
+  expect(out["Metadata/project_settings.config"]).toBeUndefined();
+  expect(out["Metadata/model_settings.config"]).toBeDefined();
+});
+
+test("a profile survives the round trip back out through extractProfile", () => {
+  expect(extractProfile(threeMf(placed, BED, { profile: PROFILE }))).toBe(PROFILE);
+});
