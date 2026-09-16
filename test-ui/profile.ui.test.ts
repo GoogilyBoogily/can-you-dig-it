@@ -11,7 +11,13 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { chromium, type Browser, type Page } from "playwright";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { serveDist } from "../dev";
+
+// Downloads land in a directory of their own so the suite does not leave 3MFs in /tmp.
+const downloads = mkdtempSync(join(tmpdir(), "cansys-ui-"));
 
 const PORT = 3111;
 const URL_ = `http://localhost:${PORT}/index.html`;
@@ -35,6 +41,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   server?.stop(true);
+  rmSync(downloads, { recursive: true, force: true });
 });
 
 /** Fresh page with a model built, so #results and the profile row are reachable. */
@@ -53,7 +60,8 @@ const label = (page: Page) => page.locator("#profileNow").textContent();
 const waitForLabel = (page: Page, text: string) =>
   page.waitForFunction((t) => document.getElementById("profileNow")!.textContent!.includes(t), text, { timeout: 15000 });
 
-async function downloadTo(page: Page, button: string, path: string) {
+async function downloadTo(page: Page, button: string, name: string) {
+  const path = join(downloads, name);
   const [download] = await Promise.all([page.waitForEvent("download", { timeout: 180000 }), page.click(button)]);
   await download.saveAs(path);
   return unzipSync(new Uint8Array(await Bun.file(path).arrayBuffer()));
@@ -72,7 +80,7 @@ test("an imported profile reaches the exported 3MF byte for byte", async () => {
   await waitForLabel(page, "myprofile.3mf");
   expect(await page.locator("#profileClear").isVisible()).toBe(true);
 
-  const zip = await downloadTo(page, "#dl3mf", "/tmp/cansys-ui-a.3mf");
+  const zip = await downloadTo(page, "#dl3mf", "a.3mf");
   expect(strFromU8(zip["Metadata/project_settings.config"]!)).toBe(CONFIG_A);
   expect(zip["Metadata/model_settings.config"]).toBeDefined();
   expect(zip["3D/3dmodel.model"]).toBeDefined();
@@ -84,7 +92,7 @@ test("the STL zip ignores the profile entirely", async () => {
   await page.setInputFiles("#profileIn", upload("myprofile.3mf", CONFIG_A));
   await waitForLabel(page, "myprofile.3mf");
 
-  const names = Object.keys(await downloadTo(page, "#dlstl", "/tmp/cansys-ui.zip"));
+  const names = Object.keys(await downloadTo(page, "#dlstl", "parts.zip"));
   expect(names.some((n) => n.endsWith(".stl"))).toBe(true);
   expect(names.some((n) => n.includes("project_settings"))).toBe(false);
   await page.close();
@@ -97,7 +105,7 @@ test("importing a second profile replaces the first", async () => {
   await page.setInputFiles("#profileIn", upload("second.3mf", CONFIG_B));
   await waitForLabel(page, "second.3mf");
 
-  const zip = await downloadTo(page, "#dl3mf", "/tmp/cansys-ui-b.3mf");
+  const zip = await downloadTo(page, "#dl3mf", "b.3mf");
   expect(strFromU8(zip["Metadata/project_settings.config"]!)).toBe(CONFIG_B);
   await page.close();
 });
@@ -201,7 +209,7 @@ test("downloads are blocked while a build is pending", async () => {
 
   await page.waitForFunction(() => !(document.getElementById("dl3mf") as HTMLButtonElement).disabled, { timeout: 90000 });
   const shown = (await page.locator("#summary").innerText()).match(/(\d+) cans/)?.[1];
-  const zip = await downloadTo(page, "#dl3mf", "/tmp/cansys-ui-race.3mf");
+  const zip = await downloadTo(page, "#dl3mf", "race.3mf");
   const objects = (strFromU8(zip["3D/3dmodel.model"]!).match(/<object /g) ?? []).length;
   expect(shown).toBeTruthy();
   expect(objects).toBeGreaterThan(0);
