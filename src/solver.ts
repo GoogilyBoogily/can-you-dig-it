@@ -23,7 +23,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   const styles: ("cascade" | "flat")[] = opts.cascade ? ["cascade", "flat"] : ["flat"];
   for (const style of styles) {
     const usableD = space.d - HAND_GAP;
-    const seedD = solve({ ...base, chute: style === "flat" ? 0 : -1, length: 480 });
+    const seedD = solve({ ...base, cascade: style === "cascade", length: 480 });
     const lanesMax = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
     if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, then one can shorter, and the single-plate size
@@ -36,7 +36,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     for (const length of lengths) {
       if (length < 120) continue;
       for (const slope of [3, 3.5, 4]) {
-        const o: Options = { ...base, length, perDeck: 0, chute: style === "flat" ? 0 : -1, slope, lanesWide: lanesMax, tiers: 1 };
+        const o: Options = { ...base, length, cascade: style === "cascade", slope, lanesWide: lanesMax, tiers: 1 };
         const d = solve(o);
         const cascade = d.inset > 0;
         const riser = base.feet ? RISER : 0;

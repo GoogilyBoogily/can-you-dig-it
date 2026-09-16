@@ -1,40 +1,44 @@
 import { test, expect } from "bun:test";
 import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, buildAll, filamentGrams } from "../src/geometry";
+import { Geo, DEFAULTS, solve, filamentGrams } from "../src/geometry";
+import { refParts, refSpec } from "../ref";
 import ref from "../ref.json";
 
 const wasm = await Module(); wasm.setup();
-const g = new Geo(wasm);
-const d = solve(DEFAULTS);
+const geo = new Geo(wasm);
+const derived = solve(DEFAULTS);
 
-test("derived numbers match Python", () => {
-  const s = ref.spec as any;
-  for (const [k, v] of Object.entries({ n: d.n, n_bottom: d.nBottom, L: d.L, IW: d.IW, OW: d.OW, H: d.H, H_b: d.Hb, inset: d.inset, xd: d.xd, px: d.px, py: d.py, gang_pitch: d.gangPitch })) {
-    expect(v, k).toBeCloseTo(s[k], 2);
-  }
+// ref.json is generated from this codebase by `bun run ref`, so a part that has not
+// changed reproduces its snapshot exactly. What is left for these tolerances to absorb
+// is float noise across manifold-3d builds, nothing more - any edit you make on purpose
+// moves a dimension far further than this. Widening them to make a red suite go green
+// would leave a test that verifies nothing; regenerate the snapshot instead, and read
+// the diff.
+const VOLUME_TOLERANCE = 1e-4; // 0.01 %
+const BOUND_TOLERANCE = 0.01;  // mm
+
+test("derived dimensions match the snapshot", () => {
+  const expected = ref.spec as Record<string, number>;
+  for (const [key, value] of Object.entries(refSpec(derived)))
+    expect(Math.abs(value - expected[key]), key).toBeLessThanOrEqual(BOUND_TOLERANCE);
 });
 
-const parts = buildAll(g, DEFAULTS, d);
-const parts3 = buildAll(g, { ...DEFAULTS, tiers: 3 }, d);
-const lane = (set: typeof parts, role: string) => set.lanes.find((l) => l.role === role)!;
-const map: Record<string, any> = {
-  "lane-top-front": lane(parts, "top").front, "lane-top-rear": lane(parts, "top").rear,
-  "lane-mid-front": lane(parts3, "mid").front, "lane-mid-rear": lane(parts3, "mid").rear,
-  "lane-bottom-front": lane(parts, "bottom").front, "lane-bottom-rear": lane(parts, "bottom").rear,
-  "cover-front": parts.cover[0], "cover-rear": parts.cover[1],
-  "end-lip": parts.lip, "riser-08": parts.riser08, "riser-24": parts.riser24,
-};
-for (const [name, m] of Object.entries(map)) {
-  test(`${name} matches Python volume and bounds`, () => {
-    const r = (ref as any)[name];
-    const bb = m.boundingBox();
-    expect(m.volume() / r.vol).toBeCloseTo(1, 2);          // within 1 %
-    for (let i = 0; i < 3; i++) { expect(bb.min[i]).toBeCloseTo(r.bbox[0][i], 0); expect(bb.max[i]).toBeCloseTo(r.bbox[1][i], 0); }
-    expect(m.status()).toBe("NoError");
+const parts = refParts(geo);
+for (const [name, mesh] of Object.entries(parts)) {
+  test(`${name} matches the snapshot volume and bounds`, () => {
+    const expected = (ref as any)[name];
+    const box = mesh.boundingBox();
+    expect(Math.abs(mesh.volume() / expected.vol - 1), `${name} volume`).toBeLessThanOrEqual(VOLUME_TOLERANCE);
+    for (let i = 0; i < 3; i++) {
+      expect(Math.abs(box.min[i] - expected.bbox[0][i]), `${name} min[${i}]`).toBeLessThanOrEqual(BOUND_TOLERANCE);
+      expect(Math.abs(box.max[i] - expected.bbox[1][i]), `${name} max[${i}]`).toBeLessThanOrEqual(BOUND_TOLERANCE);
+    }
+    expect(mesh.status()).toBe("NoError");
   });
 }
+
 test("filament estimate is sane", () => {
-  const gr = filamentGrams(lane(parts, "top").front!) + filamentGrams(lane(parts, "top").rear!);
-  console.log("upper lane est", gr.toFixed(0), "g");
-  expect(gr).toBeGreaterThan(180); expect(gr).toBeLessThan(320);
+  const grams = filamentGrams(parts["lane-top-front"]) + filamentGrams(parts["lane-top-rear"]);
+  expect(grams).toBeGreaterThan(180);
+  expect(grams).toBeLessThan(320);
 });

@@ -18,10 +18,16 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   actually receives. A corrupt stored profile once white-screened the whole app and no
   unit test saw it.
 - Geometry: `manifold-3d` (WASM) in a Web Worker. Viewer: three.js. ZIP: fflate.
-- `ref.json` holds volumes/bounds from the Python reference `cansys.py` (trimesh + the
-  same manifold kernel). `test/regress.test.ts` must stay green: every part within 1 %
-  volume and exact bounds. If you change geometry on purpose, change `cansys.py` the
-  same way and regenerate `ref.json`; never loosen the tolerance.
+- `ref.json` is a geometry snapshot generated from this codebase by `bun run ref`
+  (`ref.ts`). `test/regress.test.ts` must stay green: every part within 0.01 % volume
+  and 0.01 mm of its stored bounds. Those tolerances cover float noise across
+  `manifold-3d` builds and nothing else. Change geometry on purpose → regenerate, then
+  **read the diff**: every number that moved is a dimension you meant to move, and one
+  you cannot explain is the bug. Never widen the tolerance to make the suite pass.
+- The snapshot used to come from `cansys.py` (trimesh + shapely), an independent
+  implementation, which made the test a cross-kernel parity check. That file was deleted
+  on 2026-09-16; `git show python-reference:cansys.py` still has it. At the moment of
+  the switch the two agreed to within 0.0225 % volume and 0.000 mm on bounds.
 
 ## Layout
 - `src/geometry.ts` — parts. `solve()` derives every dimension from can + options;
@@ -51,4 +57,5 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.
 - Keep the UI copy plain: "Grab from", "Load from", verbs on buttons.
-- Prefer editing `cansys.py` and `src/geometry.ts` together.
+- Change `src/geometry.ts`, then `bun run ref` in the same commit, so the snapshot diff
+  and the code that caused it are reviewed together.

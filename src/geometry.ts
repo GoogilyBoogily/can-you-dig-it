@@ -11,10 +11,9 @@ export interface Options {
   canD: number;
   canL: number;
   length: number; // target lane length; > usable bed → two keyed halves
-  perDeck: number; // 0 = derive from length
   tiers: number;
   lanesWide: number;
-  chute: number; // -1 auto cascade, 0 flat, else explicit mm
+  cascade: boolean; // true: drop chute at the low end, tiers alternate 180°. false: flat decks
   slope: number; // degrees
   wall: number;
   clearance: number;
@@ -29,8 +28,8 @@ export interface Options {
 }
 
 export const DEFAULTS: Options = {
-  canD: 66, canL: 122.5, length: 480, perDeck: 0, tiers: 2, lanesWide: 2,
-  chute: -1, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 9, lig: 1.7,
+  canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
+  cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 9, lig: 1.7,
   solid: false, cover: true, feet: false, bed: [256, 256, 256], bedMargin: 3,
 };
 
@@ -54,17 +53,11 @@ export interface Derived {
 
 export function solve(o: Options): Derived {
   const tan = Math.tan((o.slope * Math.PI) / 180);
-  const inset = o.chute === 0 ? 0 : o.chute < 0 ? o.canD + 6 + o.wall : o.chute;
+  const inset = o.cascade ? o.canD + 6 + o.wall : 0;
   const usableX = o.bed[0] - 2 * o.bedMargin;
   const usableY = o.bed[1] - 2 * o.bedMargin;
-  let n: number, L: number;
-  if (o.perDeck > 0) {
-    n = o.perDeck;
-    L = Math.round((n * o.canD + inset + o.wall + K.slack) * 10) / 10;
-  } else {
-    L = Math.min(o.length, 2 * (usableX - K.lapLen));
-    n = Math.floor((L - inset - o.wall - K.slack) / o.canD);
-  }
+  const L = Math.min(o.length, 2 * (usableX - K.lapLen));
+  const n = Math.floor((L - inset - o.wall - K.slack) / o.canD);
   const split = L > usableX;
   const nBottom = Math.floor((L - o.wall - K.slack) / o.canD);
   const IW = Math.round((o.canL + o.clearance) * 10) / 10;
