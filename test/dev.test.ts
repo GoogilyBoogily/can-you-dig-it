@@ -11,7 +11,7 @@ import { serveDist } from "../dev";
 
 // A throwaway tree, so the test needs no build and the bait file is unambiguous:
 // secret.txt sits beside the served root, and reaching it is the whole failure mode.
-const scratch = realpathSync(mkdtempSync(join(tmpdir(), "cansys-dev-")));
+const scratch = realpathSync(mkdtempSync(join(tmpdir(), "can-you-dig-it-dev-")));
 const root = join(scratch, "dist");
 
 let server: ReturnType<typeof serveDist>;

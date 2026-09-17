@@ -1,4 +1,4 @@
-# cansys-web
+# can-you-dig-it
 
 Browser-only configurator for 3D-printable can storage. User enters shelf W×D×H,
 can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.

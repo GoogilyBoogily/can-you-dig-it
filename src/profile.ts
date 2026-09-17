@@ -9,7 +9,7 @@
 
 export interface StoredProfile { name: string; config: Uint8Array }
 
-export const PROFILE_KEY = "cansys.profile";
+export const PROFILE_KEY = "can-you-dig-it.profile";
 const FORMAT_VERSION = 2; // 1 held the config as text, which could not round-trip bytes
 
 function toBase64(bytes: Uint8Array): string {

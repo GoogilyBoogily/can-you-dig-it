@@ -1,4 +1,4 @@
-# cansys-web
+# can-you-dig-it
 
 Printable can storage, sized to your shelf. Enter the space, the can, and your
 printer bed; get a multi-plate 3MF (Bambu Studio / Orca) or an STL zip with every

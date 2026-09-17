@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { serveDist } from "../dev";
 
 // Downloads land in a directory of their own so the suite does not leave 3MFs in /tmp.
-const downloads = mkdtempSync(join(tmpdir(), "cansys-ui-"));
+const downloads = mkdtempSync(join(tmpdir(), "can-you-dig-it-ui-"));
 
 const PORT = 3111;
 const URL_ = `http://localhost:${PORT}/index.html`;
@@ -138,7 +138,7 @@ test("Clear removes the profile and empties localStorage", async () => {
 
   await page.click("#profileClear");
   expect(await label(page)).toContain("slicer's own defaults");
-  expect(await page.evaluate(() => localStorage.getItem("cansys.profile"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("can-you-dig-it.profile"))).toBeNull();
   await page.close();
 });
 
@@ -160,7 +160,7 @@ test("a hostile file name renders as text and does not execute", async () => {
 test("a corrupt stored profile does not stop the page loading", async () => {
   const page = await browser.newPage();
   await page.goto(URL_);
-  await page.evaluate(() => localStorage.setItem("cansys.profile", "{not json"));
+  await page.evaluate(() => localStorage.setItem("can-you-dig-it.profile", "{not json"));
   await page.reload();
 
   await page.waitForSelector(".layout", { timeout: 20000 });
@@ -171,7 +171,7 @@ test("a corrupt stored profile does not stop the page loading", async () => {
 test("a stored profile of the wrong shape does not stop the page loading", async () => {
   const page = await browser.newPage();
   await page.goto(URL_);
-  await page.evaluate(() => localStorage.setItem("cansys.profile", JSON.stringify({ name: "x.3mf" })));
+  await page.evaluate(() => localStorage.setItem("can-you-dig-it.profile", JSON.stringify({ name: "x.3mf" })));
   await page.reload();
 
   await page.waitForSelector(".layout", { timeout: 20000 });

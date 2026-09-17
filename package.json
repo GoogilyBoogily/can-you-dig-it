@@ -1,5 +1,5 @@
 {
-  "name": "cansys-web",
+  "name": "can-you-dig-it",
   "module": "index.ts",
   "type": "module",
   "private": true,

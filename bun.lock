@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "cansys-web",
+      "name": "can-you-dig-it",
       "dependencies": {
         "fflate": "^0.8.3",
         "manifold-3d": "^3.5.3",

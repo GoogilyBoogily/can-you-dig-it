@@ -142,7 +142,7 @@ export function threeMf(placed: Placement[], bed: [number, number, number], opts
     for (const id of plates.get(k)!) cfg.push(`<model_instance><metadata key="object_id" value="${id}"/><metadata key="instance_id" value="0"/></model_instance>`);
     cfg.push("</plate>");
   }
-  const model = `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="${NS}"><metadata name="Application">cansys-web</metadata><resources>${objs.join("")}</resources><build>${build.join("")}</build></model>`;
+  const model = `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="${NS}"><metadata name="Application">can-you-dig-it</metadata><resources>${objs.join("")}</resources><build>${build.join("")}</build></model>`;
   const files: Record<string, Uint8Array> = {
     "[Content_Types].xml": strToU8(CT),
     "_rels/.rels": strToU8(RELS),
