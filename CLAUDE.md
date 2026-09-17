@@ -5,6 +5,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 
 ## Stack and commands
 - Bun + TypeScript. `bun install`, `bun test`, `bun run build.ts` → `dist/` (static, GitHub Pages).
+- `bun run check` is `tsc -p .` (`noEmit`, strict). Nothing else type-checks: the bundler
+  strips types without reading them, so a build passing proves nothing about the types.
+- One file at a time: `bun test test/regress.test.ts`. One case: `bun test test/ -t "name"`.
 - `bun run dev` — builds, serves `dist/` on :3000, rebuilds on save. `dev.ts` shells out to
   `build.ts` rather than reimplementing it, so dev and Pages serve identical bytes. One
   bundler on purpose: no Vite.
@@ -35,6 +38,14 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `src/solver.ts` — `fitSpace(space, base, {cascade})` → ranked layouts. Pure arithmetic.
 - `src/export.ts` — shelf packer, binary STL, 3MF writer (Bambu plate grid + `model_settings.config`).
 - `src/worker.ts` — build + export off-thread; keeps `last` for export (do not transfer buffers).
+- `src/validate.ts` — `LIMITS` + `readNumbers()`, the single gate for every number typed
+  into the form or arriving in a shared hash. Nothing downstream re-checks, so a value
+  past here reaches the solver and the WASM kernel unexamined. New dimension → new limit.
+- `src/profile.ts` — the imported slicer profile, cached in `localStorage` as versioned
+  base64 (`FORMAT_VERSION`). Bytes, not text: a BOM or a cp1252 config does not survive a
+  decode/encode round trip. Every access is guarded — reading `localStorage` throws
+  outright in Safari private browsing and sandboxed iframes, and this is a convenience
+  that may never stop the page loading.
 - `src/viewer.ts`, `src/main.ts` — UI. State in the URL hash. Design tokens in `styles.css`.
 
 ## Design rules that are not obvious from the code
