@@ -161,7 +161,7 @@ function renderResults() {
     <dt>Lane</dt><dd>${d.L.toFixed(0)} × ${d.OW.toFixed(0)} × ${d.H} mm${d.split ? ", two keyed halves" : ""}</dd>
     <dt>Deck slope</dt><dd>${o.slope}° — cans roll to the front on their own</dd>
     <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
-    <dt>Load from</dt><dd>${layout.style === "cascade" ? (o.tiers % 2 === 0 ? "the front of the top tier, over its lip" : "the back of the top tier (odd tier count), or lift the cover") : "the front of each tier"}</dd>
+    <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
     <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
     ${layout.warnings.length ? `<p class="warn">${layout.warnings.join("<br>")}</p>` : ""}`;

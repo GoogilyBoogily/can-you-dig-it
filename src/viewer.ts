@@ -136,7 +136,9 @@ export class Viewer {
         }
       }
       const top = cascade ? d.Hb + (o.tiers - 1) * d.H : o.tiers * d.H;
-      if (d.split) { put("cover-front", 0, y, top); put("cover-rear", 0, y, top); } else put("cover", 0, y, top);
+      // the cover turns with the top lane so its loading window sits over that lane's high end
+      const coverRot = cascade && (o.tiers - 1) % 2 === 1;
+      if (d.split) { put("cover-front", 0, y, top, coverRot); put("cover-rear", 0, y, top, coverRot); } else put("cover", 0, y, top, coverRot);
       if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put("riser-24", sx * d.px, y + sy * d.py, -24);
     }
     this.addFloor();

@@ -33,7 +33,8 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
 - Lanes longer than the bed split into **-front** / **-rear** halves joined by a deck
   dovetail tongue and wall half-laps; slide together vertically, no glue.
 - **riser-08 / -24**: peg-and-socket feet; stack for height.
-- **cover**: hex-perforated top so the stack is a shelf.
+- **cover**: hex-perforated top so the stack is a shelf, with a can-sized window over the
+  top tier's high end. That is where cans go in: drop one through, it rolls to the chute.
 
 Lateral dovetails at the lane ends gang lanes side by side. Pegs on the wall tops
 locate the tier above. One `fit` value is added to every clearance.
@@ -53,8 +54,8 @@ Load a project 3MF saved from your slicer and its `project_settings.config` ride
 2. Mixed-width ganging (slim + standard side by side). Bigger than it looks: `gangPitch`
    in `src/geometry.ts` derives from a single `canD`/`canL`, so this wants a second can
    spec threaded through `solve()`, not just a dovetail-height change.
-3. Odd cascade tier counts load from the back. Either warn harder or offer a "loader
-   slot" cover.
+3. Odd cascade tier counts put the cover window at the back. Warn harder, or let the
+   shelf depth pick an even count.
 4. Packing is a shelf sort. `maxrects-packer` with rotation would tighten plates 9–13.
 
 Two things left undone on purpose: no side-printed lane variant (thin-sheet, lighter —

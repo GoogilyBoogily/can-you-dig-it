@@ -35,7 +35,7 @@ export const DEFAULTS: Options = {
 
 // fixed design constants (same names as cansys.py)
 const K = {
-  deckLo: 4, topgap: 2, slack: 8, lipH: 20, cornerR: 5, chamfer: 1,
+  deckLo: 4, topgap: 2, slack: 8, lipH: 20, cornerR: 10, edgeR: 3,
   border: 5, web: 3.5, skin: 1.8,
   dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
   pegR: 2, pegH: 4, socR: 2.2, socD: 4.5,
@@ -134,6 +134,14 @@ export class Geo {
   roundedRect(L: number, W: number, r: number): CS {
     return this.rect(-L / 2 + r, -W / 2 + r, L / 2 - r, W / 2 - r).offset(r, "Round", 2, 24);
   }
+  /** The material a radius-r fillet removes from a top edge at (u, top); `side` is +1/-1,
+   *  the direction the edge's outer face points along u. A 2D cut profile: extrude it
+   *  along the edge and subtract. */
+  roundOver(u: number, top: number, side: number, r: number): CS {
+    const inner = u - side * r;
+    const corner = this.rect(Math.min(inner, u + side), top - r, Math.max(inner, u + side), top + 1);
+    return corner.subtract(this.CrossSection.circle(r, 24).translate([inner, top - r]));
+  }
   union(parts: M[]): M {
     return parts.length === 1 ? parts[0] : this.Manifold.union(parts);
   }
@@ -227,11 +235,8 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
   body = g.union(adds);
 
   const cuts: M[] = [];
-  // top outer edge chamfer
-  for (const sy of [1, -1]) {
-    const tri: Vec2[] = [[sy * OW / 2, H + 0.01], [sy * (OW / 2 - K.chamfer), H + 0.01], [sy * OW / 2, H - K.chamfer]];
-    cuts.push(g.prismX(g.poly(sy > 0 ? tri : tri.slice().reverse()), L + 2, -L / 2 - 1));
-  }
+  // round over the top outer edges: corner square minus the fillet circle, run along X
+  for (const sy of [1, -1]) cuts.push(g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1));
   if (!o.solid) {
     const b = K.border;
     const keep: CS[] = [];
@@ -338,8 +343,17 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   const plate = g.prismZ(g.roundedRect(L, OW, K.cornerR), t, 0);
   const cuts: M[] = [];
   for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(g.cyl(K.socR + o.fit, t + 1, sx * d.px, sy * d.py, -0.5));
+  // cascade loading window: the top tier loads from above at its high end, so the cover
+  // opens there, one can wide and the full inner width (only the wall strips remain).
+  // A flat top tier loads from the front over its lip and keeps a whole cover.
+  const keep: CS[] = [];
+  if (d.inset > 0) {
+    const windowL = o.canD + 8;
+    const window = g.roundedRect(windowL, d.IW, K.cornerR / 2).translate([L / 2 - o.wall - windowL / 2, 0]);
+    cuts.push(g.prismZ(window, t + 2, -1));
+    keep.push(window.offset(4, "Miter"));
+  }
   if (!o.solid) {
-    const keep: CS[] = [];
     for (const sx of [1, -1]) for (const sy of [1, -1]) keep.push(g.rect(sx * d.px - 8, sy * d.py - 8, sx * d.px + 8, sy * d.py + 8));
     if (d.split) keep.push(g.rect(-6, -OW, 6, OW));
     const cells = g.hexCells(o.hexR, o.lig, g.rect(-L / 2 + 10, -OW / 2 + 10, L / 2 - 10, OW / 2 - 10), 1, keep);

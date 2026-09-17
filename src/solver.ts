@@ -63,7 +63,9 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     }
   }
   // one entry per (style, lanes, tiers, length): keep the lowest stack; then the
-  // two best of each style so the flat/cascade trade-off is always visible
+  // two best of each style so the flat/cascade trade-off is always visible. The style
+  // the user asked for comes first - a flat stack holds more cans, and ranking on that
+  // alone put it ahead of the cascade the ticked box was asking to see.
   const seen = new Map<string, Layout>();
   for (const l of out) {
     const k = `${l.style}:${l.options.lanesWide}:${l.options.tiers}:${l.derived.L}`;
@@ -72,7 +74,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   }
   const ranked = [...seen.values()].sort((a, b) => b.cans - a.cans || a.footprint[2] - b.footprint[2]);
   const picked: Layout[] = [];
-  for (const style of ["cascade", "flat"] as const) picked.push(...ranked.filter((l) => l.style === style).slice(0, 2));
-  return picked.sort((a, b) => b.cans - a.cans || a.footprint[2] - b.footprint[2]);
+  for (const style of styles) picked.push(...ranked.filter((l) => l.style === style).slice(0, 2));
+  return picked;
 }
 
