@@ -13,6 +13,18 @@ export interface Lattice { dx: number; dy: number; hw: number; hh: number; stagg
 export type Design = "standard" | "minimal";
 export const DESIGNS: readonly Design[] = ["standard", "minimal"];
 
+/** The perforation of the walls, end wall and cover; orthogonal to the design. Every one
+ *  is an in-plane through-cut. Spec in docs/superpowers/specs/2026-09-18-pattern-axis-design.md. */
+export type Pattern = "hex" | "circle" | "kumiko" | "slat" | "breeze";
+export const PATTERNS: readonly Pattern[] = ["hex", "circle", "kumiko", "slat", "breeze"];
+/** How far three whole rows of a pattern span, as a·R + b·lig; autoR inverts it. */
+export const ROWS: Record<Pattern, readonly [number, number]> = {
+  hex: [5, Math.sqrt(3)], // 2R + 2 * 1.5P, P = R + lig / sqrt(3)
+  circle: [2 + 2 * Math.sqrt(3), Math.sqrt(3)], // 2R + 2 * (sqrt(3) / 2)(2R + lig)
+  kumiko: [6, 2], breeze: [6, 2], // three 2R squares, two bars
+  slat: [6, 4], // three 2R openings, two 2·lig rails
+};
+
 export interface Options {
   canD: number;
   canL: number;
@@ -26,8 +38,9 @@ export interface Options {
   fit: number;
   hexR: number; // cell radius when hexAuto is off
   hexAuto: boolean; // size cells so two whole rows fill the wall
-  solid: boolean; // no lattice at all; overrides design
+  solid: boolean; // no lattice at all; overrides design and pattern
   design: Design;
+  pattern: Pattern;
   cover: boolean;
   feet: boolean; // 24 mm risers under the bottom tier (off: lane sits flat on the shelf)
   bed: [number, number, number];
@@ -37,7 +50,7 @@ export interface Options {
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
   cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
-  solid: false, design: "standard", cover: true, feet: false, bed: [256, 256, 256], bedMargin: 3,
+  solid: false, design: "standard", pattern: "hex", cover: true, feet: false, bed: [256, 256, 256], bedMargin: 3,
 };
 
 // fixed design constants (same names as cansys.py)
@@ -73,7 +86,12 @@ function autoR(panelH: number, [a, b]: readonly [number, number]): number {
   if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - b * K.ligMin) / a;
   return Math.min(K.hexMax, Math.max(K.hexMin, R));
 }
-const HEX_ROWS: readonly [number, number] = [5, Math.sqrt(3)];
+
+/** Where a wall's lattice field starts. A hexagon only lands a 60° tip over an ear notch;
+ *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
+ *  across 12.5 mm, so every other pattern starts above the recess pads that guard the
+ *  tab roots (notchH + 4). Hex keeps the border so its snapshot does not move. */
+const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + K.dtCl + o.fit + 4);
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
@@ -97,7 +115,7 @@ export function solve(o: Options): Derived {
   const H = Math.ceil(dhi + o.canD + K.topgap);
   const dhiB = K.deckLo + L * tan;
   const Hb = Math.ceil(dhiB + o.canD + K.topgap);
-  const hexR = o.hexAuto ? autoR(H - 2 * K.border, HEX_ROWS) : o.hexR;
+  const hexR = o.hexAuto ? autoR(H - K.border - fieldBottom(o), ROWS[o.pattern]) : o.hexR;
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
@@ -237,6 +255,57 @@ export class Geo {
       out.push(c);
     }
     return out.length ? this.CrossSection.union(out) : null;
+  }
+
+  /** The chosen pattern's holes in `panel`, radius R, ligament t, clear of `keep`. */
+  cellsOf(p: Pattern, R: number, t: number, panel: CS, keep: CS[]): CS | null {
+    const square = { dx: 2 * R + t, dy: 2 * R + t, hw: R, hh: R, stagger: false };
+    switch (p) {
+      case "hex":
+        return this.hexCells(R, t, panel, 1, keep);
+      case "circle": // round perforation on the same 60° stagger, holes 2R across, t apart
+        return this.cells({ dx: 2 * R + t, dy: (Math.sqrt(3) / 2) * (2 * R + t), hw: R, hh: R, stagger: true }, panel, keep,
+          (cx, cy) => this.CrossSection.circle(R, 48).translate([cx, cy]));
+      case "kumiko": {
+        // goma: a square with one diagonal bar. The diagonal alternates so the two walls
+        // read the same from outside and the bars brace both shear directions
+        const bar = this.rect(-(R * Math.SQRT2 + t), -t / 2, R * Math.SQRT2 + t, t / 2);
+        return this.cells(square, panel, keep, (cx, cy, i, j) =>
+          this.rect(cx - R, cy - R, cx + R, cy + R).subtract(bar.rotate((i + j) % 2 ? 45 : -45).translate([cx, cy])));
+      }
+      case "breeze": {
+        // screen block: one quatrefoil per cell, lobe tips at ±R so the bar between cells is t
+        const lobe = this.CrossSection.circle(0.6 * R, 48);
+        return this.cells(square, panel, keep, (cx, cy) =>
+          this.cs2d(...[-1, 1].flatMap((sx) => [-1, 1].map((sy) => lobe.translate([cx + sx * 0.4 * R, cy + sy * 0.4 * R])))));
+      }
+      case "slat":
+        return this.slats(R, t, panel, keep);
+    }
+  }
+
+  /**
+   * Stadium openings 2R tall between 2t rails, one per row, each running the width of
+   * its field component. One opening spans the field, so a keep-out cannot drop it whole:
+   * the field is split at the keep-outs first and a component narrower than 4R is left
+   * solid, which keeps the strips beside the dovetail bands and the end notch blank.
+   */
+  slats(R: number, t: number, panel: CS, keep: CS[]): CS | null {
+    const rows: CS[] = [];
+    const field = keep.length ? panel.subtract(this.cs2d(...keep)) : panel;
+    for (const comp of field.decompose()) {
+      const { min: [x0], max: [x1] } = comp.bounds();
+      const w = x1 - x0;
+      if (w < 4 * R) continue;
+      const stadium = (cx: number, cy: number) => this.cs2d(
+        this.rect(cx - w / 2 + R, cy - R, cx + w / 2 - R, cy + R),
+        this.CrossSection.circle(R, 48).translate([cx - w / 2 + R, cy]),
+        this.CrossSection.circle(R, 48).translate([cx + w / 2 - R, cy]),
+      );
+      const cut = this.cells({ dx: w + 1, dy: 2 * R + 2 * t, hw: w / 2, hh: R, stagger: false }, comp, [], stadium);
+      if (cut) rows.push(cut.intersect(comp));
+    }
+    return rows.length ? this.cs2d(...rows) : null;
   }
 
   /**
@@ -428,8 +497,8 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
     if (d.split) keep.push(g.rect(-K.spliceDepth - 2.5, 0, 2.5, H));
     const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + 4);
     keep.push(endNotch);
-    const panel = g.rect(-L / 2 + b, b, L / 2 - b, H - b);
-    const wcells = g.hexCells(d.hexR, d.lig, panel, 1, keep);
+    const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
+    const wcells = g.cellsOf(o.pattern, d.hexR, d.lig, panel, keep);
     if (wcells) cuts.push(g.prismY(wcells, o.wall + 2, y0 - 1));
 
     // recess the outer face over the lattice field and down through the bottom border to
@@ -471,7 +540,7 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const cuts: M[] = [g.prismY(g.roundOver(L / 2, ewh, 1, K.edgeR), IW, -IW / 2)];
   if (!o.solid) {
     const gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
-    const ecells = g.hexCells(d.hexR, d.lig, g.rect(gy0, te + b, gy1, ewh - b), 1, []);
+    const ecells = g.cellsOf(o.pattern, d.hexR, d.lig, g.rect(gy0, te + b, gy1, ewh - b), []);
     if (ecells) cuts.push(g.prismX(ecells, o.wall + 2, xe - 1));
     const rd = o.wall - (o.design === "minimal" ? K.ligMin : K.web);
     if (rd > 0.2) cuts.push(g.prismX(g.rect(gy0, te - 1, gy1, ewh - b), rd + 1, L / 2 - rd));
@@ -561,19 +630,21 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     // bigger cells and fat bars than the walls: a grille, not a lattice
     const field = g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14);
     // the grille has its own radius, sized like the walls' so three whole rows fill the
-    // field: 2R + 2 * 1.5P with bars R/2, so P = R + R / (2 sqrt(3))
-    const coverR = (OW - 28 - 1) / (5 + Math.sqrt(3) / 2);
+    // field with bars R/2: the pattern's rows span a·R + b·lig, lig = R/2
+    const [a, bb] = ROWS[o.pattern];
+    const coverR = (OW - 28 - 1) / (a + bb / 2);
     let cells: CS | null;
-    if (o.design === "minimal") {
+    if (o.design === "minimal" && o.pattern !== "slat") {
       // a perforated sheet: bigger cells on the ligament rule, running to the frame and
       // clipped there. Whole cells leave the open area to luck - how many fit between the
       // pins and the window swings with the can - where clipping makes it the cell's
-      // own 83 % of the field whatever the size.
+      // own 83 % of the field whatever the size. A slat clipped to the grown field is a
+      // square-ended slot that ignores the rail count, so slats take the whole-row path.
       const R = 1.5 * coverR;
-      const grid = g.hexCells(R, ligFor(R), field.offset(2 * R, "Miter"), 1, []);
+      const grid = g.cellsOf(o.pattern, R, ligFor(R), field.offset(2 * R, "Miter"), []);
       cells = grid && grid.intersect(field).subtract(g.cs2d(...keep));
     } else {
-      cells = g.hexCells(coverR, coverR / 2, field, 1, keep);
+      cells = g.cellsOf(o.pattern, coverR, coverR / 2, field, keep);
     }
     if (cells) {
       // the seam crosses the field; clip cells at its solid band rather than dropping

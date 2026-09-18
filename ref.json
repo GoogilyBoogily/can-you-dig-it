@@ -747,5 +747,545 @@
     6
    ]
   ]
+ },
+ "circle-cover-front": {
+  "vol": 46451.4,
+  "bbox": [
+   [
+    -240,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "circle-cover-rear": {
+  "vol": 38263,
+  "bbox": [
+   [
+    0,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "circle-lane-top-deck-front": {
+  "vol": 77127.1,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "circle-lane-top-deck-rear": {
+  "vol": 241085.1,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "circle-lane-top-wall-tongue-front": {
+  "vol": 54101.5,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "circle-lane-top-wall-tongue-rear": {
+  "vol": 54184.4,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "circle-lane-top-wall-socket-front": {
+  "vol": 48198,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "circle-lane-top-wall-socket-rear": {
+  "vol": 48280.9,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "circle-lane-top-end-wall": {
+  "vol": 12580.2,
+  "bbox": [
+   [
+    -45.068,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "kumiko-cover-front": {
+  "vol": 54063.5,
+  "bbox": [
+   [
+    -240,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "kumiko-cover-rear": {
+  "vol": 41238.3,
+  "bbox": [
+   [
+    0,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "kumiko-lane-top-deck-front": {
+  "vol": 77127.1,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "kumiko-lane-top-deck-rear": {
+  "vol": 241085.1,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "kumiko-lane-top-wall-tongue-front": {
+  "vol": 48755.2,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "kumiko-lane-top-wall-tongue-rear": {
+  "vol": 50941,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "kumiko-lane-top-wall-socket-front": {
+  "vol": 42851.7,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "kumiko-lane-top-wall-socket-rear": {
+  "vol": 45037.4,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "kumiko-lane-top-end-wall": {
+  "vol": 12580.2,
+  "bbox": [
+   [
+    -45.068,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "slat-cover-front": {
+  "vol": 36578.4,
+  "bbox": [
+   [
+    -240,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "slat-cover-rear": {
+  "vol": 28022.2,
+  "bbox": [
+   [
+    0,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "slat-lane-top-deck-front": {
+  "vol": 77127.1,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "slat-lane-top-deck-rear": {
+  "vol": 241085.1,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "slat-lane-top-wall-tongue-front": {
+  "vol": 42259.7,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "slat-lane-top-wall-tongue-rear": {
+  "vol": 42439.8,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "slat-lane-top-wall-socket-front": {
+  "vol": 36356.2,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "slat-lane-top-wall-socket-rear": {
+  "vol": 36536.2,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "slat-lane-top-end-wall": {
+  "vol": 12580.2,
+  "bbox": [
+   [
+    -45.068,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "breeze-cover-front": {
+  "vol": 46535.1,
+  "bbox": [
+   [
+    -240,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "breeze-cover-rear": {
+  "vol": 36573.9,
+  "bbox": [
+   [
+    0,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    2.4
+   ]
+  ]
+ },
+ "breeze-lane-top-deck-front": {
+  "vol": 77127.1,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "breeze-lane-top-deck-rear": {
+  "vol": 241085.1,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "breeze-lane-top-wall-tongue-front": {
+  "vol": 48784.8,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "breeze-lane-top-wall-tongue-rear": {
+  "vol": 50970.6,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "breeze-lane-top-wall-socket-front": {
+  "vol": 42881.3,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "breeze-lane-top-wall-socket-rear": {
+  "vol": 45067,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "breeze-lane-top-end-wall": {
+  "vol": 12580.2,
+  "bbox": [
+   [
+    -45.068,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
  }
 }

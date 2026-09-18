@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, buildCover, type Options } from "../src/geometry";
+import { Geo, DEFAULTS, PATTERNS, solve, buildCover, type Options } from "../src/geometry";
 
 const wasm = await Module(); wasm.setup();
 const geo = new Geo(wasm);
@@ -22,6 +22,7 @@ const shortLane = { ...DEFAULTS, length: 240, cover: true }; // one cover piece
 test("a can drops through the cover at the loading end of a cascade", () => {
   expect(coverHitByDroppedCan({ ...shortLane, cascade: true })).toBe(0);
   expect(coverHitByDroppedCan({ ...shortLane, cascade: true, design: "minimal" })).toBe(0);
+  for (const pattern of PATTERNS) expect(coverHitByDroppedCan({ ...shortLane, cascade: true, pattern })).toBe(0);
 });
 
 // A flat top tier loads from the front over its lip; a window there would drop cans onto

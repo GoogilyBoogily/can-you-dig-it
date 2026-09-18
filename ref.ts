@@ -11,7 +11,7 @@
 // than disagreement, and the tolerances in regress.test.ts are tight to match.
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { Geo, DEFAULTS, solve, buildAll, type Derived, type Options, type PartSet, type LaneRole } from "./src/geometry";
+import { Geo, DEFAULTS, PATTERNS, solve, buildAll, type Derived, type Options, type PartSet, type LaneRole } from "./src/geometry";
 
 /** The dimensions solve() derives from DEFAULTS, pinned so a change to the arithmetic shows up. */
 export function refSpec(derived: Derived): Record<string, number> {
@@ -51,6 +51,15 @@ export function refParts(geo: Geo): Record<string, Manifold> {
   };
   lanes("", twoTiers, "top"); lanes("", threeTiers, "mid"); lanes("", twoTiers, "bottom");
   lanes("minimal-", minimalTwo, "top"); lanes("minimal-", minimalThree, "mid"); lanes("minimal-", minimalTwo, "bottom");
+  // every other pattern: the top lane and the cover, since a pattern changes nothing else.
+  // solve() per pattern - the auto radius differs
+  for (const pattern of PATTERNS.filter((p) => p !== "hex")) {
+    const o: Options = { ...DEFAULTS, pattern };
+    const set = buildAll(geo, o, solve(o));
+    parts[`${pattern}-cover-front`] = set.cover[0];
+    parts[`${pattern}-cover-rear`] = set.cover[1];
+    lanes(`${pattern}-`, set, "top");
+  }
   return parts;
 }
 
