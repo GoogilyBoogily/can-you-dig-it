@@ -37,19 +37,24 @@ for (const [name, mesh] of Object.entries(parts)) {
   });
 }
 
-// 312 g with skins in the model (244 g before them); the window is a sanity check, not a pin
+/** Every snapshot part of one lane role or cover, both halves of every plate. */
+const laneVolume = (prefix: string) => Object.entries(parts).filter(([name]) => name.startsWith(prefix + "-")).reduce((sum, [, m]) => sum + m.volume(), 0);
+const laneGrams = (prefix: string) => Object.entries(parts).filter(([name]) => name.startsWith(prefix + "-")).reduce((sum, [, m]) => sum + filamentGrams(m), 0);
+
+// 331 g for the four plates of a top lane (305 g as one print, before the flat-pack: the
+// wall keeps a solid band along the deck now); the window is a sanity check, not a pin
 test("filament estimate is sane", () => {
-  const grams = filamentGrams(parts["lane-top-front"]) + filamentGrams(parts["lane-top-rear"]);
+  const grams = laneGrams("lane-top");
   expect(grams).toBeGreaterThan(250);
   expect(grams).toBeLessThan(400);
 });
 
 // The minimal design keeps every joint and takes out the material that carried nothing.
 // Solid volume, not the filament model, so the check does not move with print settings.
-// Measured when it landed: top 0.51, bottom 0.46, cover 0.69 - fails when something creeps back.
-const pairVolume = (prefix: string) => parts[`${prefix}-front`].volume() + parts[`${prefix}-rear`].volume();
+// Measured when it landed: top 0.51, bottom 0.46, cover 0.69; flat-pack 0.50, 0.47, 0.70 -
+// fails when something creeps back.
 test("the minimal design is about half the material", () => {
-  expect(pairVolume("minimal-lane-top") / pairVolume("lane-top")).toBeLessThan(0.6);
-  expect(pairVolume("minimal-lane-bottom") / pairVolume("lane-bottom")).toBeLessThan(0.55);
-  expect(pairVolume("minimal-cover") / pairVolume("cover")).toBeLessThan(0.75);
+  expect(laneVolume("minimal-lane-top") / laneVolume("lane-top")).toBeLessThan(0.6);
+  expect(laneVolume("minimal-lane-bottom") / laneVolume("lane-bottom")).toBeLessThan(0.55);
+  expect(laneVolume("minimal-cover") / laneVolume("cover")).toBeLessThan(0.75);
 });

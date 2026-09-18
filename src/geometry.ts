@@ -1,6 +1,5 @@
-// Geometry for the can-storage system, on the manifold-3d kernel.
-// This is a line-for-line port of cansys.py; that file is the reference and
-// the regression oracle (see test/regress.test.ts). Units: mm, Z up.
+// Geometry for the can-storage system, on the manifold-3d kernel. Units: mm, Z up.
+// Started as a line-for-line port of cansys.py; test/regress.test.ts pins the snapshot.
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
 
@@ -41,12 +40,14 @@ export const DEFAULTS: Options = {
 
 // fixed design constants (same names as cansys.py)
 const K = {
-  deckLo: 4, topgap: 2, slack: 8, lipH: 20, cornerR: 12, edgeR: 3,
+  deckLo: 4, topgap: 2, slack: 8, lipH: 20, edgeR: 3,
   hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
   border: 5, web: 3.5,
   dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
-  pegR: 2, pegH: 4, socR: 2.2, socD: 4.5,
-  spliceBase: 30, spliceTip: 40, spliceDepth: 8, lapLen: 10,
+  // one tab for every joint: 8 wide, 3 thick, flush with the plate's inner face. A pin
+  // is a tab as tall as the cover is thick, so it sits flush through the cover's hole
+  tabW: 8, tabT: 3, pinH: 2.4, coverT: 2.4, sideTabH: 12,
+  spliceBase: 30, spliceTip: 40, spliceDepth: 8,
 };
 
 export interface Derived {
@@ -54,7 +55,7 @@ export interface Derived {
   L: number; IW: number; OW: number; H: number; Hb: number;
   run: number; dhi: number; dhiB: number; tan: number; inset: number;
   hexR: number; lig: number;
-  xd: number; px: number; py: number; lipy: number; lipx: number; railHy: number;
+  xd: number; px: number; py: number; piny: number; lipy: number; lipx: number; railHy: number;
   gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
 }
 
@@ -82,7 +83,7 @@ export function solve(o: Options): Derived {
   // One margin, not two: a part has an edge at each end of X and Y, but it sits on the
   // bed, so the only thing to keep clear in Z is headroom under the gantry.
   const usableZ = o.bed[2] - o.bedMargin;
-  const L = Math.min(o.length, 2 * (usableX - K.lapLen));
+  const L = Math.min(o.length, 2 * (usableX - K.spliceDepth));
   const n = Math.floor((L - inset - o.wall - K.slack) / o.canD);
   const split = L > usableX;
   const nBottom = Math.floor((L - o.wall - K.slack) / o.canD);
@@ -96,10 +97,10 @@ export function solve(o: Options): Derived {
   const hexR = o.hexAuto ? autoHexR(H - 2 * K.border) : o.hexR;
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
-    xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2,
+    xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
     lipy: IW / 2 - 14, lipx: -L / 2 + inset + 8, railHy: IW / 2 - 20,
     gangPitch: OW + K.dovetail,
-    plateX: split ? L / 2 + K.lapLen : L, plateY: OW + K.dovetail,
+    plateX: split ? L / 2 + K.spliceDepth : L, plateY: OW + K.dovetail,
     usableX, usableY, usableZ,
   };
 }
@@ -231,7 +232,7 @@ export class Geo {
    * `plan` (the part's outline) shrunk by the fillet's inset at that height. A 2D
    * offset follows the outline round its corners, which a straight cut cannot.
    * The slabs are the stair-steps the printer lays down anyway. `pads` stay flat
-   * through the whole height: seats for pegs.
+   * through the whole height: seats and tab roots.
    */
   roundTop(body: M, plan: CS, top: number, r: number, pads: CS[] = [], steps = 8): M {
     const bb = body.boundingBox();
@@ -250,197 +251,302 @@ export class Geo {
 }
 
 // ---------------------------------------------------------------- parts
+// Every plate is modelled in the orientation it prints in, outer face up, so the packer
+// only has to drop it on the bed. The rule each feature has to pass: it is in-plane (tab,
+// notch, slot, dovetail, hex cell), it grows up from the print face (rib, pin, boss), or it
+// is a pocket in the print face (recess, groove). Nothing on the bed face, nothing under
+// an edge. test/overhang.test.ts holds every snapshot part to it.
 export type LaneRole = "top" | "mid" | "bottom";
+export type PlateName = "deck" | "wall-tongue" | "wall-socket" | "end-wall";
+export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
 export interface PartSet {
-  lanes: { role: LaneRole; whole?: M; front?: M; rear?: M }[];
+  lanes: { role: LaneRole; plates: Plate[] }[];
   lip: M; riser08: M; riser24: M; cover: M[];
 }
 
-/** bottom: no chute, full deck, dispense lip at the front.
- *  top: nothing drops in from above, so the high end gets a loading lip instead of a wall. */
-export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = false): M {
-  const { L, IW, OW } = d;
-  const inset = bottom ? 0 : d.inset;
-  const xd = -L / 2 + inset;
+/** What every plate of one lane shares: where the deck is, how tall the walls are, and
+ *  where the ties and tabs sit. bottom: no chute, full deck. top: a loading lip instead
+ *  of a full end wall, since nothing drops in from above. */
+export interface Lane {
+  bottom: boolean; top: boolean;
+  xd: number; // where the deck starts (-L/2 on the bottom lane)
+  xe: number; // inner face of the end wall; the deck top is flat from here to L/2
+  dhi: number; te: number; H: number; ewh: number;
+  deckTop: (x: number) => number; // 0 where there is no deck
+  tabs: number[]; // x of every wall tab and deck slot
+  edges: number[]; // pairs: the open deck bands between ties
+  lipx: number;
+}
+
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
+  const bottom = role === "bottom", top = role === "top";
+  const { L } = d;
+  const xd = bottom ? -L / 2 : d.xd;
+  const xe = L / 2 - o.wall;
   const dhi = bottom ? d.dhiB : d.dhi;
   const H = bottom ? d.Hb : d.H;
-  const { px, py, lipy } = d;
+  const te = K.deckLo + (xe - xd) * d.tan;
+  const deckTop = (x: number) => (x < xd ? 0 : Math.min(K.deckLo + (x - xd) * d.tan, te));
   const lipx = xd + 8;
-  const fit = o.fit;
+  const minimal = o.design === "minimal";
 
-  // deck wedge + walls + end wall, then round the vertical corners
-  const ewh = top ? dhi + K.lipH : H; // high-end wall height
-  const wedge = () => g.prismY(g.poly([[xd, 0], [L / 2, 0], [L / 2, dhi], [xd, K.deckLo]]), OW, -OW / 2);
-  let body = g.union([
-    wedge(),
-    g.box(L, o.wall, H, 0, py, H / 2),
-    g.box(L, o.wall, H, 0, -py, H / 2),
-    g.box(o.wall, IW, ewh, L / 2 - o.wall / 2, 0, ewh / 2),
-  ]);
-  const outline = g.roundedRect(L, OW, K.cornerR);
-  body = g.isect(body, g.prismZ(outline, H + 2, -1));
-  const pegPads: CS[] = [];
-  for (const sx of [1, -1]) for (const sy of [1, -1]) pegPads.push(g.rect(sx * px - K.pegR - 1, sy * py - K.pegR - 1, sx * px + K.pegR + 1, sy * py + K.pegR + 1));
-  body = g.roundTop(body, outline, H, K.edgeR, pegPads);
-
-  const adds: M[] = [body];
-  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(g.cyl(K.pegR, K.pegH, sx * px, sy * py, H));
-  const dtx = L / 2 - K.dtTip / 2 - K.cornerR - 6;
-  for (const dx of [-dtx, dtx]) {
-    adds.push(g.prismZ(g.poly([
-      [dx - K.dtBase / 2, OW / 2], [dx + K.dtBase / 2, OW / 2],
-      [dx + K.dtTip / 2, OW / 2 + K.dovetail], [dx - K.dtTip / 2, OW / 2 + K.dovetail],
-    ]), H - 32, 8));
+  // deck centre band: open between the rails, cross-ties every ~80 mm, a tie at each end
+  const endTie = minimal ? 2.5 : 6;
+  const x0 = xd + endTie, x1 = xe - endTie;
+  const nt = Math.max(1, Math.round((x1 - x0) / 80) - 1);
+  const interior: number[] = [];
+  for (let i = 0; i < nt; i++) interior.push(round1(x0 + ((x1 - x0) * (i + 1)) / (nt + 1)));
+  // wall tabs sit in the rail under the wall, which is solid along the whole deck in both
+  // designs, so they need no tie under them: one near each end and one at every interior
+  // tie that is clear of the seam (the deck tongue lives there) and of the pin holes at ±px
+  const clear = (t: number) => Math.abs(t) >= 12 && Math.abs(Math.abs(t) - d.px) >= 12;
+  const tabIn = K.tabW / 2 + 3;
+  const tabs = [xd + tabIn, xe - tabIn, ...interior.filter(clear)];
+  const ties = new Set<number>([round1(lipx), ...interior]);
+  if (d.split) ties.add(round1(-K.spliceDepth / 2));
+  const tw = minimal ? 2.5 : 8;
+  // the lip tie holds the lip pockets, the splice tie the deck tongue: 10 mm each side.
+  // An interior tie can land inside one of those bands; merge, or its far edge would
+  // start the next opening inside the band and leave the tongue rooted on a sliver.
+  const edges: number[] = [x0];
+  for (const t of [...ties].sort((a, b) => a - b)) {
+    const special = Math.abs(t - lipx) < 1 || (d.split && Math.abs(t + K.spliceDepth / 2) < 1);
+    const half = special ? 10 : tw / 2;
+    const last = edges.length - 1;
+    if (last > 0 && t - half <= edges[last]) edges[last] = Math.max(edges[last], t + half);
+    else edges.push(t - half, t + half);
   }
-  body = g.union(adds);
+  edges.push(x1);
+  return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, deckTop, tabs, edges, lipx };
+}
 
+/** A tab, pin or boss: the one cross-section every joint uses, flush with the plate's
+ *  inner face. `along` is the axis the 8 mm runs on. */
+function tab(g: Geo, along: "x" | "y", len: number, cx: number, cy: number, z0: number): M {
+  const [sx, sy] = along === "x" ? [K.tabW, K.tabT] : [K.tabT, K.tabW];
+  return g.box(sx, sy, len, cx, cy, z0 + len / 2);
+}
+/** The hole a tab enters, through the full height given. */
+function tabHole(g: Geo, o: Options, along: "x" | "y", len: number, cx: number, cy: number, z0: number): M {
+  const c = 2 * (K.dtCl + o.fit);
+  const [sx, sy] = along === "x" ? [K.tabW + c, K.tabT + c] : [K.tabT + c, K.tabW + c];
+  return g.box(sx, sy, len, cx, cy, z0 + len / 2);
+}
+
+const dtxOf = (d: Derived) => d.L / 2 - 25; // clear of the end tab band and the pin at px
+
+export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
+  const { L, IW, OW } = d;
+  const minimal = o.design === "minimal";
+  const fit = o.fit;
+  const wedge = g.prismY(g.poly([[ln.xd, 0], [L / 2, 0], [L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]), OW, -OW / 2);
   const cuts: M[] = [];
-  // a loading lip is lower than the side walls, so its own top edges get rounded here,
-  // both of them: nothing seats on it, and a can slides in over the inner one
-  if (top) for (const side of [1, -1]) cuts.push(g.prismY(g.roundOver(L / 2 - (side > 0 ? 0 : o.wall), ewh, side, K.edgeR), IW, -IW / 2));
   if (!o.solid) {
-    const minimal = o.design === "minimal";
-    const b = K.border;
-    const keep: CS[] = [];
-    for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
-    if (d.split) keep.push(g.rect(-K.lapLen - 2.5, 0, 2.5, H));
-    const panel = g.rect(-L / 2 + b, b, L / 2 - b, H - b);
-    const wcells = g.hexCells(d.hexR, d.lig, panel, 1, keep);
-    if (wcells) for (const sy of [1, -1]) cuts.push(g.prismY(wcells, o.wall + 4, sy * py - (o.wall + 4) / 2));
-
-    // recess the outer face over the lattice field and down through the bottom border,
-    // 45 deg ceiling under the top one. Pads stay round the peg sockets, which sit in
-    // that border. The minimal web is four 0.42 mm lines, the same floor as the ligament
-    // width: two perimeters a side, no infill
-    const rd = o.wall - (minimal ? K.ligMin : K.web);
-    const pads = [px, -px].map((x) => g.rect(x - 4, -1, x + 4, K.socD + 1.5));
-    if (rd > 0.2) {
-      const field = panel.subtract(g.cs2d(...keep));
-      const zt = H - b;
-      for (const comp of field.decompose()) {
-        const { min: [gx0], max: [gx1] } = comp.bounds();
-        const face = g.rect(gx0, -1, gx1, zt - rd).subtract(g.cs2d(...pads));
-        for (const sy of [1, -1]) {
-          const yo = sy * OW / 2;
-          cuts.push(g.prismY(face, rd + 1, sy > 0 ? yo - rd : yo - 1));
-          const tri: Vec2[] = [[yo - sy * rd, zt - rd], [yo + sy * 1, zt - rd], [yo + sy * 1, zt + 1]];
-          cuts.push(g.prismX(g.poly(sy > 0 ? tri : tri.slice().reverse()), gx1 - gx0, gx0));
-        }
-      }
-    }
-    // the high-end wall only closes the chute above (a loading lip on a top lane), so it
-    // gets the same lattice and recess. Its cells stop at the wall's inner face where the
-    // deck's end tie is, instead of running 2 mm in as the side walls' do, or they would
-    // notch it; above the deck they run in so no skin is left in a cell.
-    {
-      const ezt = ewh - b, gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
-      const ecells = g.hexCells(d.hexR, d.lig, g.rect(gy0, b, gy1, ezt), 1, []);
-      if (ecells) {
-        const cut = g.prismX(ecells, o.wall + 4, L / 2 - o.wall - 2);
-        cuts.push(g.diff(cut, [g.box(L, OW + 2, dhi + 2, -o.wall, 0, dhi / 2)]));
-      }
-      cuts.push(g.prismX(g.rect(gy0, -1, gy1, ezt - rd), rd + 1, L / 2 - rd));
-      cuts.push(g.prismY(g.poly([[L / 2 - rd, ezt - rd], [L / 2 + 1, ezt - rd], [L / 2 + 1, ezt + 1]]), gy1 - gy0, gy0));
-    }
-    // deck centre band: open between the rails, cross-ties every ~80 mm, a tie at each end
-    const endTie = minimal ? 2.5 : 6;
-    const x0 = xd + endTie, x1 = L / 2 - o.wall - endTie;
-    const ties = new Set<number>([Math.round(lipx * 10) / 10]);
-    if (d.split) ties.add(Math.round((-K.spliceDepth / 2) * 10) / 10);
-    const nt = Math.max(1, Math.round((x1 - x0) / 80) - 1);
-    for (let i = 0; i < nt; i++) ties.add(Math.round((x0 + ((x1 - x0) * (i + 1)) / (nt + 1)) * 10) / 10);
-    const tw = minimal ? 2.5 : 8;
-    // the lip tie holds the lip pockets, the splice tie the deck tongue: 10 mm each side.
-    // An interior tie can land inside one of those bands; merge, or its far edge would
-    // start the next opening inside the band and leave the tongue rooted on a sliver.
-    const edges: number[] = [x0];
-    for (const t of [...ties].sort((a, b) => a - b)) {
-      const special = Math.abs(t - lipx) < 1 || (d.split && Math.abs(t + K.spliceDepth / 2) < 1);
-      const half = special ? 10 : tw / 2;
-      const last = edges.length - 1;
-      if (last > 0 && t - half <= edges[last]) edges[last] = Math.max(edges[last], t + half);
-      else edges.push(t - half, t + half);
-    }
-    edges.push(x1);
     // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
     // strip between fin and wall opens too. A necked can is widest at its body, which
     // ends ~12 mm short of each end; pushed over by the full side play the body edge sits
     // at IW/2 - 15.5, still over the fin. It stands on the bed: compression, no bridging.
     const strip = IW / 2 - d.railHy - 2.5;
-    for (let i = 0; i + 1 < edges.length; i += 2) {
-      const a = edges[i], bb = edges[i + 1];
-      if (bb - a <= 12) continue;
-      cuts.push(g.box(bb - a, 2 * d.railHy, dhi + 4, (a + bb) / 2, 0, dhi / 2 + 1));
-      if (minimal) for (const sy of [1, -1]) cuts.push(g.box(bb - a, strip, dhi + 4, (a + bb) / 2, sy * (IW / 2 - strip / 2), dhi / 2 + 1));
+    for (let i = 0; i + 1 < ln.edges.length; i += 2) {
+      const a = ln.edges[i], b = ln.edges[i + 1];
+      if (b - a <= 12) continue;
+      cuts.push(g.box(b - a, 2 * d.railHy, ln.dhi + 4, (a + b) / 2, 0, ln.dhi / 2 + 1));
+      if (minimal) for (const sy of [1, -1]) cuts.push(g.box(b - a, strip, ln.dhi + 4, (a + b) / 2, sy * (IW / 2 - strip / 2), ln.dhi / 2 + 1));
     }
   }
-  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(g.cyl(K.socR + fit, K.socD, sx * px, sy * py, -0.01));
-  for (const sy of [1, -1]) cuts.push(g.box(12.4 + fit, 5.4 + fit, 40, lipx, sy * lipy, 10));
-  const bw = K.dtBase + 2 * (K.dtCl + fit), tw2 = K.dtTip + 2 * (K.dtCl + fit);
-  for (const dx of [-dtx, dtx]) {
-    cuts.push(g.prismZ(g.poly([
-      [dx - bw / 2, -OW / 2], [dx + bw / 2, -OW / 2],
-      [dx + tw2 / 2, -OW / 2 + K.dovetail], [dx - tw2 / 2, -OW / 2 + K.dovetail],
-    ]), H, 8));
+  for (const sy of [1, -1]) {
+    for (const tx of ln.tabs) cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, sy * d.piny, -1));
+    for (const sx of [1, -1]) if (ln.deckTop(sx * d.px) > 0) cuts.push(tabHole(g, o, "x", ln.dhi + 4, sx * d.px, sy * d.piny, -1));
+    // the lip's 5 × 12 tabs (blade thickness along X); the pocket was 12.4 × 5.4 since
+    // cansys.py, turned 90° from the tab it was for
+    cuts.push(g.box(5.4 + fit, 12.4 + fit, 40, ln.lipx, sy * d.lipy, 10));
+  }
+  cuts.push(tabHole(g, o, "y", ln.te + 4, ln.xe + K.tabT / 2, 0, -1));
+  // the rails' outer faces recess to the same web as the wall above, so the wall's recess
+  // runs on down the deck instead of stopping on a ledge. Pads stay round the tab slots
+  // and pin holes: a slot needs the full rail round it
+  const rd = o.wall - (minimal ? K.ligMin : K.web);
+  if (!o.solid && rd > 0.2) {
+    const pads = [...ln.tabs, ...[d.px, -d.px].filter((x) => ln.deckTop(x) > 0)].map((x) => g.rect(x - 6, -1, x + 6, ln.te + 2));
+    pads.push(g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + 2));
+    const face = g.rect(ln.xd - 1, -1, L / 2 + 1, ln.te + 2).subtract(g.cs2d(...pads));
+    for (const sy of [1, -1]) cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
+  }
+  return g.diff(wedge, cuts);
+}
+
+/** A side wall in the lane frame, before it is laid flat: sy = +1 carries the dovetail
+ *  tongue rib, -1 the groove. Stands on the deck rail; tabs hang off its bottom edge
+ *  through the rail to the bed, or to the wall top of the tier below. */
+export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number): M {
+  const { L, IW, OW } = d;
+  const H = ln.H, b = K.border;
+  const y0 = sy > 0 ? IW / 2 : -OW / 2;
+  const bottomEdge: Vec2[] = ln.bottom
+    ? [[-L / 2, K.deckLo], [ln.xe, ln.te], [L / 2, ln.te]]
+    : [[-L / 2, 0], [ln.xd, 0], [ln.xd, K.deckLo], [ln.xe, ln.te], [L / 2, ln.te]];
+  const adds = [g.prismY(g.poly([...bottomEdge, [L / 2, H], [-L / 2, H]]), o.wall, y0)];
+  const piny = sy * d.piny;
+  for (const tx of ln.tabs) adds.push(tab(g, "x", ln.deckTop(tx) + 1, tx, piny, 0));
+  for (const sx of [1, -1]) adds.push(tab(g, "x", K.pinH + 1, sx * d.px, piny, H - 1));
+  const dtx = dtxOf(d);
+  const ribZ = (dx: number) => ln.deckTop(dx) + 4;
+  if (sy > 0) for (const dx of [-dtx, dtx]) {
+    adds.push(g.prismZ(g.poly([
+      [dx - K.dtBase / 2, OW / 2], [dx + K.dtBase / 2, OW / 2],
+      [dx + K.dtTip / 2, OW / 2 + K.dovetail], [dx - K.dtTip / 2, OW / 2 + K.dovetail],
+    ]), H - 12 - ribZ(dx), ribZ(dx)));
+  }
+  let body = g.union(adds);
+
+  const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
+  const c = K.dtCl + o.fit;
+  // the end wall's side tab drops into this as the wall drops onto the deck
+  cuts.push(g.box(K.tabT + 2 * c, o.wall + 2, K.sideTabH + c + 1, ln.xe + K.tabT / 2, sy * d.py, ln.te - 1 + (K.sideTabH + c + 1) / 2));
+  // the tier below's pin, where no deck of this lane sits over it
+  for (const sx of [1, -1]) if (ln.deckTop(sx * d.px) === 0) cuts.push(g.box(K.tabW + 2 * c, o.wall + 2, K.pinH + c + 1, sx * d.px, sy * d.py, -1 + (K.pinH + c + 1) / 2));
+  if (sy < 0) {
+    const bw = K.dtBase + 2 * c, tw = K.dtTip + 2 * c;
+    for (const dx of [-dtx, dtx]) {
+      cuts.push(g.prismZ(g.poly([
+        [dx - bw / 2, -OW / 2], [dx + bw / 2, -OW / 2],
+        [dx + tw / 2, -OW / 2 + K.dovetail], [dx - tw / 2, -OW / 2 + K.dovetail],
+      ]), H + 2, ribZ(dx) - 1));
+    }
+  }
+  if (!o.solid) {
+    const minimal = o.design === "minimal";
+    const keep: CS[] = [];
+    for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
+    if (d.split) keep.push(g.rect(-K.spliceDepth - 2.5, 0, 2.5, H));
+    // the bottom border follows the deck: solid wall for `border` above the bottom edge
+    keep.push(g.poly([[-L / 2 - 1, -1], [L / 2 + 1, -1], [L / 2 + 1, ln.te + b], [ln.xe, ln.te + b],
+      ...(ln.bottom ? [[-L / 2 - 1, K.deckLo + b] as Vec2] : [[ln.xd, K.deckLo + b] as Vec2, [ln.xd, b] as Vec2, [-L / 2 - 1, b] as Vec2])]));
+    const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + 4);
+    keep.push(endNotch);
+    const panel = g.rect(-L / 2 + b, b, L / 2 - b, H - b);
+    const wcells = g.hexCells(d.hexR, d.lig, panel, 1, keep);
+    if (wcells) cuts.push(g.prismY(wcells, o.wall + 2, y0 - 1));
+
+    // recess the outer face over the lattice field and down through the bottom border to
+    // a web. Pads stay round every tab root and the end notch, so a tab is rooted in a
+    // full-thickness wall. The minimal web is four 0.42 mm lines, the same floor as the
+    // ligament width: two perimeters a side, no infill
+    const rd = o.wall - (minimal ? K.ligMin : K.web);
+    if (rd > 0.2) {
+      const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - 6, -1, tx + 6, ln.deckTop(tx) + 6))];
+      const field = panel.subtract(g.cs2d(...keep));
+      for (const comp of field.decompose()) {
+        const { min: [gx0], max: [gx1] } = comp.bounds();
+        const face = g.rect(gx0, -1, gx1, H - b).subtract(g.cs2d(...pads));
+        cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
+      }
+    }
   }
   return g.diff(body, cuts);
 }
 
-/** Cut at x=0. Rear half: deck dovetail tongue + outer wall half-laps.
- *  Front half: matching socket + inner half-laps. Slides together vertically. */
-export function splitLane(g: Geo, o: Options, d: Derived, lane: M, bottom = false): [M, M] {
-  const { L, OW } = d;
-  const H = bottom ? d.Hb : d.H;
-  const dhi = bottom ? d.dhiB : d.dhi;
-  const xd = -L / 2 + (bottom ? 0 : d.inset);
-  const cl = K.dtCl + o.fit;
-  const big = Math.max(L, OW, H) + 20;
-  let rear = g.isect(lane, g.box(big, big, big, big / 2, 0, 0));
-  let front = g.isect(lane, g.box(big, big, big, -big / 2, 0, 0));
-
-  const wedge = g.prismY(g.poly([[xd, 0], [L / 2, 0], [L / 2, dhi], [xd, K.deckLo]]), OW, -OW / 2);
-  const sb = K.spliceBase, st = K.spliceTip, sd = K.spliceDepth;
-  const tongue = g.isect(wedge, g.prismZ(g.poly([[0.5, -sb / 2], [0.5, sb / 2], [-sd, st / 2], [-sd, -st / 2]]), H, -1));
-  const socket = g.prismZ(g.poly([[0.5, -(sb / 2 + cl)], [0.5, sb / 2 + cl], [-sd - cl, st / 2 + cl], [-sd - cl, -(st / 2 + cl)]]), H + 2, -1);
-
-  const lapx = -K.lapLen / 2;
-  const keeps: M[] = [], cutsF: M[] = [socket];
-  for (const sy of [1, -1]) {
-    const tk = o.wall / 2 - cl / 2, tc = o.wall / 2 + cl / 2;
-    keeps.push(g.isect(lane, g.box(K.lapLen, tk, H + 2, lapx, sy * (OW / 2 - tk / 2), H / 2)));
-    cutsF.push(g.box(K.lapLen + 0.5, tc, H + 2, lapx - 0.25, sy * (OW / 2 - tc / 2), H / 2));
+/** The high-end wall in the lane frame: closes the chute of the tier above, or is a
+ *  20 mm loading lip on a top lane. Stands on the flattened deck end with a tab down
+ *  through it and one each side into the side walls. */
+export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
+  const { L, IW } = d;
+  const { xe, te, ewh } = ln;
+  const b = K.border;
+  const adds = [
+    g.box(o.wall, IW, ewh - te, L / 2 - o.wall / 2, 0, (ewh + te) / 2),
+    tab(g, "y", te + 1, xe + K.tabT / 2, 0, 0),
+  ];
+  for (const sy of [1, -1]) adds.push(g.box(K.tabT, o.wall, K.sideTabH, xe + K.tabT / 2, sy * d.py, te + K.sideTabH / 2));
+  let body = g.union(adds);
+  // the outer top edge rounds, like the side walls'. A loading lip's inner edge stays
+  // square: printed outer face up it would be a round on the bed edge, and a can loaded
+  // over the lip slides over the outer edge anyway
+  const cuts: M[] = [g.prismY(g.roundOver(L / 2, ewh, 1, K.edgeR), IW, -IW / 2)];
+  if (!o.solid) {
+    const gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
+    const ecells = g.hexCells(d.hexR, d.lig, g.rect(gy0, te + b, gy1, ewh - b), 1, []);
+    if (ecells) cuts.push(g.prismX(ecells, o.wall + 2, xe - 1));
+    const rd = o.wall - (o.design === "minimal" ? K.ligMin : K.web);
+    if (rd > 0.2) cuts.push(g.prismX(g.rect(gy0, te - 1, gy1, ewh - b), rd + 1, L / 2 - rd));
   }
-  rear = g.union([rear, tongue, ...keeps]);
-  front = g.diff(front, cutsF);
+  return g.diff(body, cuts);
+}
+
+/** Lay a side wall flat, outer face up. Inverse in the viewer's showAssembly. */
+export function layWall(m: M, sy: number, IW: number): M {
+  const turned = sy > 0 ? m.rotate([0, 0, 180]) : m;
+  return turned.translate([0, IW / 2, 0]).rotate([-90, 0, 0]);
+}
+export function layEndWall(m: M, xe: number): M {
+  return m.translate([-xe, 0, 0]).rotate([0, -90, 0]);
+}
+
+/** Cut a plate at x=0 into a front and a rear half joined by an in-plane dovetail: the
+ *  rear keeps the tongue, the front gets the socket. `tongue` and `socket` are the
+ *  trapezoid profiles, rear-pointing, already extruded through the plate. */
+function splitPlate(g: Geo, plate: M, tongue: M, socket: M): [M, M] {
+  const bb = plate.boundingBox();
+  const big = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]) * 2 + 20;
+  const rear = g.union([g.isect(plate, g.box(big, big, big, big / 2, 0, 0)), g.isect(plate, tongue)]);
+  const front = g.diff(g.isect(plate, g.box(big, big, big, -big / 2, 0, 0)), [socket]);
   return [front, rear];
 }
 
+const trapezoid = (base: number, tip: number, depth: number, vc: number, grow = 0): Vec2[] => [
+  [0.5, vc - base / 2 - grow], [0.5, vc + base / 2 + grow], [-depth - grow, vc + tip / 2 + grow], [-depth - grow, vc - tip / 2 - grow],
+];
+
+/** Deck: the tongue is the wedge itself inside the trapezoid, so it carries the slope. */
+export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): [M, M] {
+  const cl = K.dtCl + o.fit;
+  const wedge = g.prismY(g.poly([[ln.xd, 0], [d.L / 2, 0], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]), d.OW, -d.OW / 2);
+  const tongue = g.isect(wedge, g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0)), ln.H, -1));
+  const socket = g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0, cl)), ln.H + 2, -1);
+  return splitPlate(g, deck, tongue, socket);
+}
+
+/** Wall: the same dovetail sized to the wall height at the seam, slid together in Y
+ *  before the wall goes on the deck. Runs on the wall in the lane frame. */
+export function splitWall(g: Geo, o: Options, d: Derived, ln: Lane, wall: M): [M, M] {
+  const cl = K.dtCl + o.fit;
+  const zb = ln.deckTop(0), avail = ln.H - zb, zc = zb + avail / 2;
+  const base = 0.4 * avail, tip = 0.55 * avail;
+  const through = (pts: Vec2[]) => g.prismY(g.poly(pts), d.OW + 2, -d.OW / 2 - 1);
+  return splitPlate(g, wall, through(trapezoid(base, tip, K.spliceDepth, zc)), through(trapezoid(base, tip, K.spliceDepth, zc, cl)));
+}
+
+/** The dispense lip, flat on its back: blade x ∈ [-lipH, 0], tabs past x = 0 in the bed
+ *  plane, the scoop a vertical cylinder past the top edge. The face-up edges round, and
+ *  that face goes toward the cans. */
 export function buildLip(g: Geo, o: Options, d: Derived): M {
-  const outline = g.roundedRect(5, d.IW - 1, 2.4);
-  const parts = [g.roundTop(g.prismZ(outline, K.lipH), outline, K.lipH, 2)];
-  for (const sy of [1, -1]) parts.push(g.box(4.8, 12, 6, 0, sy * d.lipy, -3));
-  const scoop = g.cyl(22, 8, 0, 0, -4, 64).rotate([0, 90, 0]).translate([0, 0, K.lipH + 12]);
+  const t = 5;
+  const outline = g.roundedRect(K.lipH, d.IW - 1, 2.4).translate([-K.lipH / 2, 0]);
+  const parts = [g.roundTop(g.prismZ(outline, t), outline, t, 2)];
+  for (const sy of [1, -1]) parts.push(g.box(6, 12, t, 3, sy * d.lipy, t / 2));
+  const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
   return g.diff(g.union(parts), [scoop]);
 }
 
 export function buildRiser(g: Geo, o: Options, h: number, side = 20): M {
-  const b = g.union([g.box(side, side, h, 0, 0, h / 2), g.cyl(K.pegR, K.pegH, 0, 0, h)]);
-  return g.diff(b, [g.cyl(K.socR + o.fit, K.socD, 0, 0, -0.01)]);
+  return g.union([g.box(side, side, h, 0, 0, h / 2), tab(g, "x", K.pinH, 0, 0, h)]);
 }
 
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
-  const { L, OW } = d, t = 2.4;
-  const outline = g.roundedRect(L, OW, K.cornerR);
+  const { L, OW } = d, t = K.coverT;
+  const outline = g.rect(-L / 2, -OW / 2, L / 2, OW / 2);
   const plate = g.roundTop(g.prismZ(outline, t), outline, t, t / 2);
   const cuts: M[] = [];
-  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(g.cyl(K.socR + o.fit, t + 1, sx * d.px, sy * d.py, -0.5));
+  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(tabHole(g, o, "x", t + 2, sx * d.px, sy * d.piny, -1));
   // cascade loading window: the top tier loads from above at its high end, so the cover
   // opens there, one can wide and the full inner width (only the wall strips remain).
   // A flat top tier loads from the front over its lip and keeps a whole cover.
   const keep: CS[] = [];
   if (d.inset > 0) {
     const windowL = o.canD + 8;
-    const window = g.roundedRect(windowL, d.IW, K.cornerR / 2).translate([L / 2 - o.wall - windowL / 2, 0]);
+    const window = g.roundedRect(windowL, d.IW, 6).translate([L / 2 - o.wall - windowL / 2, 0]);
     cuts.push(g.prismZ(window, t + 2, -1));
     keep.push(window.offset(4, "Miter"));
   }
@@ -455,7 +561,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     if (o.design === "minimal") {
       // a perforated sheet: bigger cells on the ligament rule, running to the frame and
       // clipped there. Whole cells leave the open area to luck - how many fit between the
-      // pegs and the window swings with the can - where clipping makes it the cell's
+      // pins and the window swings with the can - where clipping makes it the cell's
       // own 83 % of the field whatever the size.
       const R = 1.5 * coverR;
       const grid = g.hexCells(R, ligFor(R), field.offset(2 * R, "Miter"), 1, []);
@@ -480,22 +586,41 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   return [m];
 }
 
+/** The four plates of one lane, laid flat, split at the seam when the lane is long. */
+export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole): Plate[] {
+  const ln = laneOf(o, d, role);
+  const deck = buildDeck(g, o, d, ln);
+  const walls = [1, -1].map((sy) => buildWall(g, o, d, ln, sy));
+  const endWall = layEndWall(buildEndWall(g, o, d, ln), ln.xe);
+  if (!d.split) {
+    return [
+      { name: "deck", whole: deck },
+      { name: "wall-tongue", whole: layWall(walls[0], 1, d.IW) },
+      { name: "wall-socket", whole: layWall(walls[1], -1, d.IW) },
+      { name: "end-wall", whole: endWall },
+    ];
+  }
+  const [deckFront, deckRear] = splitDeck(g, o, d, ln, deck);
+  const plates: Plate[] = [{ name: "deck", front: deckFront, rear: deckRear }];
+  for (const [i, sy] of [1, -1].entries()) {
+    const [front, rear] = splitWall(g, o, d, ln, walls[i]);
+    plates.push({ name: sy > 0 ? "wall-tongue" : "wall-socket", front: layWall(front, sy, d.IW), rear: layWall(rear, sy, d.IW) });
+  }
+  plates.push({ name: "end-wall", whole: endWall });
+  return plates;
+}
+
 export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
   const cascade = d.inset > 0;
   const roles: LaneRole[] = cascade ? (o.tiers >= 3 ? ["bottom", "mid", "top"] : ["bottom", "top"]) : ["top"];
-  const set: PartSet = {
-    lanes: [],
+  return {
+    lanes: roles.map((role) => ({ role, plates: buildLanePlates(g, o, d, role) })),
     lip: buildLip(g, o, d),
     riser08: buildRiser(g, o, 8), riser24: buildRiser(g, o, 24),
     cover: o.cover ? buildCover(g, o, d) : [],
   };
-  for (const role of roles) {
-    const m = buildLane(g, o, d, role === "bottom", role === "top");
-    if (d.split) { const [front, rear] = splitLane(g, o, d, m, role === "bottom"); set.lanes.push({ role, front, rear }); }
-    else set.lanes.push({ role, whole: m });
-  }
-  return set;
 }
+
 
 /** Filament estimate: layer-sum of (shell + infill * core), like cansys.py, with skins:
  *  the core is what sits inside the perimeters with `skin` of material above and below.

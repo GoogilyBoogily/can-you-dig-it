@@ -31,28 +31,27 @@ export function refParts(geo: Geo): Record<string, Manifold> {
   const threeTiers = buildAll(geo, { ...DEFAULTS, tiers: 3 }, derived);
   const minimalTwo = buildAll(geo, minimal, derived);
   const minimalThree = buildAll(geo, { ...minimal, tiers: 3 }, derived);
-  const lane = (set: PartSet, role: LaneRole) => set.lanes.find((l) => l.role === role)!;
-  return {
-    "lane-top-front": lane(twoTiers, "top").front!,
-    "lane-top-rear": lane(twoTiers, "top").rear!,
-    "lane-mid-front": lane(threeTiers, "mid").front!,
-    "lane-mid-rear": lane(threeTiers, "mid").rear!,
-    "lane-bottom-front": lane(twoTiers, "bottom").front!,
-    "lane-bottom-rear": lane(twoTiers, "bottom").rear!,
+  const parts: Record<string, Manifold> = {
     "cover-front": twoTiers.cover[0],
     "cover-rear": twoTiers.cover[1],
     "end-lip": twoTiers.lip,
     "riser-08": twoTiers.riser08,
     "riser-24": twoTiers.riser24,
-    "minimal-lane-top-front": lane(minimalTwo, "top").front!,
-    "minimal-lane-top-rear": lane(minimalTwo, "top").rear!,
-    "minimal-lane-mid-front": lane(minimalThree, "mid").front!,
-    "minimal-lane-mid-rear": lane(minimalThree, "mid").rear!,
-    "minimal-lane-bottom-front": lane(minimalTwo, "bottom").front!,
-    "minimal-lane-bottom-rear": lane(minimalTwo, "bottom").rear!,
     "minimal-cover-front": minimalTwo.cover[0],
     "minimal-cover-rear": minimalTwo.cover[1],
   };
+  // every plate of every lane role, split halves as their own parts, for both designs
+  const lanes = (prefix: string, set: PartSet, role: LaneRole) => {
+    for (const plate of set.lanes.find((l) => l.role === role)!.plates) {
+      const base = `${prefix}lane-${role}-${plate.name}`;
+      if (plate.whole) parts[base] = plate.whole;
+      if (plate.front) parts[`${base}-front`] = plate.front;
+      if (plate.rear) parts[`${base}-rear`] = plate.rear;
+    }
+  };
+  lanes("", twoTiers, "top"); lanes("", threeTiers, "mid"); lanes("", twoTiers, "bottom");
+  lanes("minimal-", minimalTwo, "top"); lanes("minimal-", minimalThree, "mid"); lanes("minimal-", minimalTwo, "bottom");
+  return parts;
 }
 
 if (import.meta.main) {

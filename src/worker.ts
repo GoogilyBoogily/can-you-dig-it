@@ -42,11 +42,11 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), role });
       };
       const qtyOf = { bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: cascade ? o.lanesWide : o.lanesWide * o.tiers };
-      for (const ln of set.lanes) {
-        const base = cascade ? `lane-${ln.role}` : "lane";
-        add(base, ln.whole, qtyOf[ln.role], "lane");
-        add(`${base}-front`, ln.front, qtyOf[ln.role], "lane");
-        add(`${base}-rear`, ln.rear, qtyOf[ln.role], "lane");
+      for (const ln of set.lanes) for (const plate of ln.plates) {
+        const base = cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`;
+        add(base, plate.whole, qtyOf[ln.role], "lane");
+        add(`${base}-front`, plate.front, qtyOf[ln.role], "lane");
+        add(`${base}-rear`, plate.rear, qtyOf[ln.role], "lane");
       }
       add("end-lip", set.lip, nLip, "lip");
       if (o.feet) {

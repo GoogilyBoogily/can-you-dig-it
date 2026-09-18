@@ -34,7 +34,10 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 
 ## Layout
 - `src/geometry.ts` — parts. `solve()` derives every dimension from can + options;
-  `buildLane(g,o,d,bottom,top)`, `splitLane`, `buildLip`, `buildRiser`, `buildCover`, `buildAll`.
+  `laneOf(o,d,role)` the per-role numbers every plate shares (deck line, ties, tab
+  positions); `buildDeck`, `buildWall`, `buildEndWall` in the lane frame, `layWall` /
+  `layEndWall` to put them flat; `splitDeck`, `splitWall`, `buildLanePlates`, `buildLip`,
+  `buildRiser`, `buildCover`, `buildAll`.
 - `src/solver.ts` — `fitSpace(space, base, {cascade})` → ranked layouts. Pure arithmetic.
   Lane length candidates are the longest that fits plus the shortest lane for every whole
   can count (`laneLengthFor`, the inverse of `solve()`'s deck count), so a lane never
@@ -64,28 +67,52 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   name as a third-party file and skips the settings entirely.
 
 ## Design rules that are not obvious from the code
+- Flat-pack (2026-09-18): a lane is four plates — deck, two side walls, end wall — each
+  modelled in the orientation it prints in, outer face up, and stood up only in the
+  viewer. The rule every feature has to pass: it is in-plane (tab, notch, slot, dovetail,
+  hex cell), grows up from the print face (rib, pin, boss), or is a pocket in the print
+  face (recess, groove). Nothing on the bed face, nothing under an edge.
+  `test/overhang.test.ts` holds every snapshot part to it (no downward face flatter than
+  45° off the bed; the dovetail flanks lean 56° and are the one exception). This exists
+  because regular hexes cannot be self-supporting in a standing wall — every orientation
+  of a 120° hexagon has a ceiling edge at ≤ 30° — and Bambu at its 30° threshold supported
+  all of them. Spec in `docs/superpowers/specs/2026-09-18-flat-pack-design.md`.
+- One tab for every joint: 8 wide, 3 thick, flush with the plate's inner face (the bed
+  side when it prints — flush with the outer face it would hang in the air). Walls stand
+  on the deck rail; tabs hang off the wall's bottom edge down through closed slots in
+  the rail, which is what locates a wall in X and Y. An upper tier's wall tabs bottom out
+  on the wall tops below; the deck is sandwiched. Pins (2.4 mm tabs) at ±px on the wall
+  tops register the tier above in X (a hole in its deck, or a notch in its wall where the
+  chute is) and the cover in X and Y. Tabs go where the rail is solid, not in ties;
+  widening ties for them cost 60 g a lane.
 - Cascade: tiers alternate 180° about Z. Upper decks lose one can-length to the drop
   chute (`inset = canD + 6 + wall`); the bottom deck runs full length to the end-lip.
 - High-end wall is full height only when a tier sits above it (it closes that tier's
   chute). `top=true` lanes get a 20 mm loading lip instead. Flat layouts use `top` lanes.
-- Long lanes split at x=0: rear half carries a deck dovetail tongue + outer wall
-  half-laps; front half has the socket + inner laps. Slides together vertically, no glue.
-- Honeycomb: regular pointy-top cells (they were stretched √3 for 45° peaks until
-  2026-09-18; the user wants them regular, so peaks are 30° above horizontal — a 60°
-  overhang, which prints but may sag a little). Vertical side ligaments carry the tier
-  above. Only whole cells are cut, centred in the panel; a cell touching a keep-out
-  (dovetail, splice) is dropped, not clipped, so every hole is the same shape and the
-  solid bands read as intended. `hexAuto` sizes the radius so three rows fill the
-  upper-deck wall; the ligament follows the radius (`ligFor`). The high-end wall gets
-  the same lattice and recess; its cell cut stops at the wall's inner face below the
-  deck top so it cannot notch the deck's end tie. The standard cover is a grille with
-  its own radius (three whole rows fill its field, bars half the radius) — it used to
-  borrow the wall's and lost a row whenever that changed — and only the seam band clips
-  cells, so the pattern carries across the joint.
-  Outer wall face is recessed to a 3.5 mm web with a 45° ceiling, down through the
-  bottom border, with 8 mm pads left round the peg sockets that sit in it. The dovetail
-  bands stay full: the −Y face needs 3 mm behind its socket, and the +Y recess cut runs
-  1 mm past the face and would sever the tongue. Deck centre band is open with
+  It stands on the deck end, flattened for the last `wall` mm, with a tab down through
+  the deck and one each side into a bottom-edge notch of the side walls, so a tier
+  assembles top down.
+- Long lanes split at x=0 with in-plane dovetails on the deck and on each wall (the wall
+  halves slide together in Y before they go on the deck). Half-laps are gone: a lap
+  printed face-up is a 10 mm cantilever.
+- Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
+  the whole point of the flat-pack. Only whole cells are cut, centred in the panel; a
+  cell touching a keep-out (dovetail, splice, the band under the wall's sloped bottom
+  edge) is dropped, not clipped, so every hole is the same shape and the solid bands read
+  as intended. The wall's bottom edge follows the deck top, so along the deck the bottom
+  row drops out as the deck rises — that band is what the flat-pack costs (+15 % lane
+  volume standard, +19 % minimal). `hexAuto` sizes the radius so three rows fill the
+  upper-deck wall; the ligament follows the radius (`ligFor`). The high-end wall gets the
+  same lattice and recess. The standard cover is a grille with its own radius (three
+  whole rows fill its field, bars half the radius) — it used to borrow the wall's and
+  lost a row whenever that changed — and only the seam band clips cells, so the pattern
+  carries across the joint.
+  Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
+  through the bottom border, with pads left round every tab root and the end-wall
+  notch. The deck rails' outer faces recess to the same web with pads round the slots
+  and pin holes, so the recess runs on down the deck instead of stopping on a ledge. The
+  dovetail bands stay full: the −Y face needs 3 mm behind its groove, and the +Y recess
+  cut runs 1 mm past the face and would sever the rib. Deck centre band is open with
   cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
@@ -100,21 +127,23 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `filamentGrams` has skins: the core is what sits inside the perimeters with 1 mm of
   material above and below. Without them a 2.4 mm plate read as 6 % infill.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
-  slabs of its outline shrunk by the fillet inset, which follows the plan corners. Side
-  walls round the outer top edge only, so the 3 mm seat the next tier sits on stays
-  flat; peg pads stay flat through it. A loading lip rounds both edges.
+  slabs of its outline shrunk by the fillet inset, which follows the plan corners. Walls
+  and end walls round the outer top edge only (`Geo.roundOver`), so the 3 mm seat the
+  next tier sits on stays flat and nothing is rounded on a bed edge. No plan radius: it
+  cannot span two plates.
 - Every clearance gets `fit` added. Don't add per-joint tolerance knobs.
 - Bambu plates: `cols = ceil(sqrt(n))`, stride = bed × 1.2, rows toward −Y
   (`compute_colum_count` / `compute_origin` in BambuStudio `PartPlate.cpp`). Objects are
   baked into place; the config is belt-and-braces.
 - `pack()` is shelf packing with first fit across *every* plate opened so far, not just
   the newest, and each part is tried flat then turned 90°. That is what drops an end-lip
-  or a riser into the strip behind a lane instead of giving it a plate of its own. A
+  or an end wall into the strip behind a deck instead of giving it a plate of its own. A
   shelf's height is set by the part that opens it and never grows — parts arrive sorted
   by Y extent descending, so growing it packs nothing tighter. Then everything is
   centred: each shelf across the bed on its own width, the stack front to back, and each
   part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
-- Feet (risers) are optional and off; the lane sits flat on the shelf.
+- Feet (risers) are optional and off; the lane sits flat on the shelf. A riser is a
+  block with a boss that sinks into the bottom deck's pin hole.
 
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.

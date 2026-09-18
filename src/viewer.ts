@@ -113,7 +113,9 @@ export class Viewer {
     this.phi = 1.05; this.frame(0.9);
   }
 
-  /** The assembled stack with cans, from the same part meshes. */
+  /** The assembled stack with cans, from the same part meshes. Every plate is modelled
+   *  flat, the way it prints; here each one is stood back up inside a group per lane that
+   *  carries the tier's position and the cascade's 180° turn. */
   showAssembly(parts: PartOut[], o: Options, d: Derived) {
     this.clear();
     const by = new Map(parts.map((p) => [p.name, p]));
@@ -123,12 +125,31 @@ export class Viewer {
     const STEP = 40; // mm of travel per joint at full explode
     const track = (mesh: THREE.Object3D, px: number, py: number, pz: number) =>
       this.exploded.push({ mesh, rest: mesh.position.clone(), push: new THREE.Vector3(px, py, pz) });
-    const put = (name: string, x: number, y: number, z: number, rot = false, push: [number, number, number] = [0, 0, 0]) => {
+    const IW = d.IW, xe = d.L / 2 - o.wall;
+    // plate -> lane frame: the inverse of layWall / layEndWall / the lip's lying build
+    const pose: Record<string, (m: THREE.Object3D) => void> = {
+      "deck": () => {},
+      "wall-tongue": (m) => { m.rotation.set(Math.PI / 2, 0, Math.PI, "ZYX"); m.position.set(0, IW / 2, 0); },
+      "wall-socket": (m) => { m.rotation.set(Math.PI / 2, 0, 0); m.position.set(0, -IW / 2, 0); },
+      "end-wall": (m) => { m.rotation.set(0, Math.PI / 2, 0); m.position.set(xe, 0, 0); },
+    };
+    const push: Record<string, [number, number, number]> = {
+      "deck": [0, 0, 0], "wall-tongue": [0, STEP, 0], "wall-socket": [0, -STEP, 0], "end-wall": [STEP, 0, 0],
+    };
+    // a plate into a lane group, standing, with its explode push; split halves also part along X
+    const putPlate = (lane: THREE.Group, name: string, plate: string, half: "" | "-front" | "-rear") => {
       const p = by.get(name); if (!p) return;
       const m = this.mesh(p.mesh, COL[p.role]);
-      if (rot) m.rotation.z = Math.PI;
-      m.position.set(x, y, z); this.group.add(m);
-      track(m, ...push);
+      pose[plate](m); lane.add(m);
+      const [px, py, pz] = push[plate];
+      track(m, px + (half === "-front" ? -STEP : half === "-rear" ? STEP : 0), py, pz);
+    };
+    const put = (parent: THREE.Object3D, name: string, x: number, y: number, z: number, rot = false, pushBy: [number, number, number] = [0, 0, 0], ry = 0) => {
+      const p = by.get(name); if (!p) return;
+      const m = this.mesh(p.mesh, COL[p.role]);
+      m.rotation.set(0, ry, rot ? Math.PI : 0, "ZYX");
+      m.position.set(x, y, z); parent.add(m);
+      track(m, ...pushBy);
     };
     const can = new THREE.CylinderGeometry(o.canD / 2, o.canD / 2, o.canL, 36); // axis = Y = across the lane
     const canMat = new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 });
@@ -141,27 +162,31 @@ export class Viewer {
         const z = cascade ? (t === 0 ? 0 : d.Hb + (t - 1) * d.H) : t * d.H;
         const rot = cascade ? t % 2 === 1 : false;
         const pre = !cascade ? "lane" : isBottom ? "lane-bottom" : t === o.tiers - 1 ? "lane-top" : "lane-mid";
-        // each tier lifts off the one below; halves part along X (a turned tier's front is at +X)
-        const py = gI * STEP, pz = t * STEP, front = rot ? STEP : -STEP;
-        if (d.split) { put(`${pre}-front`, 0, y, z, rot, [front, py, pz]); put(`${pre}-rear`, 0, y, z, rot, [-front, py, pz]); }
-        else put(pre, 0, y, z, rot, [0, py, pz]);
-        if (isBottom || !cascade) put("end-lip", -d.L / 2 + 8, y, z + deckLo, false, [-2 * STEP, py, pz]);
-        // cans
+        // each tier lifts off the one below and across from its gang neighbour
+        const lane = new THREE.Group();
+        lane.position.set(0, y, z); if (rot) lane.rotation.z = Math.PI;
+        this.group.add(lane); track(lane, 0, gI * STEP, t * STEP);
+        for (const plate of ["deck", "wall-tongue", "wall-socket", "end-wall"]) {
+          if (d.split && plate !== "end-wall") { putPlate(lane, `${pre}-${plate}-front`, plate, "-front"); putPlate(lane, `${pre}-${plate}-rear`, plate, "-rear"); }
+          else putPlate(lane, `${pre}-${plate}`, plate, "");
+        }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
+        if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, deckLo + 8 * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);
+        // cans, in the lane's own frame
         const n = isBottom || !cascade ? (cascade ? d.nBottom : d.n) : d.n;
         for (let i = 0; i < n; i++) {
           const xl = xd + 8 + 2.5 + o.canD / 2 + i * (o.canD + 0.5);
           const zl = deckLo + (xl - xd) * d.tan + o.canD / 2;
           const c = new THREE.Mesh(can, canMat);
-          c.position.set(rot ? -xl : xl, y, z + zl); cans.add(c); track(c, 0, py, pz);
+          c.position.set(rot ? -xl : xl, y, z + zl); cans.add(c); track(c, 0, gI * STEP, t * STEP);
         }
       }
       const top = cascade ? d.Hb + (o.tiers - 1) * d.H : o.tiers * d.H;
       // the cover turns with the top lane so its loading window sits over that lane's high end
       const coverRot = cascade && (o.tiers - 1) % 2 === 1;
       const coverPush: [number, number, number] = [0, gI * STEP, (o.tiers + 1) * STEP];
-      if (d.split) { put("cover-front", 0, y, top, coverRot, coverPush); put("cover-rear", 0, y, top, coverRot, coverPush); } else put("cover", 0, y, top, coverRot, coverPush);
-      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put("riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
+      if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
+      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.piny, -24, false, [0, gI * STEP, -STEP]);
     }
     this.addFloor();
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);

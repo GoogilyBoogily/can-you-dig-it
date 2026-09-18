@@ -9,6 +9,7 @@ import ref from "../ref.json";
 
 const BED: [number, number, number] = [256, 256, 256];
 const MARGIN = 3, GAP = 6;
+const PLATES = 16;
 
 /** A box the size of a real part's bounds. The packer reads bounds, so a box is the part. */
 const boxOf = (name: string): MeshData => {
@@ -18,16 +19,17 @@ const boxOf = (name: string): MeshData => {
   return { name, pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos) };
 };
 
-/** What the worker builds at DEFAULTS: two lanes wide, two tiers, cascade, no feet. */
-const defaultParts = () => [
-  { mesh: boxOf("lane-top-front"), qty: 2 },
-  { mesh: boxOf("lane-top-rear"), qty: 2 },
-  { mesh: boxOf("lane-bottom-front"), qty: 2 },
-  { mesh: boxOf("lane-bottom-rear"), qty: 2 },
-  { mesh: boxOf("end-lip"), qty: 2 },
-  { mesh: boxOf("cover-front"), qty: 2 },
-  { mesh: boxOf("cover-rear"), qty: 2 },
-];
+/** What the worker builds at DEFAULTS: two lanes wide, two tiers, cascade, no feet.
+ *  Every plate of both lane roles, the long ones as split halves. */
+const defaultParts = () => {
+  const parts = [{ mesh: boxOf("end-lip"), qty: 2 }, { mesh: boxOf("cover-front"), qty: 2 }, { mesh: boxOf("cover-rear"), qty: 2 }];
+  for (const role of ["top", "bottom"]) {
+    for (const plate of ["deck", "wall-tongue", "wall-socket"])
+      for (const half of ["front", "rear"]) parts.push({ mesh: boxOf(`lane-${role}-${plate}-${half}`), qty: 2 });
+    parts.push({ mesh: boxOf(`lane-${role}-end-wall`), qty: 2 });
+  }
+  return parts;
+};
 
 const byPlate = (placed: Placement[]) => {
   const plates = new Map<number, Placement[]>();
@@ -94,12 +96,13 @@ test("the shelves on a plate are centred front to back", () => {
   }
 });
 
-// A lane leaves a 250 × 109 mm strip behind it that nothing else in the set fits
-// unturned. Turned 90°, an end-lip does - and the plate it used to need disappears.
-test("small parts fill the space behind a lane instead of taking their own plate", () => {
-  expect(byPlate(packed).length).toBe(12);
+// A deck leaves a 250 × 109 mm strip behind it that nothing else in the set fits
+// unturned. Turned 90°, an end-lip or an end wall does - and the plate it used to need
+// disappears. 34 plates for the default gang; the count is what the packer is judged on.
+test("small parts fill the space behind a deck instead of taking their own plate", () => {
+  expect(byPlate(packed).length).toBe(PLATES);
   for (const parts of byPlate(packed))
-    expect(parts.every((p) => p.name.startsWith("end-lip"))).toBe(false);
+    expect(parts.every((p) => p.name.startsWith("end-lip") || p.name.endsWith("end-wall"))).toBe(false);
 });
 
 // The worker leaves gap off, so the default is the only spacing a print ever gets.
@@ -109,7 +112,7 @@ test("the default gap is the 6 mm the plate counts were measured at", () => {
 });
 
 test("a part is turned 90° only when that is what makes it fit", () => {
-  const lanes = packed.filter((p) => p.name.startsWith("lane-"));
-  // Lanes are 250 × 141 on a 250 × 250 usable bed: they fit flat, so they stay flat.
-  for (const lane of lanes) expect(lane.bbox[3] - lane.bbox[0], lane.name).toBeGreaterThan(lane.bbox[4] - lane.bbox[1]);
+  const long = packed.filter((p) => p.name.includes("-deck-") || p.name.includes("-wall-"));
+  // Decks are 248 × 138 and walls 248 × 100 on a 250 × 250 usable bed: they fit flat, so they stay flat.
+  for (const part of long) expect(part.bbox[3] - part.bbox[0], part.name).toBeGreaterThan(part.bbox[4] - part.bbox[1]);
 });

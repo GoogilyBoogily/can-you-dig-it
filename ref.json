@@ -13,98 +13,8 @@
   "py": 66,
   "gangPitch": 141
  },
- "lane-top-front": {
-  "vol": 169401.6,
-  "bbox": [
-   [
-    -238.392,
-    -69,
-    0
-   ],
-   [
-    0,
-    72,
-    98
-   ]
-  ]
- },
- "lane-top-rear": {
-  "vol": 328148.2,
-  "bbox": [
-   [
-    -10,
-    -69,
-    0
-   ],
-   [
-    240,
-    72,
-    98
-   ]
-  ]
- },
- "lane-mid-front": {
-  "vol": 169401.6,
-  "bbox": [
-   [
-    -238.392,
-    -69,
-    0
-   ],
-   [
-    0,
-    72,
-    98
-   ]
-  ]
- },
- "lane-mid-rear": {
-  "vol": 337445.1,
-  "bbox": [
-   [
-    -10,
-    -69,
-    0
-   ],
-   [
-    240,
-    72,
-    98
-   ]
-  ]
- },
- "lane-bottom-front": {
-  "vol": 233572.9,
-  "bbox": [
-   [
-    -240,
-    -69,
-    0
-   ],
-   [
-    0,
-    72,
-    102
-   ]
-  ]
- },
- "lane-bottom-rear": {
-  "vol": 394517.5,
-  "bbox": [
-   [
-    -10,
-    -69,
-    0
-   ],
-   [
-    240,
-    72,
-    102
-   ]
-  ]
- },
  "cover-front": {
-  "vol": 45668,
+  "vol": 45749.4,
   "bbox": [
    [
     -240,
@@ -119,7 +29,7 @@
   ]
  },
  "cover-rear": {
-  "vol": 36285.1,
+  "vol": 36376.8,
   "bbox": [
    [
     0,
@@ -134,22 +44,22 @@
   ]
  },
  "end-lip": {
-  "vol": 11643.2,
+  "vol": 11694.3,
   "bbox": [
    [
-    -2.5,
+    -20,
     -62.5,
-    -6
+    0
    ],
    [
-    2.5,
+    6,
     62.5,
-    20
+    5
    ]
   ]
  },
  "riser-08": {
-  "vol": 3182,
+  "vol": 3257.6,
   "bbox": [
    [
     -10,
@@ -159,12 +69,12 @@
    [
     10,
     10,
-    12
+    10.4
    ]
   ]
  },
  "riser-24": {
-  "vol": 9582,
+  "vol": 9657.6,
   "bbox": [
    [
     -10,
@@ -174,102 +84,12 @@
    [
     10,
     10,
-    28
-   ]
-  ]
- },
- "minimal-lane-top-front": {
-  "vol": 104663.8,
-  "bbox": [
-   [
-    -238.392,
-    -69,
-    0
-   ],
-   [
-    0,
-    72,
-    98
-   ]
-  ]
- },
- "minimal-lane-top-rear": {
-  "vol": 136679.2,
-  "bbox": [
-   [
-    -10,
-    -69,
-    0
-   ],
-   [
-    240,
-    72,
-    98
-   ]
-  ]
- },
- "minimal-lane-mid-front": {
-  "vol": 104663.8,
-  "bbox": [
-   [
-    -238.392,
-    -69,
-    0
-   ],
-   [
-    0,
-    72,
-    98
-   ]
-  ]
- },
- "minimal-lane-mid-rear": {
-  "vol": 142598.5,
-  "bbox": [
-   [
-    -10,
-    -69,
-    0
-   ],
-   [
-    240,
-    72,
-    98
-   ]
-  ]
- },
- "minimal-lane-bottom-front": {
-  "vol": 124154.9,
-  "bbox": [
-   [
-    -240,
-    -69,
-    0
-   ],
-   [
-    0,
-    72,
-    102
-   ]
-  ]
- },
- "minimal-lane-bottom-rear": {
-  "vol": 159415.5,
-  "bbox": [
-   [
-    -10,
-    -69,
-    0
-   ],
-   [
-    240,
-    72,
-    102
+    26.4
    ]
   ]
  },
  "minimal-cover-front": {
-  "vol": 32227.9,
+  "vol": 32309.4,
   "bbox": [
    [
     -240,
@@ -284,7 +104,7 @@
   ]
  },
  "minimal-cover-rear": {
-  "vol": 24917.5,
+  "vol": 25009.2,
   "bbox": [
    [
     0,
@@ -295,6 +115,636 @@
     240,
     69,
     2.4
+   ]
+  ]
+ },
+ "lane-top-deck-front": {
+  "vol": 85827.3,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "lane-top-deck-rear": {
+  "vol": 272730.6,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "lane-top-wall-tongue-front": {
+  "vol": 58833.6,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "lane-top-wall-tongue-rear": {
+  "vol": 48983.4,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "lane-top-wall-socket-front": {
+  "vol": 52636.1,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "lane-top-wall-socket-rear": {
+  "vol": 44532,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "lane-top-end-wall": {
+  "vol": 11689.1,
+  "bbox": [
+   [
+    -45.068,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "lane-mid-deck-front": {
+  "vol": 85827.3,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "lane-mid-deck-rear": {
+  "vol": 272730.6,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "lane-mid-wall-tongue-front": {
+  "vol": 58833.6,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "lane-mid-wall-tongue-rear": {
+  "vol": 48983.4,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "lane-mid-wall-socket-front": {
+  "vol": 52636.1,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "lane-mid-wall-socket-rear": {
+  "vol": 44532,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "lane-mid-end-wall": {
+  "vol": 21082.8,
+  "bbox": [
+   [
+    -94,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "lane-bottom-deck-front": {
+  "vol": 151361.2,
+  "bbox": [
+   [
+    -240,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    16.578
+   ]
+  ]
+ },
+ "lane-bottom-deck-rear": {
+  "vol": 331956,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    28.841
+   ]
+  ]
+ },
+ "lane-bottom-wall-tongue-front": {
+  "vol": 60843.6,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    100.4,
+    9
+   ]
+  ]
+ },
+ "lane-bottom-wall-tongue-rear": {
+  "vol": 49192.2,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    100.4,
+    9
+   ]
+  ]
+ },
+ "lane-bottom-wall-socket-front": {
+  "vol": 54742.4,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    100.4,
+    6
+   ]
+  ]
+ },
+ "lane-bottom-wall-socket-rear": {
+  "vol": 44747.3,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    100.4,
+    6
+   ]
+  ]
+ },
+ "lane-bottom-end-wall": {
+  "vol": 21140,
+  "bbox": [
+   [
+    -98,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-top-deck-front": {
+  "vol": 40347.7,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "minimal-lane-top-deck-rear": {
+  "vol": 93260.7,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "minimal-lane-top-wall-tongue-front": {
+  "vol": 42174.8,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "minimal-lane-top-wall-tongue-rear": {
+  "vol": 36039.6,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "minimal-lane-top-wall-socket-front": {
+  "vol": 35977.3,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-top-wall-socket-rear": {
+  "vol": 31588.2,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-top-end-wall": {
+  "vol": 8481.1,
+  "bbox": [
+   [
+    -45.068,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-mid-deck-front": {
+  "vol": 40347.7,
+  "bbox": [
+   [
+    -162,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    12.49
+   ]
+  ]
+ },
+ "minimal-lane-mid-deck-rear": {
+  "vol": 93260.7,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    24.753
+   ]
+  ]
+ },
+ "minimal-lane-mid-wall-tongue-front": {
+  "vol": 42174.8,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "minimal-lane-mid-wall-tongue-rear": {
+  "vol": 36039.6,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    96.4,
+    9
+   ]
+  ]
+ },
+ "minimal-lane-mid-wall-socket-front": {
+  "vol": 35977.3,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-mid-wall-socket-rear": {
+  "vol": 31588.2,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    96.4,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-mid-end-wall": {
+  "vol": 14553.6,
+  "bbox": [
+   [
+    -94,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-bottom-deck-front": {
+  "vol": 60183.5,
+  "bbox": [
+   [
+    -240,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    16.578
+   ]
+  ]
+ },
+ "minimal-lane-bottom-deck-rear": {
+  "vol": 111804.2,
+  "bbox": [
+   [
+    -8,
+    -69,
+    0
+   ],
+   [
+    240,
+    69,
+    28.841
+   ]
+  ]
+ },
+ "minimal-lane-bottom-wall-tongue-front": {
+  "vol": 43343,
+  "bbox": [
+   [
+    0,
+    0,
+    0
+   ],
+   [
+    240,
+    100.4,
+    9
+   ]
+  ]
+ },
+ "minimal-lane-bottom-wall-tongue-rear": {
+  "vol": 36283,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    8,
+    100.4,
+    9
+   ]
+  ]
+ },
+ "minimal-lane-bottom-wall-socket-front": {
+  "vol": 37241.8,
+  "bbox": [
+   [
+    -240,
+    0,
+    0
+   ],
+   [
+    0,
+    100.4,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-bottom-wall-socket-rear": {
+  "vol": 31838.1,
+  "bbox": [
+   [
+    -8,
+    0,
+    0
+   ],
+   [
+    240,
+    100.4,
+    6
+   ]
+  ]
+ },
+ "minimal-lane-bottom-end-wall": {
+  "vol": 14629.1,
+  "bbox": [
+   [
+    -98,
+    -69,
+    0
+   ],
+   [
+    0,
+    69,
+    6
    ]
   ]
  }
