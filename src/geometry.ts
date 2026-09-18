@@ -4,6 +4,8 @@
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
 
 export type Vec2 = [number, number];
+/** Cell pitch and half-extents for Geo.cells; `stagger` offsets odd rows by dx/2. */
+export interface Lattice { dx: number; dy: number; hw: number; hh: number; stagger: boolean }
 
 // ---------------------------------------------------------------- spec
 /** standard: the lattice as designed. minimal: same joints and dimensions; wall web, deck
@@ -62,15 +64,16 @@ export interface Derived {
 /** Ligament grows with the cell so the bars stay in proportion; never under four 0.42 mm lines. */
 const ligFor = (R: number) => Math.max(K.ligMin, K.ligRatio * R);
 
-/** The radius at which three whole rows fill a panel of height `panelH`:
- *  2R + 2 * 1.5P with P = R + lig / sqrt(3), 1 mm spare so float noise cannot drop
- *  the top row. Same cells on every tier, sized from the upper deck. */
-function autoHexR(panelH: number): number {
-  const rows = 5;
-  let R = (panelH - 1) / (rows + Math.sqrt(3) * K.ligRatio);
-  if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - Math.sqrt(3) * K.ligMin) / rows;
+/** The radius at which three whole rows fill a panel of height `panelH`, where three
+ *  rows span a·R + b·lig (hex: 2R + 2 * 1.5P with P = R + lig / sqrt(3), so [5, √3]).
+ *  1 mm spare so float noise cannot drop the top row. Same cells on every tier, sized
+ *  from the upper deck. */
+function autoR(panelH: number, [a, b]: readonly [number, number]): number {
+  let R = (panelH - 1) / (a + b * K.ligRatio);
+  if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - b * K.ligMin) / a;
   return Math.min(K.hexMax, Math.max(K.hexMin, R));
 }
+const HEX_ROWS: readonly [number, number] = [5, Math.sqrt(3)];
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
@@ -94,7 +97,7 @@ export function solve(o: Options): Derived {
   const H = Math.ceil(dhi + o.canD + K.topgap);
   const dhiB = K.deckLo + L * tan;
   const Hb = Math.ceil(dhiB + o.canD + K.topgap);
-  const hexR = o.hexAuto ? autoHexR(H - 2 * K.border) : o.hexR;
+  const hexR = o.hexAuto ? autoR(H - 2 * K.border, HEX_ROWS) : o.hexR;
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
@@ -195,21 +198,31 @@ export class Geo {
    */
   hexCells(R: number, t: number, bounds: CS, ystretch = 1, holes: CS[] = []): CS | null {
     const P = R + t / Math.sqrt(3);
-    const dx = Math.sqrt(3) * P, dy = 1.5 * P * ystretch;
-    const hw = (Math.sqrt(3) * R) / 2, hh = R * ystretch;
     const hexa: Vec2[] = [];
     for (let k = 0; k < 6; k++) {
       const a = ((90 + 60 * k) * Math.PI) / 180;
       hexa.push([R * Math.cos(a), R * Math.sin(a) * ystretch]);
     }
+    const lat = { dx: Math.sqrt(3) * P, dy: 1.5 * P * ystretch, hw: (Math.sqrt(3) * R) / 2, hh: R * ystretch, stagger: true };
+    return this.cells(lat, bounds, holes, (cx, cy) => this.poly(hexa.map(([px, py]) => [px + cx, py + cy] as Vec2)));
+  }
+
+  /**
+   * Cells of one shape on a lattice inside `bounds`: whole cells only (a cell is `hw`
+   * by `hh` about its centre), the grid centred in the field, a cell touching one of
+   * the `holes` keep-outs dropped. `cell` draws the shape at a centred centre and gets
+   * the lattice indices, for patterns that alternate.
+   */
+  cells(lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number, cy: number, i: number, j: number) => CS): CS | null {
+    const { dx, dy, hw, hh, stagger } = lat;
     const { min: [x0, y0], max: [x1, y1] } = bounds.bounds();
-    const centres: Vec2[] = [];
+    const centres: [number, number, number, number][] = [];
     for (let j = 0; y0 + hh + j * dy + hh <= y1 + 1e-6; j++) {
       const cy = y0 + hh + j * dy;
       for (let i = 0; ; i++) {
-        const cx = x0 + hw + i * dx + (j % 2 ? dx / 2 : 0);
+        const cx = x0 + hw + i * dx + (stagger && j % 2 ? dx / 2 : 0);
         if (cx + hw > x1 + 1e-6) break;
-        centres.push([cx, cy]);
+        centres.push([cx, cy, i, j]);
       }
     }
     if (!centres.length) return null;
@@ -217,13 +230,13 @@ export class Geo {
     const shiftX = (x0 + x1) / 2 - (Math.min(...xs) + Math.max(...xs)) / 2;
     const shiftY = (y0 + y1) / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
     const blocked = holes.length ? this.CrossSection.union(holes) : null;
-    const cells: CS[] = [];
-    for (const [cx, cy] of centres) {
-      const cell = this.poly(hexa.map(([px, py]) => [px + cx + shiftX, py + cy + shiftY] as Vec2));
-      if (blocked && cell.intersect(blocked).area() > 1e-6) continue;
-      cells.push(cell);
+    const out: CS[] = [];
+    for (const [cx, cy, i, j] of centres) {
+      const c = cell(cx + shiftX, cy + shiftY, i, j);
+      if (blocked && c.intersect(blocked).area() > 1e-6) continue;
+      out.push(c);
     }
-    return cells.length ? this.CrossSection.union(cells) : null;
+    return out.length ? this.CrossSection.union(out) : null;
   }
 
   /**
