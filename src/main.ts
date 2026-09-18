@@ -10,10 +10,13 @@ import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendors
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
 const viewer = new Viewer($("viewer"));
+$("showCans").querySelector("input")!.addEventListener("change", (e) => viewer.showCans((e.target as HTMLInputElement).checked));
+$("explode").querySelector("input")!.addEventListener("input", (e) => viewer.explode(Number((e.target as HTMLInputElement).value)));
 const worker = new Worker(new URL("worker.js", document.baseURI), { type: "module" });
 
 let layouts: Layout[] = [];
 let chosen: Layout | null = null;
+let chosenIndex = 0; // position in the ranked list; the hash carries it so a shared link opens on the same layout
 let built: { parts: PartOut[]; placed: Placement[]; nplates: number; layout: Layout } | null = null;
 let buildId = 0, exportId = 0, buildTimer = 0;
 let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
@@ -33,9 +36,9 @@ function readOptions(): { space: Space; base: Options; cascade: boolean } {
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
     cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, feet: f.get("feet") === "on", fit: num("fit"),
-    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on",
+    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"),
   };
-  return { space: { w: num("w"), d: num("d"), h: num("h") }, base, cascade: f.get("cascade") === "on" };
+  return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: f.get("cascade") === "on" };
 }
 
 form.addEventListener("input", (e) => {
@@ -50,13 +53,14 @@ form.addEventListener("input", (e) => {
     (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   }
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
+  refit(); // first: it resets the chosen layout, which the hash carries
   syncHash();
-  refit();
 });
 form.addEventListener("submit", (e) => e.preventDefault());
 
 // ------------------------------------------------------------- layouts
-function refit() {
+/** Re-rank layouts for the form as it stands and pick `want`, or the best one when that is out of range. */
+function refit(want = 0) {
   let space: Space, base: Options, cascade: boolean;
   try {
     ({ space, base, cascade } = readOptions());
@@ -64,7 +68,7 @@ function refit() {
     // Say which field is wrong rather than building nothing and staying quiet.
     setStatus(`Check your numbers: ${err?.message ?? err}`);
     $("layouts").innerHTML = "";
-    chosen = null;
+    chosen = null; chosenIndex = 0;
     return;
   }
   layouts = fitSpace(space, base, { cascade });
@@ -72,25 +76,27 @@ function refit() {
   box.innerHTML = "";
   if (!layouts.length) {
     box.innerHTML = `<p class="empty">Nothing fits. A single lane needs about ${(base.canL + 16).toFixed(0)} mm of width and ${(base.canD + 30).toFixed(0)} mm of height.</p>`;
-    chosen = null; return;
+    chosen = null; chosenIndex = 0; return;
   }
   const h = document.createElement("h2"); h.textContent = "Layouts that fit"; box.appendChild(h);
+  const start = want < layouts.length ? want : 0;
   layouts.forEach((l, i) => {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "layout"; b.setAttribute("aria-pressed", String(i === 0));
+    b.type = "button"; b.className = "layout"; b.setAttribute("aria-pressed", String(i === start));
     const d = l.derived;
     const perDeck = l.style === "cascade" ? `${d.nBottom} on the bottom deck, ${d.n} per upper deck` : `${d.n} per deck`;
     b.innerHTML = `<span class="cans">${l.cans}<small>cans</small></span>
       <span class="line">${l.options.lanesWide} lane${l.options.lanesWide > 1 ? "s" : ""} wide × ${l.options.tiers} tier${l.options.tiers > 1 ? "s" : ""}, ${l.style === "cascade" ? "auto-feed" : "flat"}</span>
       <span class="line muted">${l.footprint.map((v) => v.toFixed(0)).join(" × ")} mm · ${perDeck} · ~${(l.gramsEst / 1000).toFixed(1)} kg</span>`;
-    b.addEventListener("click", () => { box.querySelectorAll(".layout").forEach((x) => x.setAttribute("aria-pressed", "false")); b.setAttribute("aria-pressed", "true"); choose(l); });
+    b.addEventListener("click", () => { box.querySelectorAll(".layout").forEach((x) => x.setAttribute("aria-pressed", "false")); b.setAttribute("aria-pressed", "true"); choose(i); syncHash(); });
     box.appendChild(b);
   });
-  choose(layouts[0]);
+  choose(start);
 }
 
-function choose(l: Layout) {
-  chosen = l;
+function choose(i: number) {
+  chosen = layouts[i];
+  chosenIndex = i;
   clearTimeout(buildTimer);
   setBuildPending(true);
   buildTimer = window.setTimeout(build, 250);
@@ -150,6 +156,7 @@ function showTab(key: string) {
   $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.key === key)));
   $("plates").querySelectorAll(".plate").forEach((b) => b.setAttribute("aria-pressed", String(b.getAttribute("data-key") === key)));
   const { layout, parts, placed } = built;
+  $("showCans").hidden = $("explode").hidden = key !== "assembly";
   if (key === "assembly") viewer.showAssembly(parts, layout.options, layout.derived);
   else if (key.startsWith("part:")) { const p = parts.find((x) => x.name === key.slice(5)); if (p) viewer.showPart(p); }
   else if (key.startsWith("plate:")) { const n = Number(key.slice(6)); viewer.showPlate(placed.filter((p) => p.plate === n), layout.options.bed); }
@@ -164,7 +171,7 @@ function renderResults() {
     <dt>Capacity</dt><dd>${layout.cans} cans</dd>
     <dt>Footprint</dt><dd>${layout.footprint.map((v) => v.toFixed(0)).join(" × ")} mm</dd>
     <dt>Lane</dt><dd>${d.L.toFixed(0)} × ${d.OW.toFixed(0)} × ${d.H} mm${d.split ? ", two keyed halves" : ""}</dd>
-    <dt>Deck slope</dt><dd>${o.slope}° — cans roll to the front on their own</dd>
+    <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
     <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG</dd>
@@ -271,7 +278,7 @@ function applyPicks(picks: Picks) {
     if (Number(input.value) === bed[axis]) return;
     input.value = String(bed[axis]); changed = true;
   });
-  if (changed) { syncHash(); refit(); }
+  if (changed) { refit(); syncHash(); }
 }
 
 pick.printer.addEventListener("change", () => {
@@ -308,11 +315,17 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
 loadProfile();
 
 // ------------------------------------------------------------- url state
-const KEYS = ["w", "d", "h", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "feet", "hexR", "hexAuto", "fit"];
+// Every field readOptions() consumes, plus the layout the user clicked. Checkboxes are
+// written as on/off rather than through FormData, which omits an unchecked box entirely,
+// so a link with cascade turned off used to load with it back on.
+const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "feet", "hexR", "hexAuto", "slope", "fit"];
 function syncHash() {
-  const f = new FormData(form);
   const q = new URLSearchParams();
-  for (const k of KEYS) { const v = f.get(k); if (v != null) q.set(k, String(v)); }
+  for (const k of KEYS) {
+    const el = form.elements.namedItem(k) as HTMLInputElement;
+    q.set(k, el.type === "checkbox" ? (el.checked ? "on" : "off") : el.value);
+  }
+  if (chosenIndex > 0) q.set("layout", String(chosenIndex));
   history.replaceState(null, "", "#" + q.toString());
 }
 function loadHash() {
@@ -324,6 +337,17 @@ function loadHash() {
   }
   (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number((form.elements.namedItem("fit") as HTMLInputElement).value).toFixed(2);
+  return Number(q.get("layout") ?? 0);
 }
-loadHash();
-refit();
+
+$("share").addEventListener("click", async () => {
+  syncHash(); // a fresh page has no hash until the first edit
+  try {
+    await navigator.clipboard.writeText(location.href);
+    setStatus("Link copied.");
+  } catch (err: any) {
+    setStatus(`Couldn't copy the link: ${err?.message ?? err}`);
+  }
+});
+
+refit(loadHash());

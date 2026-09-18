@@ -36,6 +36,10 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `src/geometry.ts` — parts. `solve()` derives every dimension from can + options;
   `buildLane(g,o,d,bottom,top)`, `splitLane`, `buildLip`, `buildRiser`, `buildCover`, `buildAll`.
 - `src/solver.ts` — `fitSpace(space, base, {cascade})` → ranked layouts. Pure arithmetic.
+  Lane length candidates are the longest that fits plus the shortest lane for every whole
+  can count (`laneLengthFor`, the inverse of `solve()`'s deck count), so a lane never
+  carries deck that holds no can. Hand room is `space.front`, a form field, not a constant:
+  40 mm baked in once cost a 12-inch shelf its fourth can. Slope is the user's too.
 - `src/export.ts` — shelf packer, binary STL, 3MF writer (Bambu plate grid + `model_settings.config`).
 - `src/worker.ts` — build + export off-thread; keeps `last` for export (do not transfer buffers).
 - `src/validate.ts` — `LIMITS` + `readNumbers()`, the single gate for every number typed

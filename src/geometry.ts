@@ -71,9 +71,12 @@ function autoHexR(panelH: number): number {
   return Math.min(K.hexMax, Math.max(K.hexMin, R));
 }
 
+/** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
+const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
+
 export function solve(o: Options): Derived {
   const tan = Math.tan((o.slope * Math.PI) / 180);
-  const inset = o.cascade ? o.canD + 6 + o.wall : 0;
+  const inset = insetFor(o);
   const usableX = o.bed[0] - 2 * o.bedMargin;
   const usableY = o.bed[1] - 2 * o.bedMargin;
   // One margin, not two: a part has an edge at each end of X and Y, but it sits on the
@@ -99,6 +102,12 @@ export function solve(o: Options): Derived {
     plateX: split ? L / 2 + K.lapLen : L, plateY: OW + K.dovetail,
     usableX, usableY, usableZ,
   };
+}
+
+/** Inverse of the deck count in solve(): the shortest lane whose deck holds `cans` whole
+ *  cans. `bottom` is the cascade's bottom deck, which has no chute to make room for. */
+export function laneLengthFor(o: Options, cans: number, bottom = false): number {
+  return cans * o.canD + (bottom ? 0 : insetFor(o)) + o.wall + K.slack;
 }
 
 export function check(o: Options, d: Derived): string[] {

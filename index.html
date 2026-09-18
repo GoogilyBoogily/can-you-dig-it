@@ -24,8 +24,9 @@
         <label>Width <input name="w" type="number" min="100" step="1" value="300"><span>mm</span></label>
         <label>Depth <input name="d" type="number" min="100" step="1" value="520"><span>mm</span></label>
         <label>Height <input name="h" type="number" min="60" step="1" value="240"><span>mm</span></label>
+        <label>Front gap <input name="front" type="number" min="0" step="1" value="0"><span>mm</span></label>
       </div>
-      <p class="hint">Inside clearances. Depth is front to back; 40 mm is kept free at the front for your hand.</p>
+      <p class="hint">Inside clearances. Depth is front to back and the lane may use all of it; the front gap is what stays free for your hand.</p>
     </fieldset>
 
     <fieldset>
@@ -70,9 +71,13 @@
         </label>
       </div>
       <label class="check"><input name="solid" type="checkbox"> Solid walls instead of honeycomb</label>
-      <div class="hex">
+      <div class="pair">
         <label>Hex cell <input name="hexR" type="number" min="6" max="20" step="0.5" value="13"><span>mm</span></label>
         <label class="check"><input name="hexAuto" type="checkbox" checked> Auto, three rows per wall</label>
+      </div>
+      <div class="pair">
+        <label>Deck slope <input name="slope" type="number" min="0" max="10" step="0.5" value="3"><span>°</span></label>
+        <span class="hint">3° rolls a can to the front on its own. Lower is a shorter tier, so more of them stack.</span>
       </div>
       <label class="check"><input name="feet" type="checkbox"> 24 mm feet under the bottom tier (for wire shelves or a lip that needs clearing)</label>
       <label class="fit">Fit
@@ -89,7 +94,10 @@
     <div class="viewer" id="viewer"></div>
     <div class="stagebar">
       <div class="tabs" id="tabs" role="tablist"></div>
+      <label class="check" id="showCans" hidden><input type="checkbox" checked> Show cans</label>
+      <label class="check" id="explode" hidden>Pull apart <input type="range" min="0" max="1" step="0.01" value="0"></label>
       <div class="status" id="status">Enter your shelf size to begin.</div>
+      <button type="button" id="share" title="Copy a link to this design">Share</button>
     </div>
   </section>
 

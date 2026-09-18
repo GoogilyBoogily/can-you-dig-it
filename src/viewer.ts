@@ -10,6 +10,10 @@ export class Viewer {
   private cam: THREE.PerspectiveCamera;
   private ren: THREE.WebGLRenderer;
   private group = new THREE.Group();
+  private cans = new THREE.Group();
+  /** Assembly meshes with where they sit and where the explode slider pushes them at 1. */
+  private exploded: { mesh: THREE.Object3D; rest: THREE.Vector3; push: THREE.Vector3 }[] = [];
+  private explodeT = 0;
   private theta = 2.45; private phi = 1.05; private dist = 600;
   private target = new THREE.Vector3();
   private geoms = new Map<string, THREE.BufferGeometry>();
@@ -93,6 +97,15 @@ export class Viewer {
 
   reset() { this.geoms.clear(); this.clear(); }
 
+  /** Cans in the assembly view; the frame is taken with them in so the camera does not jump. */
+  showCans(on: boolean) { this.cans.visible = on; }
+
+  /** Pull the assembly apart along each joint: 0 is assembled, 1 is fully open. */
+  explode(t: number) {
+    this.explodeT = t;
+    for (const { mesh, rest, push } of this.exploded) mesh.position.copy(rest).addScaledVector(push, t);
+  }
+
   showPart(p: PartOut) {
     this.clear();
     this.group.add(this.mesh(p.mesh, COL[p.role]));
@@ -106,14 +119,20 @@ export class Viewer {
     const by = new Map(parts.map((p) => [p.name, p]));
     const cascade = d.inset > 0;
     const G = d.gangPitch;
-    const put = (name: string, x: number, y: number, z: number, rot = false, col?: number) => {
+    this.exploded = [];
+    const STEP = 40; // mm of travel per joint at full explode
+    const track = (mesh: THREE.Object3D, px: number, py: number, pz: number) =>
+      this.exploded.push({ mesh, rest: mesh.position.clone(), push: new THREE.Vector3(px, py, pz) });
+    const put = (name: string, x: number, y: number, z: number, rot = false, push: [number, number, number] = [0, 0, 0]) => {
       const p = by.get(name); if (!p) return;
-      const m = this.mesh(p.mesh, col ?? COL[p.role]);
+      const m = this.mesh(p.mesh, COL[p.role]);
       if (rot) m.rotation.z = Math.PI;
       m.position.set(x, y, z); this.group.add(m);
+      track(m, ...push);
     };
     const can = new THREE.CylinderGeometry(o.canD / 2, o.canD / 2, o.canL, 36); // axis = Y = across the lane
     const canMat = new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 });
+    const cans = new THREE.Group(); cans.visible = this.cans.visible; this.cans = cans; this.group.add(cans);
     const deckLo = 4;
     for (let gI = 0; gI < o.lanesWide; gI++) {
       const y = gI * G;
@@ -122,9 +141,11 @@ export class Viewer {
         const z = cascade ? (t === 0 ? 0 : d.Hb + (t - 1) * d.H) : t * d.H;
         const rot = cascade ? t % 2 === 1 : false;
         const pre = !cascade ? "lane" : isBottom ? "lane-bottom" : t === o.tiers - 1 ? "lane-top" : "lane-mid";
-        if (d.split) { put(`${pre}-front`, 0, y, z, rot); put(`${pre}-rear`, 0, y, z, rot); }
-        else put(pre, 0, y, z, rot);
-        if (isBottom || !cascade) put("end-lip", -d.L / 2 + 8, y, z + deckLo);
+        // each tier lifts off the one below; halves part along X (a turned tier's front is at +X)
+        const py = gI * STEP, pz = t * STEP, front = rot ? STEP : -STEP;
+        if (d.split) { put(`${pre}-front`, 0, y, z, rot, [front, py, pz]); put(`${pre}-rear`, 0, y, z, rot, [-front, py, pz]); }
+        else put(pre, 0, y, z, rot, [0, py, pz]);
+        if (isBottom || !cascade) put("end-lip", -d.L / 2 + 8, y, z + deckLo, false, [-2 * STEP, py, pz]);
         // cans
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
         const n = isBottom || !cascade ? (cascade ? d.nBottom : d.n) : d.n;
@@ -132,17 +153,19 @@ export class Viewer {
           const xl = xd + 8 + 2.5 + o.canD / 2 + i * (o.canD + 0.5);
           const zl = deckLo + (xl - xd) * d.tan + o.canD / 2;
           const c = new THREE.Mesh(can, canMat);
-          c.position.set(rot ? -xl : xl, y, z + zl); this.group.add(c);
+          c.position.set(rot ? -xl : xl, y, z + zl); cans.add(c); track(c, 0, py, pz);
         }
       }
       const top = cascade ? d.Hb + (o.tiers - 1) * d.H : o.tiers * d.H;
       // the cover turns with the top lane so its loading window sits over that lane's high end
       const coverRot = cascade && (o.tiers - 1) % 2 === 1;
-      if (d.split) { put("cover-front", 0, y, top, coverRot); put("cover-rear", 0, y, top, coverRot); } else put("cover", 0, y, top, coverRot);
-      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put("riser-24", sx * d.px, y + sy * d.py, -24);
+      const coverPush: [number, number, number] = [0, gI * STEP, (o.tiers + 1) * STEP];
+      if (d.split) { put("cover-front", 0, y, top, coverRot, coverPush); put("cover-rear", 0, y, top, coverRot, coverPush); } else put("cover", 0, y, top, coverRot, coverPush);
+      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put("riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
     }
     this.addFloor();
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
+    this.explode(this.explodeT);
   }
 
   /** A print plate as the slicer will see it. */

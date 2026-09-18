@@ -8,12 +8,14 @@ export const LIMITS: Record<string, Limit> = {
   w: { min: 50, max: 5000, label: "shelf width" },
   d: { min: 50, max: 5000, label: "shelf depth" },
   h: { min: 50, max: 5000, label: "shelf height" },
+  front: { min: 0, max: 500, label: "front gap" },
   canD: { min: 20, max: 200, label: "can diameter" },
   canL: { min: 40, max: 400, label: "can length" },
   bedX: { min: 50, max: 1000, label: "bed X" },
   bedY: { min: 50, max: 1000, label: "bed Y" },
   bedZ: { min: 50, max: 1000, label: "bed Z" },
   hexR: { min: 6, max: 20, label: "hex cell" },
+  slope: { min: 0, max: 10, label: "deck slope" },
   // fit is a tolerance offset, not a dimension: 0 is the default and negative is valid.
   fit: { min: -2, max: 2, label: "fit" },
 };

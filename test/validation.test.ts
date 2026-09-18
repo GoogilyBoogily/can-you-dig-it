@@ -5,7 +5,7 @@ import { DEFAULTS, solve, check, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
 import { pack, bboxOf, type MeshData } from "../src/export";
 
-const SHELF = { w: 600, d: 600, h: 500 };
+const SHELF = { w: 600, d: 600, h: 500, front: 40 };
 
 test("a shelf narrower than one lane offers nothing", () => {
   const pitch = solve(DEFAULTS).gangPitch;
@@ -19,7 +19,7 @@ test("a lane is never deeper than the shelf it goes on", () => {
 });
 
 test("every offered layout fits the space it was asked about", () => {
-  for (const space of [{ w: 300, d: 520, h: 240 }, { w: 100, d: 600, h: 500 }, { w: 600, d: 150, h: 500 }, { w: 1000, d: 700, h: 900 }]) {
+  for (const space of [{ w: 300, d: 520, h: 240, front: 40 }, { w: 100, d: 600, h: 500, front: 0 }, { w: 600, d: 150, h: 500, front: 40 }, { w: 1000, d: 700, h: 900, front: 0 }]) {
     for (const layout of fitSpace(space, DEFAULTS, { cascade: true })) {
       expect(layout.footprint[0], `width for ${JSON.stringify(space)}`).toBeLessThanOrEqual(space.w);
       expect(layout.footprint[1], `depth for ${JSON.stringify(space)}`).toBeLessThanOrEqual(space.d);
@@ -96,7 +96,7 @@ test("every limit names a sane range", () => {
 // The form's own defaults must survive validation, or the page dies on load.
 test("the shipped defaults pass validation", () => {
   expect(() => readNumbers({
-    w: 300, d: 520, h: 240, canD: 66, canL: 122.5, bedX: 256, bedY: 256, bedZ: 256, fit: 0,
+    w: 300, d: 520, h: 240, front: 0, canD: 66, canL: 122.5, bedX: 256, bedY: 256, bedZ: 256, hexR: 13, slope: 3, fit: 0,
   })).not.toThrow();
 });
 
