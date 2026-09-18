@@ -27,13 +27,13 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
 
 ## The parts
 
-- **lane** (upper tiers): sloped deck, honeycomb walls, open drop chute at the low end.
+- **lane** (upper tiers): sloped deck, patterned walls (honeycomb, circles, kumiko, slats or breeze block), open drop chute at the low end.
   Alternate tiers are rotated 180° so cans cascade down when you pull one.
 - **lane-bottom**: full-length deck, stops at the **end-lip**.
 - Lanes longer than the bed split into **-front** / **-rear** halves joined by a deck
   dovetail tongue and wall half-laps; slide together vertically, no glue.
 - **riser-08 / -24**: peg-and-socket feet; stack for height.
-- **cover**: hex grille top so the stack is a shelf, with a can-sized window over the
+- **cover**: grille top in the same pattern so the stack is a shelf, with a can-sized window over the
   top tier's high end. That is where cans go in: drop one through, it rolls to the chute.
 
 Lateral dovetails at the lane ends gang lanes side by side. Pegs on the wall tops

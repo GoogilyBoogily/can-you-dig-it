@@ -108,6 +108,17 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   whole rows fill its field, bars half the radius) — it used to borrow the wall's and
   lost a row whenever that changed — and only the seam band clips cells, so the pattern
   carries across the joint.
+- Pattern (2026-09-18): `o.pattern` (hex, circle, kumiko, slat, breeze) picks the cell
+  shape and nothing else; `Geo.cellsOf` dispatches, `Geo.cells` is the field/keep-out
+  loop with the shape passed in, `ROWS` says how far three rows span (`a·R + b·lig`) so
+  `autoR` and the cover radius work for every shape. `hexR`/`hexAuto` keep their names
+  and mean cell radius. Every pattern but hex starts the wall field at the ear-pad top
+  (`fieldBottom`): a square edge or a chord would bridge a notch where a hexagon only
+  lands a tip; hex stays at the border so its snapshot did not move. Slats cannot be
+  dropped whole, so they are cut per component of `panel − keep` and skip anything under
+  4R wide — that is what keeps the splice and dovetail bands solid. Slat cover takes the
+  whole-row path on both designs. Spec in
+  `docs/superpowers/specs/2026-09-18-pattern-axis-design.md`.
   Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
   through the bottom border, with pads left round every ear notch and the end-wall
   notch. The
