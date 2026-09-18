@@ -15,7 +15,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveDist } from "../dev";
-import { BUILT_IN_PROFILES, profileUrl } from "../src/profiles";
+import { INDEX_URL, type ProfileIndex } from "../src/profiles";
+
+const index: ProfileIndex = await Bun.file(INDEX_URL).json();
 
 // Downloads land in a directory of their own so the suite does not leave 3MFs in /tmp.
 const downloads = mkdtempSync(join(tmpdir(), "can-you-dig-it-ui-"));
@@ -226,32 +228,52 @@ test("a non-numeric dimension names the field instead of building NaN", async ()
   await page.close();
 });
 
-// A built-in profile is fetched from the site, not typed in, so this is the only test
-// that proves the bytes a slicer receives are the file the generator wrote.
-test("a built-in printer profile reaches the 3MF byte for byte and sets the bed", async () => {
+// The catalogue is fetched from the site and the selects are wired in main.ts, so this
+// is the only test that proves a pick reaches the slicer as a config naming those presets.
+const X1C_06 = "Bambu Lab X1 Carbon 0.6 nozzle";
+const waitForSelect = (page: Page, id: string, value: string) =>
+  page.waitForFunction(([i, v]) => (document.getElementById(i) as HTMLSelectElement).value === v, [id, value] as const, { timeout: 15000 });
+
+test("picking printer, nozzle and filament composes a config naming those presets and sets the bed", async () => {
   const page = await buildOnce();
-  const p2s = BUILT_IN_PROFILES[0];
-  await page.fill("#form [name=bedX]", "220");
-  await page.selectOption("#profileBuiltIn", p2s.id);
-  await waitForLabel(page, p2s.label);
-  expect(await page.inputValue("#form [name=bedX]")).toBe("256");
+  await page.selectOption("#pickPrinter", "Bambu Lab X1 Carbon");
+  await waitForLabel(page, "Bambu Lab X1 Carbon · 0.4 nozzle");
+  await page.selectOption("#pickNozzle", X1C_06);
+  await waitForLabel(page, "0.6 nozzle");
+  await page.selectOption("#pickFilament", { label: "Generic PETG" });
+  await waitForLabel(page, "Generic PETG");
+  expect(await page.inputValue("#form [name=bedZ]")).toBe("250");
   await page.waitForFunction(() => !document.getElementById("status")!.classList.contains("busy"), { timeout: 90000 });
 
-  const zip = await downloadTo(page, "#dl3mf", "p2s.3mf");
-  const shipped = new Uint8Array(await Bun.file(profileUrl(p2s.id)).arrayBuffer());
-  expect(zip["Metadata/project_settings.config"]).toEqual(shipped);
+  const zip = await downloadTo(page, "#dl3mf", "x1c.3mf");
+  const config = JSON.parse(strFromU8(zip["Metadata/project_settings.config"]!));
+  expect(config.printer_settings_id).toBe(X1C_06);
+  expect(config.filament_settings_id[0]).toMatch(/^Generic PETG/); // some presets are plain "Generic PETG", no @printer suffix
+  expect(index.processes.some((p) => p.name === config.print_settings_id)).toBe(true);
+  expect(index.filaments.some((f) => f.name === config.filament_settings_id[0])).toBe(true);
   await page.close();
 });
 
-test("a built-in profile survives a reload with the select still on it", async () => {
+test("the picks survive a reload and Clear puts the selects back", async () => {
   const page = await buildOnce();
-  const p2s = BUILT_IN_PROFILES[0];
-  await page.selectOption("#profileBuiltIn", p2s.id);
-  await waitForLabel(page, p2s.label);
+  await page.selectOption("#pickPrinter", "Bambu Lab P2S");
+  await waitForLabel(page, "Bambu Lab P2S · 0.4 nozzle · Bambu PLA Basic · 0.20mm Standard");
   await page.reload();
-  await waitForLabel(page, p2s.label);
-  expect(await page.inputValue("#profileBuiltIn")).toBe(p2s.id);
+  await waitForLabel(page, "Bambu Lab P2S");
+  await waitForSelect(page, "pickNozzle", "Bambu Lab P2S 0.4 nozzle");
+  expect(await page.inputValue("#pickFilament")).toBe("Bambu PLA Basic @BBL P2S");
   await page.click("#profileClear");
-  expect(await page.inputValue("#profileBuiltIn")).toBe("");
+  await waitForSelect(page, "pickPrinter", "");
+  expect(await page.locator("#pickNozzle").isDisabled()).toBe(true);
+  await page.close();
+});
+
+test("a 3MF upload takes the selects back to no pick", async () => {
+  const page = await buildOnce();
+  await page.selectOption("#pickPrinter", "Bambu Lab P2S");
+  await waitForLabel(page, "Bambu Lab P2S");
+  await page.setInputFiles("#profileIn", upload("mine.3mf", CONFIG_A));
+  await waitForLabel(page, "mine.3mf");
+  await waitForSelect(page, "pickPrinter", "");
   await page.close();
 });

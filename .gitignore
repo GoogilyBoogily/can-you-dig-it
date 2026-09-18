@@ -1,9 +1,10 @@
 node_modules
 dist
 *.map
+.DS_Store
+.playwright-mcp/
 
 # Local agent-tool state, not project files
 .claude/
 .headroom/
 .serena/
-.profiles-scratch/

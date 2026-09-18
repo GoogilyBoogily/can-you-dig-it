@@ -5,7 +5,7 @@ import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, type Placement } from "./export";
 import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { readNumbers, LIMITS } from "./validate";
-import { BUILT_IN_PROFILES, profileUrl, bedFromConfig } from "./profiles";
+import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -195,9 +195,6 @@ $("dlstl").addEventListener("click", () => { if (!built || buildPending) return;
 // Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
 let profile: StoredProfile | null = null;
 
-const builtIn = $<HTMLSelectElement>("profileBuiltIn");
-for (const p of BUILT_IN_PROFILES) builtIn.add(new Option(p.label, p.id));
-
 // textContent, not innerHTML: the file name is whatever the user named the file.
 function showProfile() {
   $("profileNow").textContent = profile
@@ -206,7 +203,7 @@ function showProfile() {
     // dialog, but still loads every plate and part. Say so, or the dialog reads as failure.
     : "No print settings loaded. Bambu Studio will warn about an invalid config and fall back to the slicer's own defaults; plates and parts still load.";
   $("profileClear").hidden = !profile;
-  builtIn.value = BUILT_IN_PROFILES.find((p) => p.label === profile?.name)?.id ?? "";
+  if (index) showPicks(profile ? picksFromConfig(index, profile.config) : null);
 }
 $("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
 
@@ -226,21 +223,43 @@ function loadProfile() {
   showProfile();
 }
 
-builtIn.addEventListener("change", async () => {
-  const pick = BUILT_IN_PROFILES.find((p) => p.id === builtIn.value);
-  if (!pick) return;
-  let config: Uint8Array;
-  try {
-    const response = await fetch(profileUrl(pick.id));
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    config = new Uint8Array(await response.arrayBuffer());
-  } catch (err: any) {
-    // A failed fetch keeps whatever profile was already working, and the select says so.
-    setStatus(`Couldn't load ${pick.label}: ${err?.message ?? err}`);
-    showProfile();
-    return;
+// ------------------------------------------------------------- built-in print settings
+// Printer → nozzle → process → filament, out of Bambu Studio's own preset catalogue.
+// The lower selects only ever list what fits the chosen machine.
+let index: ProfileIndex | null = null;
+const pick = {
+  printer: $<HTMLSelectElement>("pickPrinter"), nozzle: $<HTMLSelectElement>("pickNozzle"),
+  process: $<HTMLSelectElement>("pickProcess"), filament: $<HTMLSelectElement>("pickFilament"),
+};
+
+function fillSelect(select: HTMLSelectElement, options: { value: string; label: string; group?: string }[], value: string) {
+  select.replaceChildren();
+  let group: HTMLOptGroupElement | null = null;
+  for (const option of options) {
+    const element = new Option(option.label, option.value);
+    if (!option.group) { select.append(element); continue; }
+    if (group?.label !== option.group) { group = document.createElement("optgroup"); group.label = option.group; select.append(group); }
+    group.append(element);
   }
-  adoptProfile({ name: pick.label, config });
+  select.value = value;
+  select.disabled = !options.length;
+}
+
+/** Redraw the four selects around `picks`, or back to "Pick a printer…" when there are none. */
+function showPicks(picks: Picks | null) {
+  const machine = picks && index!.machines.find((m) => m.name === picks.machine);
+  fillSelect(pick.printer, [{ value: "", label: "Pick a printer…" }, ...printersOf(index!).map((p) => ({ value: p, label: p }))], machine?.printer ?? "");
+  if (!machine || !picks) { for (const select of [pick.nozzle, pick.process, pick.filament]) fillSelect(select, [], ""); return; }
+  fillSelect(pick.nozzle, machinesFor(index!, machine.printer).map((m) => ({ value: m.name, label: `${m.nozzle} mm nozzle` })), machine.name);
+  fillSelect(pick.process, processesFor(index!, machine.name).map((p) => ({ value: p.name, label: p.name.replace(/ @.*$/, "") })), picks.process);
+  const filaments = filamentsFor(index!, machine.name);
+  fillSelect(pick.filament, vendorsOf(filaments).flatMap((vendor) =>
+    filaments.filter((f) => f.vendor === vendor).map((f) => ({ value: f.name, label: f.label, group: vendor }))), picks.filament);
+}
+
+function applyPicks(picks: Picks) {
+  const config = composeProfile(index!, picks);
+  adoptProfile({ name: describePicks(index!, picks), config });
   // The printer picked is the bed the parts must fit, so the form follows.
   const bed = bedFromConfig(config);
   let changed = false;
@@ -250,7 +269,21 @@ builtIn.addEventListener("change", async () => {
     input.value = String(bed[axis]); changed = true;
   });
   if (changed) { syncHash(); refit(); }
+}
+
+pick.printer.addEventListener("change", () => {
+  const machines = machinesFor(index!, pick.printer.value);
+  if (!machines.length) return;
+  applyPicks(defaultPicks(index!, (machines.find((m) => m.nozzle === "0.4") ?? machines[0]).name));
 });
+pick.nozzle.addEventListener("change", () => applyPicks(defaultPicks(index!, pick.nozzle.value)));
+for (const select of [pick.process, pick.filament])
+  select.addEventListener("change", () => applyPicks({ machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value }));
+
+fetch(INDEX_URL)
+  .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
+  .then((loaded: ProfileIndex) => { index = loaded; showProfile(); })
+  .catch((err) => setStatus(`Couldn't load the printer list, so only a 3MF can supply print settings: ${err?.message ?? err}`));
 
 $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   const input = e.target as HTMLInputElement;

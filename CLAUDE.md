@@ -47,13 +47,15 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   outright in Safari private browsing and sandboxed iframes, and this is a convenience
   that may never stop the page loading.
 - `src/viewer.ts`, `src/main.ts` — UI. State in the URL hash. Design tokens in `styles.css`.
-- `src/profiles.ts` — built-in print settings: one entry per printer/nozzle/filament/process
-  naming three Bambu system presets. `bun run profiles` (`profiles.ts`) flattens each
-  preset's `inherits` chain and runs the installed Bambu Studio CLI to write
-  `profiles/<id>.config`, the `project_settings.config` Bambu itself would save. Committed,
-  served static. Bambu Studio 2.8 rejects a project whose config lacks `nozzle_diameter`
-  ("invalid config, load geometry data only"), so the generated file is the only honest
-  way to ship settings; never hand-write one.
+- `src/profiles.ts` — built-in print settings: printer → nozzle → process → filament out
+  of `profiles/index.json`, which `bun run profiles` (`profiles.ts`) scrapes from the
+  installed Bambu Studio's preset catalogue (`inherits` chains flattened). The composed
+  `project_settings.config` only names presets: Bambu Studio 2.8 overwrites every value
+  with the named system preset's and then selects it, so values would be ignored. What it
+  reads first, and the config must carry: `printer_model` (a BBL machine),
+  `nozzle_diameter` with an `extruder_type` of the same length, and `filament_colour`,
+  whose length is the filament count. Design note in
+  `docs/superpowers/specs/2026-09-17-print-settings-picker-design.md`.
 - The 3MF says `Application = BambuStudio-02.00.00.00`. Bambu's importer treats any other
   name as a third-party file and skips the settings entirely.
 

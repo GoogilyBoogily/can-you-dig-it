@@ -1,61 +1,79 @@
-// bun run profiles  →  profiles/<id>.config for every entry in src/profiles.ts.
+// bun run profiles  →  profiles/index.json, every Bambu Lab preset Bambu Studio ships.
 //
-// Bambu Studio's CLI writes the project_settings.config we want, but it does not
-// resolve a preset's `inherits` chain (it looks for machine_full/ directories the app
-// does not ship), so this flattens each chain first and hands the CLI complete files.
-// Needs Bambu Studio installed; rerun after a Bambu update and read the diff.
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { unzipSync } from "fflate";
-import { BUILT_IN_PROFILES, profileUrl } from "./src/profiles";
-import { stlBinary, bboxOf } from "./src/export";
+// The browser composes a project_settings.config that only names presets (see
+// docs/superpowers/specs/2026-09-17-print-settings-picker-design.md for why the values
+// do not matter), so all it needs is the catalogue: which machines exist, what bed and
+// nozzles they have, and which processes and filaments fit each one. Presets inherit
+// from parents, so each chain is flattened here. Needs Bambu Studio installed; rerun
+// after a Bambu update and read the diff.
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import type { ProfileIndex, Machine } from "./src/profiles";
 
 const APP = "/Applications/BambuStudio.app/Contents";
 const PRESETS = `${APP}/Resources/profiles/BBL`;
-const SCRATCH = resolve(".profiles-scratch"); // absolute: the CLI resolves relative paths somewhere else
 
-async function flattenPreset(kind: "machine" | "process" | "filament", name: string): Promise<Record<string, unknown>> {
-  const leaf = await Bun.file(join(PRESETS, kind, `${name}.json`)).json();
-  const { inherits, ...own } = leaf;
-  const parent = inherits ? await flattenPreset(kind, inherits) : {};
-  return { ...parent, ...own, name, from: "system" };
-}
+type Preset = Record<string, any>;
 
-/** The machine preset plus the bed its printer model defaults to; the CLI otherwise leaves "Cool Plate". */
-async function machinePreset(name: string): Promise<Record<string, unknown>> {
-  const machine = await flattenPreset("machine", name);
-  const model = await Bun.file(join(PRESETS, "machine", `${machine.printer_model}.json`)).json();
-  return { ...machine, curr_bed_type: model.default_bed_type };
-}
-
-function cubeStl(): Uint8Array {
-  const pos = new Float32Array([0, 0, 0, 10, 0, 0, 10, 10, 0, 0, 10, 0, 0, 0, 10, 10, 0, 10, 10, 10, 10, 0, 10, 10]);
-  const idx = new Uint32Array([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7]);
-  return stlBinary({ name: "cube", pos, idx, bbox: bboxOf(pos) });
-}
-
-rmSync(SCRATCH, { recursive: true, force: true }); mkdirSync(SCRATCH); mkdirSync("profiles", { recursive: true });
-writeFileSync(join(SCRATCH, "cube.stl"), cubeStl());
-
-for (const profile of BUILT_IN_PROFILES) {
-  const files = { machine: profile.machine, process: profile.process, filament: profile.filament };
-  const paths: Record<string, string> = {};
-  for (const [kind, name] of Object.entries(files) as ["machine" | "process" | "filament", string][]) {
-    paths[kind] = join(SCRATCH, `${kind}.json`);
-    const preset = kind === "machine" ? await machinePreset(name) : await flattenPreset(kind, name);
-    writeFileSync(paths[kind], JSON.stringify(preset, null, 2));
+// Presets refer to each other by the `name` inside the file, which is not always the
+// file name ("Bambu Support For PA/PET @base" lives in "Bambu Support For PA PET @base.json").
+const files = new Map<string, Preset>();
+async function loadKind(kind: string): Promise<string[]> {
+  const names: string[] = [];
+  for (const file of readdirSync(join(PRESETS, kind)).filter((f) => f.endsWith(".json")).sort()) {
+    const preset = await Bun.file(join(PRESETS, kind, file)).json();
+    files.set(`${kind}/${preset.name}`, preset);
+    names.push(preset.name);
   }
-  const outDir = join(SCRATCH, profile.id); mkdirSync(outDir);
-  const cli = Bun.spawnSync([
-    `${APP}/MacOS/BambuStudio`, "--debug", "1",
-    "--load-settings", `${paths.machine};${paths.process}`,
-    "--load-filaments", paths.filament,
-    "--export-3mf", "out.3mf", "--outputdir", outDir, join(SCRATCH, "cube.stl"),
-  ]);
-  if (cli.exitCode !== 0) throw new Error(`Bambu Studio CLI failed for ${profile.id} (exit ${cli.exitCode}):\n${cli.stderr}`);
-  const config = unzipSync(new Uint8Array(await Bun.file(join(outDir, "out.3mf")).arrayBuffer()))["Metadata/project_settings.config"];
-  if (!config?.length) throw new Error(`no project_settings.config in the CLI output for ${profile.id}`);
-  writeFileSync(profileUrl(profile.id), config);
-  console.log(`${profileUrl(profile.id)} ${(config.length / 1024).toFixed(0)} KB`);
+  return names;
 }
-rmSync(SCRATCH, { recursive: true, force: true });
+
+function flattenPreset(kind: string, name: string): Preset {
+  const preset = files.get(`${kind}/${name}`);
+  if (!preset) throw new Error(`no ${kind} preset named ${name}`);
+  const { inherits, ...own } = preset;
+  return inherits ? { ...flattenPreset(kind, inherits), ...own } : own;
+}
+
+const presetNames = loadKind;
+
+const version = (await Bun.file(`${APP}/Info.plist`).text()).match(/CFBundleShortVersionString<\/key>\s*<string>([^<]+)/)![1];
+
+const machines: Machine[] = [];
+for (const name of await presetNames("machine")) {
+  const match = name.match(/^(.+) ([\d.]+) nozzle$/);
+  if (!match) continue; // printer model files and gcode templates
+  const preset = flattenPreset("machine", name);
+  if (preset.instantiation === "false") continue;
+  const model = flattenPreset("machine", preset.printer_model);
+  machines.push({
+    name, printer: preset.printer_model, nozzle: match[2],
+    nozzleDiameters: preset.nozzle_diameter, extruderTypes: preset.extruder_type,
+    printableArea: preset.printable_area, printableHeight: preset.printable_height, bedType: model.default_bed_type,
+  });
+}
+const machineIndex = new Map(machines.map((m, i) => [m.name, i]));
+const compatible = (preset: Preset) => (preset.compatible_printers ?? []).map((n: string) => machineIndex.get(n)).filter((i: number | undefined) => i !== undefined);
+
+const processes = [];
+for (const name of await presetNames("process")) {
+  const preset = flattenPreset("process", name);
+  if (preset.instantiation !== "true") continue;
+  const printers = compatible(preset);
+  if (!printers.length) continue;
+  processes.push({ name, layerHeight: Number(preset.layer_height), printers });
+}
+
+const filaments = [];
+for (const name of await presetNames("filament")) {
+  const preset = flattenPreset("filament", name);
+  if (preset.instantiation !== "true") continue;
+  const printers = compatible(preset);
+  if (!printers.length) continue;
+  filaments.push({ name, label: name.replace(/ @.*$/, ""), vendor: preset.filament_vendor?.[0] ?? "Other", colour: preset.default_filament_colour?.[0] ?? "#00AE42", printers });
+}
+
+const index: ProfileIndex = { version, machines, processes, filaments };
+const json = JSON.stringify(index);
+await Bun.write("profiles/index.json", json);
+console.log(`profiles/index.json ${(json.length / 1024).toFixed(0)} KB: ${machines.length} machines, ${processes.length} processes, ${filaments.length} filaments`);

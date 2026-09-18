@@ -92,7 +92,12 @@
       <button type="button" class="primary" id="dl3mf">Download 3MF project</button>
       <button type="button" id="dlstl">Download STL zip</button>
       <p class="profile">
-        <label class="profilePick">Print settings<select id="profileBuiltIn"><option value="">Pick a printer…</option></select></label>
+        <div class="profilePick">Print settings
+          <select id="pickPrinter" aria-label="Printer"><option value="">Pick a printer…</option></select>
+          <select id="pickNozzle" aria-label="Nozzle" disabled></select>
+          <select id="pickProcess" aria-label="Process" disabled></select>
+          <select id="pickFilament" aria-label="Filament" disabled></select>
+        </div>
         <label class="profilePick">Or load them from a 3MF<input type="file" id="profileIn" accept=".3mf"></label>
         <span id="profileNow"></span>
         <button type="button" id="profileClear" hidden>Clear</button>
