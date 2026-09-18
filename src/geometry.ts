@@ -61,13 +61,13 @@ export interface Derived {
 /** Ligament grows with the cell so the bars stay in proportion; never under four 0.42 mm lines. */
 const ligFor = (R: number) => Math.max(K.ligMin, K.ligRatio * R);
 
-/** The radius at which two whole stretched rows fill a panel of height `panelH`:
- *  sqrt(3) * (2R + 1.5P) with P = R + lig / sqrt(3), 1 mm spare so float noise cannot
- *  drop the top row. Same cells on every tier, sized from the upper deck. */
+/** The radius at which three whole rows fill a panel of height `panelH`:
+ *  2R + 2 * 1.5P with P = R + lig / sqrt(3), 1 mm spare so float noise cannot drop
+ *  the top row. Same cells on every tier, sized from the upper deck. */
 function autoHexR(panelH: number): number {
-  const rows = 3.5 * Math.sqrt(3);
-  let R = (panelH - 1) / (rows + 1.5 * K.ligRatio);
-  if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - 1.5 * K.ligMin) / rows;
+  const rows = 5;
+  let R = (panelH - 1) / (rows + Math.sqrt(3) * K.ligRatio);
+  if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - Math.sqrt(3) * K.ligMin) / rows;
   return Math.min(K.hexMax, Math.max(K.hexMin, R));
 }
 
@@ -296,27 +296,46 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
     for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
     if (d.split) keep.push(g.rect(-K.lapLen - 2.5, 0, 2.5, H));
     const panel = g.rect(-L / 2 + b, b, L / 2 - b, H - b);
-    const wcells = g.hexCells(d.hexR, d.lig, panel, Math.sqrt(3), keep);
+    const wcells = g.hexCells(d.hexR, d.lig, panel, 1, keep);
     if (wcells) for (const sy of [1, -1]) cuts.push(g.prismY(wcells, o.wall + 4, sy * py - (o.wall + 4) / 2));
 
-    // recess the outer face over the lattice field; 45 deg ceiling. The minimal web is
-    // four 0.42 mm lines, the same floor as the ligament width: two perimeters a side, no infill
+    // recess the outer face over the lattice field and down through the bottom border,
+    // 45 deg ceiling under the top one. Pads stay round the peg sockets, which sit in
+    // that border. The minimal web is four 0.42 mm lines, the same floor as the ligament
+    // width: two perimeters a side, no infill
     const rd = o.wall - (minimal ? K.ligMin : K.web);
+    const pads = [px, -px].map((x) => g.rect(x - 4, -1, x + 4, K.socD + 1.5));
     if (rd > 0.2) {
       const field = panel.subtract(g.cs2d(...keep));
       const zt = H - b;
       for (const comp of field.decompose()) {
         const { min: [gx0], max: [gx1] } = comp.bounds();
+        const face = g.rect(gx0, -1, gx1, zt - rd).subtract(g.cs2d(...pads));
         for (const sy of [1, -1]) {
           const yo = sy * OW / 2;
-          cuts.push(g.prismY(g.rect(gx0, b - 1, gx1, zt - rd), rd + 1, sy > 0 ? yo - rd : yo - 1));
+          cuts.push(g.prismY(face, rd + 1, sy > 0 ? yo - rd : yo - 1));
           const tri: Vec2[] = [[yo - sy * rd, zt - rd], [yo + sy * 1, zt - rd], [yo + sy * 1, zt + 1]];
           cuts.push(g.prismX(g.poly(sy > 0 ? tri : tri.slice().reverse()), gx1 - gx0, gx0));
         }
       }
     }
-    // deck centre band: open between the rails, cross-ties every ~80 mm
-    const x0 = xd + 6, x1 = L / 2 - o.wall - 6;
+    // the high-end wall only closes the chute above (a loading lip on a top lane), so it
+    // gets the same lattice and recess. Its cells stop at the wall's inner face where the
+    // deck's end tie is, instead of running 2 mm in as the side walls' do, or they would
+    // notch it; above the deck they run in so no skin is left in a cell.
+    {
+      const ezt = ewh - b, gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
+      const ecells = g.hexCells(d.hexR, d.lig, g.rect(gy0, b, gy1, ezt), 1, []);
+      if (ecells) {
+        const cut = g.prismX(ecells, o.wall + 4, L / 2 - o.wall - 2);
+        cuts.push(g.diff(cut, [g.box(L, OW + 2, dhi + 2, -o.wall, 0, dhi / 2)]));
+      }
+      cuts.push(g.prismX(g.rect(gy0, -1, gy1, ezt - rd), rd + 1, L / 2 - rd));
+      cuts.push(g.prismY(g.poly([[L / 2 - rd, ezt - rd], [L / 2 + 1, ezt - rd], [L / 2 + 1, ezt + 1]]), gy1 - gy0, gy0));
+    }
+    // deck centre band: open between the rails, cross-ties every ~80 mm, a tie at each end
+    const endTie = minimal ? 2.5 : 6;
+    const x0 = xd + endTie, x1 = L / 2 - o.wall - endTie;
     const ties = new Set<number>([Math.round(lipx * 10) / 10]);
     if (d.split) ties.add(Math.round((-K.spliceDepth / 2) * 10) / 10);
     const nt = Math.max(1, Math.round((x1 - x0) / 80) - 1);
@@ -344,16 +363,6 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
       if (bb - a <= 12) continue;
       cuts.push(g.box(bb - a, 2 * d.railHy, dhi + 4, (a + bb) / 2, 0, dhi / 2 + 1));
       if (minimal) for (const sy of [1, -1]) cuts.push(g.box(bb - a, strip, dhi + 4, (a + bb) / 2, sy * (IW / 2 - strip / 2), dhi / 2 + 1));
-    }
-    // minimal: the high-end wall only closes the chute above, so it gets the lattice too.
-    // The deck's end block is a keep-out: a cell there would notch it, so only the top
-    // row cuts, level with the side walls'. A loading lip is too low for any cell.
-    if (minimal) {
-      const ezt = ewh - b, gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
-      const ecells = g.hexCells(d.hexR, d.lig, g.rect(gy0, b, gy1, ezt), Math.sqrt(3), [g.rect(-IW / 2, 0, IW / 2, dhi + 1)]);
-      if (ecells) cuts.push(g.prismX(ecells, o.wall + 4, L / 2 - o.wall - 2));
-      cuts.push(g.prismX(g.rect(gy0, b - 1, gy1, ezt - rd), rd + 1, L / 2 - rd));
-      cuts.push(g.prismY(g.poly([[L / 2 - rd, ezt - rd], [L / 2 + 1, ezt - rd], [L / 2 + 1, ezt + 1]]), gy1 - gy0, gy0));
     }
   }
   for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(g.cyl(K.socR + fit, K.socD, sx * px, sy * py, -0.01));
@@ -430,17 +439,20 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     for (const sx of [1, -1]) for (const sy of [1, -1]) keep.push(g.rect(sx * d.px - 8, sy * d.py - 8, sx * d.px + 8, sy * d.py + 8));
     // bigger cells and fat bars than the walls: a grille, not a lattice
     const field = g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14);
+    // the grille has its own radius, sized like the walls' so three whole rows fill the
+    // field: 2R + 2 * 1.5P with bars R/2, so P = R + R / (2 sqrt(3))
+    const coverR = (OW - 28 - 1) / (5 + Math.sqrt(3) / 2);
     let cells: CS | null;
     if (o.design === "minimal") {
-      // a perforated sheet: cells twice the size on the ligament rule, running to the
-      // frame and clipped there. Whole cells leave the open area to luck - how many fit
-      // between the pegs and the window swings with the can - where clipping makes it
-      // the cell's own 83 % of the field whatever the size.
-      const R = 2 * d.hexR;
+      // a perforated sheet: bigger cells on the ligament rule, running to the frame and
+      // clipped there. Whole cells leave the open area to luck - how many fit between the
+      // pegs and the window swings with the can - where clipping makes it the cell's
+      // own 83 % of the field whatever the size.
+      const R = 1.5 * coverR;
       const grid = g.hexCells(R, ligFor(R), field.offset(2 * R, "Miter"), 1, []);
       cells = grid && grid.intersect(field).subtract(g.cs2d(...keep));
     } else {
-      cells = g.hexCells(1.4 * d.hexR, 0.5 * d.hexR, field, 1, keep);
+      cells = g.hexCells(coverR, coverR / 2, field, 1, keep);
     }
     if (cells) {
       // the seam crosses the field; clip cells at its solid band rather than dropping

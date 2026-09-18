@@ -14,7 +14,7 @@
   "gangPitch": 141
  },
  "lane-top-front": {
-  "vol": 173198,
+  "vol": 169401.6,
   "bbox": [
    [
     -238.392,
@@ -29,7 +29,7 @@
   ]
  },
  "lane-top-rear": {
-  "vol": 349888.4,
+  "vol": 328148.2,
   "bbox": [
    [
     -10,
@@ -44,7 +44,7 @@
   ]
  },
  "lane-mid-front": {
-  "vol": 173198,
+  "vol": 169401.6,
   "bbox": [
    [
     -238.392,
@@ -59,7 +59,7 @@
   ]
  },
  "lane-mid-rear": {
-  "vol": 386791.2,
+  "vol": 337445.1,
   "bbox": [
    [
     -10,
@@ -74,7 +74,7 @@
   ]
  },
  "lane-bottom-front": {
-  "vol": 237529.7,
+  "vol": 233572.9,
   "bbox": [
    [
     -240,
@@ -89,7 +89,7 @@
   ]
  },
  "lane-bottom-rear": {
-  "vol": 445064.7,
+  "vol": 394517.5,
   "bbox": [
    [
     -10,
@@ -104,7 +104,7 @@
   ]
  },
  "cover-front": {
-  "vol": 44724.4,
+  "vol": 45668,
   "bbox": [
    [
     -240,
@@ -119,7 +119,7 @@
   ]
  },
  "cover-rear": {
-  "vol": 36437.9,
+  "vol": 36285.1,
   "bbox": [
    [
     0,
@@ -179,7 +179,7 @@
   ]
  },
  "minimal-lane-top-front": {
-  "vol": 111306,
+  "vol": 104663.8,
   "bbox": [
    [
     -238.392,
@@ -194,7 +194,7 @@
   ]
  },
  "minimal-lane-top-rear": {
-  "vol": 157361.4,
+  "vol": 136679.2,
   "bbox": [
    [
     -10,
@@ -209,7 +209,7 @@
   ]
  },
  "minimal-lane-mid-front": {
-  "vol": 111306,
+  "vol": 104663.8,
   "bbox": [
    [
     -238.392,
@@ -224,7 +224,7 @@
   ]
  },
  "minimal-lane-mid-rear": {
-  "vol": 164507.8,
+  "vol": 142598.5,
   "bbox": [
    [
     -10,
@@ -239,7 +239,7 @@
   ]
  },
  "minimal-lane-bottom-front": {
-  "vol": 130708.5,
+  "vol": 124154.9,
   "bbox": [
    [
     -240,
@@ -254,7 +254,7 @@
   ]
  },
  "minimal-lane-bottom-rear": {
-  "vol": 184351.1,
+  "vol": 159415.5,
   "bbox": [
    [
     -10,
@@ -269,7 +269,7 @@
   ]
  },
  "minimal-cover-front": {
-  "vol": 31752.1,
+  "vol": 32227.9,
   "bbox": [
    [
     -240,
@@ -284,7 +284,7 @@
   ]
  },
  "minimal-cover-rear": {
-  "vol": 24563.9,
+  "vol": 24917.5,
   "bbox": [
    [
     0,

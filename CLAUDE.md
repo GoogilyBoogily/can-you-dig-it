@@ -66,26 +66,33 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   chute). `top=true` lanes get a 20 mm loading lip instead. Flat layouts use `top` lanes.
 - Long lanes split at x=0: rear half carries a deck dovetail tongue + outer wall
   half-laps; front half has the socket + inner laps. Slides together vertically, no glue.
-- Honeycomb: wall cells are stretched √3 so ligaments are vertical and peaks are 45°
-  (self-supporting). Only whole cells are cut, centred in the panel; a cell touching a
-  keep-out (dovetail, splice) is dropped, not clipped, so every hole is the same shape
-  and the solid bands read as intended. `hexAuto` sizes the radius so two rows fill the
-  upper-deck wall; the ligament follows the radius (`ligFor`). End walls are solid. The
-  cover is a grille: 1.4× the wall radius with bars half the radius wide, and only the
-  seam band clips cells, so the pattern carries across the joint.
-  Outer wall face is recessed to a 3.5 mm web with a 45° ceiling. Deck centre band is
-  open with cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
+- Honeycomb: regular pointy-top cells (they were stretched √3 for 45° peaks until
+  2026-09-18; the user wants them regular, so peaks are 30° above horizontal — a 60°
+  overhang, which prints but may sag a little). Vertical side ligaments carry the tier
+  above. Only whole cells are cut, centred in the panel; a cell touching a keep-out
+  (dovetail, splice) is dropped, not clipped, so every hole is the same shape and the
+  solid bands read as intended. `hexAuto` sizes the radius so three rows fill the
+  upper-deck wall; the ligament follows the radius (`ligFor`). The high-end wall gets
+  the same lattice and recess; its cell cut stops at the wall's inner face below the
+  deck top so it cannot notch the deck's end tie. The standard cover is a grille with
+  its own radius (three whole rows fill its field, bars half the radius) — it used to
+  borrow the wall's and lost a row whenever that changed — and only the seam band clips
+  cells, so the pattern carries across the joint.
+  Outer wall face is recessed to a 3.5 mm web with a 45° ceiling, down through the
+  bottom border, with 8 mm pads left round the peg sockets that sit in it. The dovetail
+  bands stay full: the −Y face needs 3 mm behind its socket, and the +Y recess cut runs
+  1 mm past the face and would sever the tongue. Deck centre band is open with
+  cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
   tongue's whole root (`test/splice.test.ts`).
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
   `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
   only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
-  standard rail with the strip to the wall open, 2.5 mm ties, the end wall latticed on
-  its top row and recessed, the cover a perforated sheet (2× cells, ligament bars,
-  clipped at the frame). Solid volume is about half; the filament model says −19 % on
-  lanes because what is left is thin and prints dense. Spec in
-  `docs/superpowers/specs/2026-09-18-minimal-design.md`.
+  standard rail with the strip to the wall open, 2.5 mm ties and end ties, the cover a
+  perforated sheet (1.5× the grille radius, ligament bars, clipped at the frame). Solid
+  volume is about half; the filament model says −23 % on lanes because what is left is
+  thin and prints dense. Spec in `docs/superpowers/specs/2026-09-18-minimal-design.md`.
 - `filamentGrams` has skins: the core is what sits inside the perimeters with 1 mm of
   material above and below. Without them a 2.4 mm plate read as 6 % infill.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of

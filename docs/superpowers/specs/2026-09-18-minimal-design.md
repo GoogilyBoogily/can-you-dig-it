@@ -31,18 +31,22 @@ gangs with a standard one in the same shelf. `solid` overrides `design`.
 |---|---|---|
 | wall web | 3.5 mm | 1.7 mm (`K.ligMin`) |
 | deck rails | 20 mm strips against the walls | 2.5 mm fins at the inner edge of the standard rail; the strip between fin and wall is open |
-| interior ties | 8 mm | 2.5 mm, wall to wall |
+| interior ties, end ties | 8 mm, 6 mm | 2.5 mm, wall to wall |
 | lip and splice ties | 10 mm each side | same: pocket walls and the tongue live there |
-| high-end wall | solid | hex through-cut on the top row, outer face recessed to 1.7 mm with the 45° ceiling |
-| cover | whole cells at 1.4 R, bars 0.5 R | cells at 2 R on the ligament rule, running to the frame and clipped there |
+| cover | whole cells, three rows filling the field, bars R/2 | cells at 1.5 R on the ligament rule, running to the frame and clipped there |
 
 The fins stand on the bed, so a can loads them in compression and nothing bridges. The
-ties are full wedge height and hold the fins upright every ~80 mm. The end wall's bottom
-row is dropped through the keep-out mechanism, since a cell there would notch the deck's
-end block; on a top lane the loading lip is too low for any cell and gets the recess only.
+ties are full wedge height and hold the fins upright every ~80 mm.
 
-Untouched in both designs: top chord (seat and peg pads), bottom border (the peg sockets
-sit in it), dovetail bands, splice lap band, pegs, lip, risers, rounding.
+Shared by both designs, added with this work: the hex cells are regular (the √3 stretch
+is gone; three rows fill the wall); the high-end wall gets the lattice and recess, with
+its cell cut stopped at the wall's inner face below the deck top so it cannot notch the
+deck's end tie; the outer recess runs down through the bottom border, leaving 8 mm pads
+round the peg sockets. On a top lane the loading lip gets whatever cells fit.
+
+Untouched in both designs: top chord (seat and peg pads), dovetail bands (3 mm behind a
+socket on −Y; the recess cut would sever the tongue on +Y), splice lap band, pegs, lip,
+risers, rounding.
 
 The cover clips because whole cells leave the open area to luck: how many fit between
 the pegs and the window swings with the can, and a sweep of radii gave anything from
@@ -54,8 +58,8 @@ field at any radius.
 `filamentGrams` had no skins: anything wider than two perimeters counted as 6 % infill,
 so a 2.4 mm cover plate read 30 g against the ~100 g a slicer prints, and most of what
 minimal removes was "6 %" to it. The core is now what sits inside the perimeters with
-1 mm of material above and below. With skins the default top lane is 312 g standard and
-252 g minimal; bottom 371 / 292; cover 128 / 89. The layout cards' `gramsEst` and the
+1 mm of material above and below. With skins the default top lane is 305 g standard and
+235 g minimal; bottom 353 / 273; cover 130 / 90. The layout cards' `gramsEst` and the
 regression window are re-based on those numbers.
 
 ## UI

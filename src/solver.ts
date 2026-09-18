@@ -54,7 +54,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
         const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H);
         const lanes = lanesMax * tiers;
         // per 480 mm lane and per cover, from filamentGrams on the default parts; the lip is ~9 g
-        const laneGrams = base.design === "minimal" ? 265 : 330;
+        const laneGrams = base.design === "minimal" ? 250 : 325;
         const coverGrams = base.cover ? (base.design === "minimal" ? 90 : 130) : 0;
         out.push({
           options: o, derived: d, cans,
