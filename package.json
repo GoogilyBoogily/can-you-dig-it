@@ -22,6 +22,7 @@
     "ref": "bun run ref.ts",
     "test": "bun test test/",
     "test:ui": "bun test test-ui/ --timeout 120000",
-    "check": "tsc -p ."
+    "check": "tsc -p .",
+    "profiles": "bun run profiles.ts"
   }
 }

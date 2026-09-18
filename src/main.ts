@@ -5,6 +5,7 @@ import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, type Placement } from "./export";
 import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { readNumbers, LIMITS } from "./validate";
+import { BUILT_IN_PROFILES, profileUrl, bedFromConfig } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -194,20 +195,62 @@ $("dlstl").addEventListener("click", () => { if (!built || buildPending) return;
 // Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
 let profile: StoredProfile | null = null;
 
+const builtIn = $<HTMLSelectElement>("profileBuiltIn");
+for (const p of BUILT_IN_PROFILES) builtIn.add(new Option(p.label, p.id));
+
 // textContent, not innerHTML: the file name is whatever the user named the file.
 function showProfile() {
   $("profileNow").textContent = profile
     ? `Using settings from ${profile.name}.`
-    : "Your 3MF opens with the slicer's own defaults.";
+    // Bambu Studio 2.8 calls a project with no settings "invalid config" and pops a
+    // dialog, but still loads every plate and part. Say so, or the dialog reads as failure.
+    : "No print settings loaded. Bambu Studio will warn about an invalid config and fall back to the slicer's own defaults; plates and parts still load.";
   $("profileClear").hidden = !profile;
+  builtIn.value = BUILT_IN_PROFILES.find((p) => p.label === profile?.name)?.id ?? "";
 }
 $("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
+
+/** State and label move together, so the two can never disagree. */
+function adoptProfile(loaded: StoredProfile) {
+  profile = loaded;
+  showProfile();
+  const failure = saveStoredProfile(loaded);
+  setStatus(failure
+    ? `Using ${loaded.name} for this session; couldn't save it for next time: ${failure}`
+    : `Print settings loaded from ${loaded.name}.`);
+}
 
 function loadProfile() {
   profile = loadStoredProfile();
   if (!profile) clearStoredProfile(); // don't re-read a value we already rejected
   showProfile();
 }
+
+builtIn.addEventListener("change", async () => {
+  const pick = BUILT_IN_PROFILES.find((p) => p.id === builtIn.value);
+  if (!pick) return;
+  let config: Uint8Array;
+  try {
+    const response = await fetch(profileUrl(pick.id));
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    config = new Uint8Array(await response.arrayBuffer());
+  } catch (err: any) {
+    // A failed fetch keeps whatever profile was already working, and the select says so.
+    setStatus(`Couldn't load ${pick.label}: ${err?.message ?? err}`);
+    showProfile();
+    return;
+  }
+  adoptProfile({ name: pick.label, config });
+  // The printer picked is the bed the parts must fit, so the form follows.
+  const bed = bedFromConfig(config);
+  let changed = false;
+  (["bedX", "bedY", "bedZ"] as const).forEach((name, axis) => {
+    const input = form.elements.namedItem(name) as HTMLInputElement;
+    if (Number(input.value) === bed[axis]) return;
+    input.value = String(bed[axis]); changed = true;
+  });
+  if (changed) { syncHash(); refit(); }
+});
 
 $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   const input = e.target as HTMLInputElement;
@@ -222,13 +265,7 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
     input.value = "";
     return;
   }
-  // State and label move together, so the two can never disagree.
-  profile = loaded;
-  showProfile();
-  const failure = saveStoredProfile(loaded);
-  setStatus(failure
-    ? `Using ${file.name} for this session; couldn't save it for next time: ${failure}`
-    : `Print settings loaded from ${file.name}.`);
+  adoptProfile(loaded);
   input.value = "";
 });
 

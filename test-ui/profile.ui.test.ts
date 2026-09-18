@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveDist } from "../dev";
+import { BUILT_IN_PROFILES, profileUrl } from "../src/profiles";
 
 // Downloads land in a directory of their own so the suite does not leave 3MFs in /tmp.
 const downloads = mkdtempSync(join(tmpdir(), "can-you-dig-it-ui-"));
@@ -222,5 +223,35 @@ test("a non-numeric dimension names the field instead of building NaN", async ()
   await page.waitForFunction(() => document.getElementById("status")!.textContent!.includes("Check your numbers"), { timeout: 15000 });
   expect(await page.locator("#status").innerText()).toMatch(/can diameter/i);
   expect(await page.locator("#layouts .layout").count()).toBe(0);
+  await page.close();
+});
+
+// A built-in profile is fetched from the site, not typed in, so this is the only test
+// that proves the bytes a slicer receives are the file the generator wrote.
+test("a built-in printer profile reaches the 3MF byte for byte and sets the bed", async () => {
+  const page = await buildOnce();
+  const p2s = BUILT_IN_PROFILES[0];
+  await page.fill("#form [name=bedX]", "220");
+  await page.selectOption("#profileBuiltIn", p2s.id);
+  await waitForLabel(page, p2s.label);
+  expect(await page.inputValue("#form [name=bedX]")).toBe("256");
+  await page.waitForFunction(() => !document.getElementById("status")!.classList.contains("busy"), { timeout: 90000 });
+
+  const zip = await downloadTo(page, "#dl3mf", "p2s.3mf");
+  const shipped = new Uint8Array(await Bun.file(profileUrl(p2s.id)).arrayBuffer());
+  expect(zip["Metadata/project_settings.config"]).toEqual(shipped);
+  await page.close();
+});
+
+test("a built-in profile survives a reload with the select still on it", async () => {
+  const page = await buildOnce();
+  const p2s = BUILT_IN_PROFILES[0];
+  await page.selectOption("#profileBuiltIn", p2s.id);
+  await waitForLabel(page, p2s.label);
+  await page.reload();
+  await waitForLabel(page, p2s.label);
+  expect(await page.inputValue("#profileBuiltIn")).toBe(p2s.id);
+  await page.click("#profileClear");
+  expect(await page.inputValue("#profileBuiltIn")).toBe("");
   await page.close();
 });

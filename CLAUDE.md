@@ -47,6 +47,15 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   outright in Safari private browsing and sandboxed iframes, and this is a convenience
   that may never stop the page loading.
 - `src/viewer.ts`, `src/main.ts` — UI. State in the URL hash. Design tokens in `styles.css`.
+- `src/profiles.ts` — built-in print settings: one entry per printer/nozzle/filament/process
+  naming three Bambu system presets. `bun run profiles` (`profiles.ts`) flattens each
+  preset's `inherits` chain and runs the installed Bambu Studio CLI to write
+  `profiles/<id>.config`, the `project_settings.config` Bambu itself would save. Committed,
+  served static. Bambu Studio 2.8 rejects a project whose config lacks `nozzle_diameter`
+  ("invalid config, load geometry data only"), so the generated file is the only honest
+  way to ship settings; never hand-write one.
+- The 3MF says `Application = BambuStudio-02.00.00.00`. Bambu's importer treats any other
+  name as a third-party file and skips the settings entirely.
 
 ## Design rules that are not obvious from the code
 - Cascade: tiers alternate 180° about Z. Upper decks lose one can-length to the drop
