@@ -20,7 +20,9 @@ export interface Machine {
   printableHeight: string;
   bedType: string;
 }
-export interface Process { name: string; layerHeight: number; printers: number[] }
+// extruderVariants: Bambu's per-nozzle-type slots ("Direct Drive Standard", "... High Flow");
+// per-variant values are arrays of that length, and a process pairs each with an extruder id.
+export interface Process { name: string; layerHeight: number; printers: number[]; extruderVariants: string[]; extruderIds: string[] }
 export interface Filament { name: string; label: string; vendor: string; colour: string; printers: number[] }
 export interface ProfileIndex { version: string; machines: Machine[]; processes: Process[]; filaments: Filament[] }
 
@@ -64,36 +66,61 @@ export const describePicks = (index: ProfileIndex, picks: Picks) => {
 
 // The values in Bambu's translucent-PETG demo 3MFs (wiki.bambulab.com/en/knowledge-sharing/
 // transparent-petg): one wall, no shells, 100 % aligned infill in one direction, everything
-// at 20 mm/s, fan off, more flow. The 0.4 demo also drops to 0.1 mm layers at 0.5 mm lines;
-// the 0.6 and 0.8 keep their layer height and widen the line to nozzle + 0.02. Every plate
-// prints flat and overhang-free, so fan off costs nothing here. 270 °C is PETG's number
-// and would cook PLA, so it is gated on the filament label.
-function translucentOverrides(machine: Machine, filament: Filament) {
+// at 20 mm/s, fan off, more flow, short retractions. Lines are 0.5 mm on a 0.4 nozzle and
+// nozzle + 0.02 above that, as in the demos. Layers are 0.2 mm on every nozzle: the 0.4
+// demo prints 0.1, but at 20 mm/s that is 1 mm³/s and a default shelf runs four weeks;
+// 0.2 halves it and is what the 0.6 and 0.8 demos print. No demo for 0.2 nozzles. The
+// first layer keeps the preset's 0.2: a 0.1 first layer on textured PEI varies by half
+// its height. Lines run at 45° so no tab has them parallel to its root (0° put
+// every wall tab's lines along the root); a flat plate looks the same at any one angle.
+// Every plate prints flat and overhang-free, so fan off costs nothing here, and the
+// overhang fan stays off too or the dovetail groove's 13 % flank gets a frosted band.
+// 270 °C is PETG's number and would cook PLA, so it is gated on the filament label.
+//
+// Speeds are per extruder variant (Standard, High Flow, ...), one slot per entry of the
+// process's print_extruder_variant. Bambu Studio restores a listed value only into slots
+// whose variant and extruder id it finds in the file's own list, and a scalar fills slot 0
+// alone: on an H2D that is extruder 1 while the filament prints from extruder 2, at system
+// speed. So the config names every slot and fills every one. Flow and temperature are
+// per variant too, but a 3MF's filament_extruder_variant is the per-filament list and
+// must match filament_self_index (PresetBundle.cpp, load_config_file_config), so those
+// stay in slot 0: the Standard nozzle. A High Flow nozzle keeps the preset's own.
+const TRANSLUCENT_LAYER = 0.2, TRANSLUCENT_SPEED = 20;
+const translucentLineWidth = (nozzle: number) => nozzle === 0.4 ? 0.5 : nozzle + 0.02;
+/** mm³/s the translucent settings extrude at on this nozzle, for a time estimate. */
+export const translucentFeed = (nozzle: number) => translucentLineWidth(nozzle) * TRANSLUCENT_LAYER * TRANSLUCENT_SPEED;
+
+function translucentOverrides(machine: Machine, process: Process, filament: Filament) {
   const nozzle = Number(machine.nozzle);
-  const lineWidth = nozzle === 0.4 ? "0.5" : nozzle > 0.4 ? (nozzle + 0.02).toFixed(2) : null;
-  const process: Record<string, string> = {
+  const lineWidth = translucentLineWidth(nozzle).toFixed(2).replace(/0$/, "");
+  const layerHeight = String(TRANSLUCENT_LAYER);
+  const perSlot = (value: string) => process.extruderVariants.map(() => value);
+  const speed = String(TRANSLUCENT_SPEED);
+  const processValues: Record<string, string | string[]> = {
     wall_loops: "1", top_shell_layers: "0", bottom_shell_layers: "0",
-    sparse_infill_density: "100%", sparse_infill_pattern: "alignedrectilinear", infill_direction: "0",
-    enable_overhang_speed: "0",
-    outer_wall_speed: "20", inner_wall_speed: "20", sparse_infill_speed: "20", internal_solid_infill_speed: "20",
-    initial_layer_speed: "20", initial_layer_infill_speed: "20", gap_infill_speed: "20", bridge_speed: "20",
-    ...(nozzle === 0.4 && { layer_height: "0.1", initial_layer_print_height: "0.1" }),
-    ...(lineWidth && { line_width: lineWidth, outer_wall_line_width: lineWidth, inner_wall_line_width: lineWidth, sparse_infill_line_width: lineWidth, internal_solid_infill_line_width: lineWidth }),
+    sparse_infill_density: "100%", sparse_infill_pattern: "alignedrectilinear", infill_direction: "45",
+    enable_overhang_speed: perSlot("0"),
+    outer_wall_speed: perSlot(speed), inner_wall_speed: perSlot(speed), sparse_infill_speed: perSlot(speed), internal_solid_infill_speed: perSlot(speed),
+    initial_layer_speed: perSlot(speed), initial_layer_infill_speed: perSlot(speed), gap_infill_speed: perSlot(speed), bridge_speed: perSlot(speed),
+    layer_height: layerHeight,
+    line_width: lineWidth, outer_wall_line_width: lineWidth, inner_wall_line_width: lineWidth, sparse_infill_line_width: lineWidth, internal_solid_infill_line_width: lineWidth,
   };
   const filamentValues: Record<string, string[]> = {
-    fan_min_speed: ["0"], fan_max_speed: ["0"], filament_flow_ratio: ["1.01"],
+    fan_min_speed: ["0"], fan_max_speed: ["0"], enable_overhang_bridge_fan: ["0"], filament_flow_ratio: ["1.01"], filament_retraction_length: ["0.3"],
     ...(/PETG/.test(filament.label) && { nozzle_temperature: ["270"], nozzle_temperature_initial_layer: ["270"] }),
   };
   return {
-    ...process, ...filamentValues,
-    different_settings_to_system: [Object.keys(process).join(";"), Object.keys(filamentValues).join(";"), ""],
+    print_extruder_variant: process.extruderVariants, print_extruder_id: process.extruderIds,
+    ...processValues, ...filamentValues,
+    different_settings_to_system: [Object.keys(processValues).join(";"), Object.keys(filamentValues).join(";"), ""],
   };
 }
 
 export function composeProfile(index: ProfileIndex, picks: Picks): Uint8Array {
   const machine = index.machines.find((m) => m.name === picks.machine);
+  const process = index.processes.find((p) => p.name === picks.process);
   const filament = index.filaments.find((f) => f.name === picks.filament);
-  if (!machine || !filament) throw new Error(`unknown preset in ${JSON.stringify(picks)}`);
+  if (!machine || !process || !filament) throw new Error(`unknown preset in ${JSON.stringify(picks)}`);
   const config = {
     version: index.version,
     printer_technology: "FFF",
@@ -107,7 +134,7 @@ export function composeProfile(index: ProfileIndex, picks: Picks): Uint8Array {
     printable_area: machine.printableArea,
     printable_height: machine.printableHeight,
     curr_bed_type: machine.bedType,
-    ...(picks.translucent && translucentOverrides(machine, filament)),
+    ...(picks.translucent && translucentOverrides(machine, process, filament)),
   };
   return new TextEncoder().encode(JSON.stringify(config, null, 2));
 }
@@ -117,7 +144,9 @@ export function picksFromConfig(index: ProfileIndex, config: Uint8Array): Picks 
   let parsed: any;
   try { parsed = JSON.parse(new TextDecoder().decode(config)); } catch { return null; }
   const picks: Picks = { machine: parsed?.printer_settings_id, process: parsed?.print_settings_id, filament: parsed?.filament_settings_id?.[0] };
-  if (parsed?.different_settings_to_system) picks.translucent = true;
+  // Any project Bambu Studio saved carries different_settings_to_system too, so look for
+  // the override itself rather than the list.
+  if (parsed?.sparse_infill_pattern === "alignedrectilinear" && parsed?.fan_max_speed?.[0] === "0") picks.translucent = true;
   const known = index.machines.some((m) => m.name === picks.machine)
     && index.processes.some((p) => p.name === picks.process)
     && index.filaments.some((f) => f.name === picks.filament);

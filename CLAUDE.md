@@ -61,7 +61,11 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   with the named system preset's and then selects it, except keys listed in
   `different_settings_to_system` (one `;`-joined list per preset: process, filament,
   printer), which survive as a "(modified)" preset. The Translucent checkbox rides on
-  that with Bambu's own translucent-PETG demo values (`translucentOverrides`). What it
+  that with Bambu's own translucent-PETG demo values (`translucentOverrides`). Speeds
+  are per extruder variant: one slot per entry of the process's `print_extruder_variant`
+  (scraped into the index), and a scalar lands in slot 0 only, which on an H2D is the
+  extruder the filament does not print from. `filament_extruder_variant` must not be
+  written: the loader checks its length against `filament_self_index`. What it
   reads first, and the config must carry: `printer_model` (a BBL machine),
   `nozzle_diameter` with an `extruder_type` of the same length, and `filament_colour`,
   whose length is the filament count. Design notes in

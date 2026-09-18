@@ -7,7 +7,8 @@ export type Req =
   | { type: "build"; id: number; options: Options }
   | { type: "export"; id: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
-export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; role: "lane" | "lip" | "riser" | "cover" }
+// solidGrams: the part printed 100 % dense, which the translucent settings do.
+export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: "lane" | "lip" | "riser" | "cover" }
 export type Res =
   | { type: "built"; id: number; parts: PartOut[]; placed: Placement[]; nplates: number; ms: number }
   | { type: "file"; id: number; name: string; bytes: Uint8Array }
@@ -39,7 +40,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const parts: PartOut[] = [];
       const add = (name: string, m: Manifold | undefined, qty: number, role: PartOut["role"]) => {
         if (!m || qty <= 0) return;
-        parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), role });
+        parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), solidGrams: m.volume() / 1000 * 1.27, role });
       };
       const qtyOf = { bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: cascade ? o.lanesWide : o.lanesWide * o.tiers };
       for (const ln of set.lanes) for (const plate of ln.plates) {

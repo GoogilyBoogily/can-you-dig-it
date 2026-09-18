@@ -5,7 +5,7 @@ import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, type Placement } from "./export";
 import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { readNumbers, LIMITS } from "./validate";
-import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, type ProfileIndex, type Picks } from "./profiles";
+import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -132,8 +132,7 @@ worker.onmessage = (e: MessageEvent<Res>) => {
   viewer.reset();
   renderTabs(); renderResults();
   showTab("assembly");
-  const grams = r.parts.reduce((a, p) => a + p.grams * p.qty, 0);
-  setStatus(`${built.layout.cans} cans · ${r.nplates} plates · ~${(grams / 1000).toFixed(2)} kg · built in ${(r.ms / 1000).toFixed(1)} s`);
+  setStatus(`${built.layout.cans} cans · ${r.nplates} plates · ~${(totalGrams(r.parts) / 1000).toFixed(2)} kg · built in ${(r.ms / 1000).toFixed(1)} s`);
 };
 
 worker.onerror = (e) => {
@@ -164,10 +163,20 @@ function showTab(key: string) {
   else if (key.startsWith("plate:")) { const n = Number(key.slice(6)); viewer.showPlate(placed.filter((p) => p.plate === n), layout.options.bed); }
 }
 
+// The translucent settings print every part solid at 20 mm/s, so the estimate follows the checkbox.
+const partGrams = (p: PartOut) => pick.translucent.checked ? p.solidGrams : p.grams;
+const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p) * p.qty, 0);
+function translucentHours(parts: PartOut[]) {
+  const machine = index?.machines.find((m) => m.name === pick.nozzle.value);
+  if (!machine) return "";
+  const mm3 = parts.reduce((a, p) => a + p.solidGrams / 1.27 * 1000 * p.qty, 0);
+  return `, about ${(mm3 / translucentFeed(Number(machine.nozzle)) / 3600).toFixed(0)} h at 20 mm/s`;
+}
+
 function renderResults() {
   const { parts, placed, nplates, layout } = built!;
   const d = layout.derived, o = layout.options;
-  const grams = parts.reduce((a, p) => a + p.grams * p.qty, 0);
+  const grams = totalGrams(parts);
   const g = (n: number) => `${n.toFixed(0)} g`;
   $("summary").innerHTML = `<h2>What you get</h2><dl>
     <dt>Capacity</dt><dd>${layout.cans} cans</dd>
@@ -176,13 +185,13 @@ function renderResults() {
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
-    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG</dd>
+    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
     ${layout.warnings.length ? `<p class="warn">${layout.warnings.join("<br>")}</p>` : ""}`;
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";
   const byPlate = new Map<number, Placement[]>();
   for (const p of placed) { if (!byPlate.has(p.plate)) byPlate.set(p.plate, []); byPlate.get(p.plate)!.push(p); }
-  const gramsOf = (name: string) => parts.find((p) => name === p.name || name.startsWith(p.name + "-"))?.grams ?? 0;
+  const gramsOf = (name: string) => { const p = parts.find((p) => name === p.name || name.startsWith(p.name + "-")); return p ? partGrams(p) : 0; };
   for (const [n, items] of [...byPlate.entries()].sort((a, b) => a[0] - b[0])) {
     const b = document.createElement("button"); b.type = "button"; b.className = "plate"; b.setAttribute("data-key", `plate:${n}`);
     const summary = plateSummary(items);
@@ -261,8 +270,9 @@ function fillSelect(select: HTMLSelectElement, options: { value: string; label: 
 function showPicks(picks: Picks | null) {
   const machine = picks && index!.machines.find((m) => m.name === picks.machine);
   fillSelect(pick.printer, [{ value: "", label: "Pick a printer…" }, ...printersOf(index!).map((p) => ({ value: p, label: p }))], machine?.printer ?? "");
-  pick.translucent.checked = !!picks?.translucent;
-  pick.translucent.disabled = !machine;
+  // No Bambu recipe for a 0.2 nozzle, and at 20 mm/s it would run for months.
+  pick.translucent.disabled = !machine || machine.nozzle === "0.2";
+  pick.translucent.checked = !pick.translucent.disabled && !!picks?.translucent;
   if (!machine || !picks) { for (const select of [pick.nozzle, pick.process, pick.filament]) fillSelect(select, [], ""); return; }
   fillSelect(pick.nozzle, machinesFor(index!, machine.printer).map((m) => ({ value: m.name, label: `${m.nozzle} mm nozzle` })), machine.name);
   fillSelect(pick.process, processesFor(index!, machine.name).map((p) => ({ value: p.name, label: p.name.replace(/ @.*$/, "") })), picks.process);
@@ -293,6 +303,7 @@ pick.printer.addEventListener("change", () => {
 pick.nozzle.addEventListener("change", () => applyPicks({ ...defaultPicks(index!, pick.nozzle.value), translucent: pick.translucent.checked }));
 for (const control of [pick.process, pick.filament, pick.translucent])
   control.addEventListener("change", () => applyPicks({ machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value, translucent: pick.translucent.checked }));
+pick.translucent.addEventListener("change", () => { if (built) renderResults(); });
 
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })

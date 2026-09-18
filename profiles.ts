@@ -1,17 +1,23 @@
 // bun run profiles  →  profiles/index.json, every Bambu Lab preset Bambu Studio ships.
 //
-// The browser composes a project_settings.config that only names presets (see
+// The browser composes a project_settings.config that mostly names presets (see
 // docs/superpowers/specs/2026-09-17-print-settings-picker-design.md for why the values
 // do not matter), so all it needs is the catalogue: which machines exist, what bed and
 // nozzles they have, and which processes and filaments fit each one. Presets inherit
-// from parents, so each chain is flattened here. Needs Bambu Studio installed; rerun
-// after a Bambu update and read the diff.
+// from parents, so each chain is flattened here. Needs Bambu Studio installed, or
+// BAMBU_PROFILES=<checkout>/resources/profiles/BBL BAMBU_VERSION=02.08.02.61 from a tag
+// of github.com/bambulab/BambuStudio; rerun after a Bambu update and read the diff.
+//
+// The one place values do matter: the translucent speeds are per extruder variant
+// (Standard, High Flow, ...) and Bambu Studio keeps a value only in the slots whose
+// variant name and extruder id match, so each process carries its print_extruder_variant
+// and print_extruder_id.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ProfileIndex, Machine } from "./src/profiles";
 
 const APP = "/Applications/BambuStudio.app/Contents";
-const PRESETS = `${APP}/Resources/profiles/BBL`;
+const PRESETS = process.env.BAMBU_PROFILES ?? `${APP}/Resources/profiles/BBL`;
 
 type Preset = Record<string, any>;
 
@@ -37,7 +43,7 @@ function flattenPreset(kind: string, name: string): Preset {
 
 const presetNames = loadKind;
 
-const version = (await Bun.file(`${APP}/Info.plist`).text()).match(/CFBundleShortVersionString<\/key>\s*<string>([^<]+)/)![1];
+const version = process.env.BAMBU_VERSION ?? (await Bun.file(`${APP}/Info.plist`).text()).match(/CFBundleShortVersionString<\/key>\s*<string>([^<]+)/)![1];
 
 const machines: Machine[] = [];
 for (const name of await presetNames("machine")) {
@@ -61,7 +67,7 @@ for (const name of await presetNames("process")) {
   if (preset.instantiation !== "true") continue;
   const printers = compatible(preset);
   if (!printers.length) continue;
-  processes.push({ name, layerHeight: Number(preset.layer_height), printers });
+  processes.push({ name, layerHeight: Number(preset.layer_height), printers, extruderVariants: preset.print_extruder_variant, extruderIds: preset.print_extruder_id });
 }
 
 const filaments = [];

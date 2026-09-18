@@ -3,7 +3,7 @@
 // the few keys Bambu Studio 2.8 reads before it swaps in the system preset's values:
 // printer_model, nozzle_diameter with a matching extruder_type, filament_colour.
 import { test, expect } from "bun:test";
-import { INDEX_URL, composeProfile, picksFromConfig, defaultPicks, processesFor, filamentsFor, printersOf, machinesFor, vendorsOf, bedFromConfig, describePicks, type ProfileIndex } from "../src/profiles";
+import { INDEX_URL, composeProfile, picksFromConfig, defaultPicks, processesFor, filamentsFor, printersOf, machinesFor, vendorsOf, bedFromConfig, describePicks, translucentFeed, type ProfileIndex } from "../src/profiles";
 
 const index: ProfileIndex = await Bun.file(INDEX_URL).json();
 const P2S = "Bambu Lab P2S 0.4 nozzle", H2D = "Bambu Lab H2D 0.4 nozzle";
@@ -80,18 +80,28 @@ test("translucent PETG on a 0.4 nozzle carries the demo's process and filament o
   expect(config.bottom_shell_layers).toBe("0");
   expect(config.sparse_infill_density).toBe("100%");
   expect(config.sparse_infill_pattern).toBe("alignedrectilinear");
-  expect(config.outer_wall_speed).toBe("20");
-  expect(config.layer_height).toBe("0.1");
+  expect(config.infill_direction).toBe("45");
+  expect(config.layer_height).toBe("0.2"); // the demo's 0.1 is a month-long print on a shelf
+  expect(config.initial_layer_print_height).toBeUndefined(); // the preset's 0.2, textured PEI
   expect(config.line_width).toBe("0.5");
   expect(config.fan_max_speed).toEqual(["0"]);
+  expect(config.filament_retraction_length).toEqual(["0.3"]);
+  // Speeds fill one slot per extruder variant the process names, else Bambu Studio restores
+  // slot 0 only and the H2D's second extruder prints at system speed.
+  expect(config.print_extruder_variant).toEqual(["Direct Drive Standard", "Direct Drive High Flow", "Direct Drive E3D High Flow"]);
+  expect(config.print_extruder_id).toHaveLength(3);
+  expect(config.outer_wall_speed).toEqual(["20", "20", "20"]);
+  expect(config.enable_overhang_speed).toEqual(["0", "0", "0"]);
   expect(config.filament_flow_ratio).toEqual(["1.01"]);
   expect(config.nozzle_temperature).toEqual(["270"]);
+  expect(config.filament_extruder_variant).toBeUndefined(); // the 3MF loader checks it against filament_self_index
   const [process, filament, printer] = config.different_settings_to_system;
   // Every listed key is one the config sets, and every override is listed: an unlisted
   // value is silently replaced by the system preset's.
   for (const key of [...process.split(";"), ...filament.split(";")]) expect(config[key], key).toBeDefined();
   expect(process.split(";")).toEqual(expect.arrayContaining(["wall_loops", "top_shell_layers", "sparse_infill_pattern", "layer_height", "line_width", "outer_wall_speed"]));
-  expect(filament.split(";").sort()).toEqual(["fan_max_speed", "fan_min_speed", "filament_flow_ratio", "nozzle_temperature", "nozzle_temperature_initial_layer"]);
+  expect(process.split(";")).not.toContain("print_extruder_variant"); // slot names, not an override
+  expect(filament.split(";").sort()).toEqual(["enable_overhang_bridge_fan", "fan_max_speed", "fan_min_speed", "filament_flow_ratio", "filament_retraction_length", "nozzle_temperature", "nozzle_temperature_initial_layer"]);
   expect(printer).toBe("");
 });
 
@@ -102,11 +112,18 @@ test("translucent PLA keeps its own temperature", () => {
   expect(config.different_settings_to_system[1]).not.toContain("nozzle_temperature");
 });
 
-test("a wider nozzle keeps its process's layer height and widens the line", () => {
+test("the H2D fills both extruders' slots", () => {
+  const config = translucent(H2D, "Bambu PETG Translucent @BBL H2D 0.4 nozzle");
+  expect(config.print_extruder_id).toEqual(["1", "1", "1", "2", "2", "2", "2"]);
+  expect(config.outer_wall_speed).toHaveLength(7);
+});
+
+test("a wider nozzle widens the line to nozzle + 0.02, and the feed rate follows", () => {
   const config = translucent("Bambu Lab P2S 0.6 nozzle", "Bambu PETG Translucent @BBL P2S 0.6 nozzle");
-  expect(config.layer_height).toBeUndefined();
+  expect(config.layer_height).toBe("0.2");
   expect(config.line_width).toBe("0.62");
-  expect(config.different_settings_to_system[0]).not.toContain("layer_height");
+  expect(translucentFeed(0.4)).toBeCloseTo(0.5 * 0.2 * 20);
+  expect(translucentFeed(0.6)).toBeCloseTo(0.62 * 0.2 * 20);
 });
 
 test("translucent off writes today's file", () => {
@@ -119,6 +136,9 @@ test("translucent off writes today's file", () => {
 test("translucent round-trips through the config and shows in the label", () => {
   const picks = { ...defaultPicks(index, P2S), filament: PETG, translucent: true };
   expect(picksFromConfig(index, composeProfile(index, picks))).toEqual(picks);
+  // A project Bambu Studio saved lists its own modified keys; that is not a translucent pick.
+  const saved = { ...parse(composeProfile(index, defaultPicks(index, P2S))), different_settings_to_system: ["wall_loops", "", ""], wall_loops: "3" };
+  expect(picksFromConfig(index, new TextEncoder().encode(JSON.stringify(saved)))?.translucent).toBeUndefined();
   expect(describePicks(index, picks)).toBe("Bambu Lab P2S · 0.4 nozzle · Bambu PETG Translucent · 0.20mm Standard · translucent");
 });
 

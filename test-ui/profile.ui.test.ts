@@ -244,6 +244,7 @@ test("picking printer, nozzle and filament composes a config naming those preset
   await waitForLabel(page, "Generic PETG");
   await page.check("#pickTranslucent");
   await waitForLabel(page, "translucent");
+  expect(await page.locator("#summary").innerText()).toMatch(/kg PETG solid, about \d+ h at 20 mm\/s/);
   expect(await page.inputValue("#form [name=bedZ]")).toBe("250");
   await page.waitForFunction(() => !document.getElementById("status")!.classList.contains("busy"), { timeout: 90000 });
 
