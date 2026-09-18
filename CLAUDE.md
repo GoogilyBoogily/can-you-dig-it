@@ -120,10 +120,14 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   whole-row path on both designs. Spec in
   `docs/superpowers/specs/2026-09-18-pattern-axis-design.md`.
   Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
-  through the bottom border, with pads left round every ear notch and the end-wall
-  notch. The
+  through the bottom border, with pads left over every ear notch (the notch's own width,
+  so ear and pad read as one post) and the end-wall notch. The
   dovetail bands stay full: the −Y face needs 3 mm behind its groove, and the +Y recess
-  cut runs 1 mm past the face and would sever the rib. Deck centre band is open with
+  cut runs 1 mm past the face and would sever the rib. Gang dovetails, their bands and
+  grooves exist only when `lanesWide > 1`; a lone lane's outer faces are flat
+  (`test/gang.test.ts`). In the minimal deck the fin-to-wall strip keeps an ear-high
+  plinth under each ear: rooted by 1 mm inside a 2.5 mm tie, the tab hole took all of
+  it and the ears printed loose (`test/islands.test.ts`). Deck centre band is open with
   cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
