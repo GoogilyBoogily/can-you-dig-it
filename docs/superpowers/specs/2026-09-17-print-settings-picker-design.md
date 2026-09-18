@@ -22,6 +22,10 @@ before that point matter:
 So the browser composes a small JSON naming three system presets. No CLI, no per-combo
 files.
 
+Correction (2026-09-18): keys listed in `different_settings_to_system` are exempt from
+that overwrite. The translucent option uses it; see
+`2026-09-18-translucent-design.md`.
+
 ## Data
 
 `bun run profiles` scrapes `/Applications/BambuStudio.app/Contents/Resources/profiles/BBL`

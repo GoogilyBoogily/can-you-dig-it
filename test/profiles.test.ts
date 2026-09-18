@@ -68,6 +68,60 @@ test("the label reads like the dropdowns", () => {
   expect(describePicks(index, defaultPicks(index, P2S))).toBe("Bambu Lab P2S · 0.4 nozzle · Bambu PLA Basic · 0.20mm Standard");
 });
 
+// Translucent: the overrides Bambu's own demo 3MFs carry, and the different_settings_to_system
+// list that stops Bambu Studio replacing them with the system preset's values.
+const PETG = "Bambu PETG Translucent @BBL P2S 0.4 nozzle", PLA = "Bambu PLA Translucent @BBL P2S 0.4 nozzle";
+const translucent = (machine: string, filament: string) => parse(composeProfile(index, { ...defaultPicks(index, machine), filament, translucent: true }));
+
+test("translucent PETG on a 0.4 nozzle carries the demo's process and filament overrides, each listed", () => {
+  const config = translucent(P2S, PETG);
+  expect(config.wall_loops).toBe("1");
+  expect(config.top_shell_layers).toBe("0");
+  expect(config.bottom_shell_layers).toBe("0");
+  expect(config.sparse_infill_density).toBe("100%");
+  expect(config.sparse_infill_pattern).toBe("alignedrectilinear");
+  expect(config.outer_wall_speed).toBe("20");
+  expect(config.layer_height).toBe("0.1");
+  expect(config.line_width).toBe("0.5");
+  expect(config.fan_max_speed).toEqual(["0"]);
+  expect(config.filament_flow_ratio).toEqual(["1.01"]);
+  expect(config.nozzle_temperature).toEqual(["270"]);
+  const [process, filament, printer] = config.different_settings_to_system;
+  // Every listed key is one the config sets, and every override is listed: an unlisted
+  // value is silently replaced by the system preset's.
+  for (const key of [...process.split(";"), ...filament.split(";")]) expect(config[key], key).toBeDefined();
+  expect(process.split(";")).toEqual(expect.arrayContaining(["wall_loops", "top_shell_layers", "sparse_infill_pattern", "layer_height", "line_width", "outer_wall_speed"]));
+  expect(filament.split(";").sort()).toEqual(["fan_max_speed", "fan_min_speed", "filament_flow_ratio", "nozzle_temperature", "nozzle_temperature_initial_layer"]);
+  expect(printer).toBe("");
+});
+
+test("translucent PLA keeps its own temperature", () => {
+  const config = translucent(P2S, PLA);
+  expect(config.nozzle_temperature).toBeUndefined();
+  expect(config.fan_max_speed).toEqual(["0"]);
+  expect(config.different_settings_to_system[1]).not.toContain("nozzle_temperature");
+});
+
+test("a wider nozzle keeps its process's layer height and widens the line", () => {
+  const config = translucent("Bambu Lab P2S 0.6 nozzle", "Bambu PETG Translucent @BBL P2S 0.6 nozzle");
+  expect(config.layer_height).toBeUndefined();
+  expect(config.line_width).toBe("0.62");
+  expect(config.different_settings_to_system[0]).not.toContain("layer_height");
+});
+
+test("translucent off writes today's file", () => {
+  const config = parse(composeProfile(index, defaultPicks(index, P2S)));
+  expect(config.different_settings_to_system).toBeUndefined();
+  expect(config.wall_loops).toBeUndefined();
+  expect(config.fan_max_speed).toBeUndefined();
+});
+
+test("translucent round-trips through the config and shows in the label", () => {
+  const picks = { ...defaultPicks(index, P2S), filament: PETG, translucent: true };
+  expect(picksFromConfig(index, composeProfile(index, picks))).toEqual(picks);
+  expect(describePicks(index, picks)).toBe("Bambu Lab P2S · 0.4 nozzle · Bambu PETG Translucent · 0.20mm Standard · translucent");
+});
+
 test("composeProfile refuses unknown presets", () => {
   expect(() => composeProfile(index, { machine: "nope", process: "x", filament: "y" })).toThrow("unknown preset");
 });

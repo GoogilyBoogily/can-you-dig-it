@@ -242,6 +242,8 @@ test("picking printer, nozzle and filament composes a config naming those preset
   await waitForLabel(page, "0.6 nozzle");
   await page.selectOption("#pickFilament", { label: "Generic PETG" });
   await waitForLabel(page, "Generic PETG");
+  await page.check("#pickTranslucent");
+  await waitForLabel(page, "translucent");
   expect(await page.inputValue("#form [name=bedZ]")).toBe("250");
   await page.waitForFunction(() => !document.getElementById("status")!.classList.contains("busy"), { timeout: 90000 });
 
@@ -251,6 +253,12 @@ test("picking printer, nozzle and filament composes a config naming those preset
   expect(config.filament_settings_id[0]).toMatch(/^Generic PETG/); // some presets are plain "Generic PETG", no @printer suffix
   expect(index.processes.some((p) => p.name === config.print_settings_id)).toBe(true);
   expect(index.filaments.some((f) => f.name === config.filament_settings_id[0])).toBe(true);
+  expect(config.different_settings_to_system[0]).toContain("wall_loops");
+  expect(config.line_width).toBe("0.62");
+
+  await page.reload();
+  await waitForLabel(page, "translucent");
+  expect(await page.isChecked("#pickTranslucent")).toBe(true);
   await page.close();
 });
 

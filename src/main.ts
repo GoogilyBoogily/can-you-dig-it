@@ -241,6 +241,7 @@ let index: ProfileIndex | null = null;
 const pick = {
   printer: $<HTMLSelectElement>("pickPrinter"), nozzle: $<HTMLSelectElement>("pickNozzle"),
   process: $<HTMLSelectElement>("pickProcess"), filament: $<HTMLSelectElement>("pickFilament"),
+  translucent: $<HTMLInputElement>("pickTranslucent"),
 };
 
 function fillSelect(select: HTMLSelectElement, options: { value: string; label: string; group?: string }[], value: string) {
@@ -260,6 +261,8 @@ function fillSelect(select: HTMLSelectElement, options: { value: string; label: 
 function showPicks(picks: Picks | null) {
   const machine = picks && index!.machines.find((m) => m.name === picks.machine);
   fillSelect(pick.printer, [{ value: "", label: "Pick a printer…" }, ...printersOf(index!).map((p) => ({ value: p, label: p }))], machine?.printer ?? "");
+  pick.translucent.checked = !!picks?.translucent;
+  pick.translucent.disabled = !machine;
   if (!machine || !picks) { for (const select of [pick.nozzle, pick.process, pick.filament]) fillSelect(select, [], ""); return; }
   fillSelect(pick.nozzle, machinesFor(index!, machine.printer).map((m) => ({ value: m.name, label: `${m.nozzle} mm nozzle` })), machine.name);
   fillSelect(pick.process, processesFor(index!, machine.name).map((p) => ({ value: p.name, label: p.name.replace(/ @.*$/, "") })), picks.process);
@@ -285,11 +288,11 @@ function applyPicks(picks: Picks) {
 pick.printer.addEventListener("change", () => {
   const machines = machinesFor(index!, pick.printer.value);
   if (!machines.length) return;
-  applyPicks(defaultPicks(index!, (machines.find((m) => m.nozzle === "0.4") ?? machines[0]).name));
+  applyPicks({ ...defaultPicks(index!, (machines.find((m) => m.nozzle === "0.4") ?? machines[0]).name), translucent: pick.translucent.checked });
 });
-pick.nozzle.addEventListener("change", () => applyPicks(defaultPicks(index!, pick.nozzle.value)));
-for (const select of [pick.process, pick.filament])
-  select.addEventListener("change", () => applyPicks({ machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value }));
+pick.nozzle.addEventListener("change", () => applyPicks({ ...defaultPicks(index!, pick.nozzle.value), translucent: pick.translucent.checked }));
+for (const control of [pick.process, pick.filament, pick.translucent])
+  control.addEventListener("change", () => applyPicks({ machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value, translucent: pick.translucent.checked }));
 
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
