@@ -3,7 +3,7 @@
 // notice if it drifted - the 3MF would simply open with parts stacked on one plate.
 import { test, expect } from "bun:test";
 import { strFromU8, unzipSync } from "fflate";
-import { stlBinary, stlZip, threeMf, plateCols, plateOrigin, bboxOf, type MeshData, type Placement } from "../src/export";
+import { stlBinary, stlZip, threeMf, plateCols, plateOrigin, plateSummary, bboxOf, type MeshData, type Placement } from "../src/export";
 
 const BED: [number, number, number] = [256, 256, 256];
 
@@ -97,6 +97,25 @@ test("a 3MF declares one plate block per plate, with its objects", () => {
   expect([...config.matchAll(/<plate>/g)]).toHaveLength(2);
   expect(config).toContain(`<metadata key="plater_id" value="1"/>`);
   expect(config).toContain(`<metadata key="plater_id" value="2"/>`);
+});
+
+// Bambu Studio shows the plate name in its plate list and on the plate itself, so a
+// plate says what is on it instead of "Plate 1".
+test("a 3MF names each plate after what is on it", () => {
+  const placed: Placement[] = [
+    { ...triangle, name: "deck-01", plate: 0 },
+    { ...triangle, name: "deck-02", plate: 0 },
+    { ...triangle, name: "end-lip", plate: 1 },
+  ];
+  const config = strFromU8(unzipSync(threeMf(placed, BED))["Metadata/model_settings.config"]);
+  expect(config).toContain(`<metadata key="plater_name" value="2x deck"/>`);
+  expect(config).toContain(`<metadata key="plater_name" value="end-lip"/>`);
+});
+
+test("plateSummary counts copies, keeps pack order, and leaves a digit in a part name alone", () => {
+  const on = (name: string): Placement => ({ ...triangle, name, plate: 0 });
+  expect(plateSummary([on("lane-deck-01"), on("riser-24-01"), on("lane-deck-02"), on("riser-24-02"), on("end-lip")]))
+    .toBe("2x lane-deck, 2x riser-24, end-lip");
 });
 
 // bbs_3mf.cpp sets m_is_bbl_3mf only when the Application metadata starts with

@@ -2,7 +2,7 @@ import { DEFAULTS, DESIGNS, PATTERNS, type Design, type Pattern, type Options } 
 import { fitSpace, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
-import { extractProfile, type Placement } from "./export";
+import { extractProfile, plateSummary, type Placement } from "./export";
 import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { readNumbers, LIMITS } from "./validate";
 import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, type ProfileIndex, type Picks } from "./profiles";
@@ -185,8 +185,7 @@ function renderResults() {
   const gramsOf = (name: string) => parts.find((p) => name === p.name || name.startsWith(p.name + "-"))?.grams ?? 0;
   for (const [n, items] of [...byPlate.entries()].sort((a, b) => a[0] - b[0])) {
     const b = document.createElement("button"); b.type = "button"; b.className = "plate"; b.setAttribute("data-key", `plate:${n}`);
-    const names = items.map((i) => i.name.replace(/-\d+$/, ""));
-    const summary = [...new Set(names)].map((nm) => { const c = names.filter((x) => x === nm).length; return c > 1 ? `${c}× ${nm}` : nm; }).join(", ");
+    const summary = plateSummary(items);
     b.innerHTML = `<span class="n">${n + 1}</span><span>${summary}</span><span class="g">${g(items.reduce((a, i) => a + gramsOf(i.name), 0))}</span>`;
     b.addEventListener("click", () => showTab(`plate:${n}`));
     pl.appendChild(b);

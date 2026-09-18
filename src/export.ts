@@ -124,6 +124,17 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
   });
 }
 
+/**
+ * What sits on a plate, biggest part first: `2x lane-deck, end-lip`. The Plates panel
+ * and the 3MF plate name both come from here, so what the page says is on a plate is
+ * what the slicer calls it. ASCII `x`, not `×`: Bambu Studio puts the plate name into
+ * the gcode file it exports.
+ */
+export function plateSummary(items: Placement[]): string {
+  const names = items.map((i) => i.name.replace(/-\d{2}$/, "")); // the copy suffix pack() adds
+  return [...new Set(names)].map((nm) => { const c = names.filter((x) => x === nm).length; return c > 1 ? `${c}x ${nm}` : nm; }).join(", ");
+}
+
 // ---------------------------------------------------------------- Bambu plate grid
 // PartPlate.hpp: compute_colum_count(n) = ceil(sqrt(n)); PartPlateList::compute_origin:
 // col along +X, row along -Y, stride = bed * (1 + 1/5).
@@ -206,7 +217,7 @@ export function threeMf(placed: Placement[], bed: [number, number, number], opts
   const { profile } = opts;
   const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
   const objs: string[] = [], build: string[] = [], cfg: string[] = [];
-  const plates = new Map<number, number[]>();
+  const plates = new Map<number, number[]>(); // plate -> indices into placed; object id is index + 1
   placed.forEach((p, i) => {
     const id = i + 1;
     const [ox, oy] = plateOrigin(p.plate, nplates, bed);
@@ -214,11 +225,12 @@ export function threeMf(placed: Placement[], bed: [number, number, number], opts
     build.push(`<item objectid="${id}" transform="1 0 0 0 1 0 0 0 1 0 0 0" printable="1"/>`);
     cfg.push(`<object id="${id}"><metadata key="name" value="${p.name}"/><metadata key="extruder" value="1"/><part id="${id}" subtype="normal_part"><metadata key="name" value="${p.name}"/><metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/><mesh_stat edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/></part></object>`);
     if (!plates.has(p.plate)) plates.set(p.plate, []);
-    plates.get(p.plate)!.push(id);
+    plates.get(p.plate)!.push(i);
   });
   for (const k of [...plates.keys()].sort((a, b) => a - b)) {
-    cfg.push(`<plate><metadata key="plater_id" value="${k + 1}"/><metadata key="plater_name" value=""/><metadata key="locked" value="false"/>`);
-    for (const id of plates.get(k)!) cfg.push(`<model_instance><metadata key="object_id" value="${id}"/><metadata key="instance_id" value="0"/></model_instance>`);
+    const indices = plates.get(k)!;
+    cfg.push(`<plate><metadata key="plater_id" value="${k + 1}"/><metadata key="plater_name" value="${plateSummary(indices.map((i) => placed[i]))}"/><metadata key="locked" value="false"/>`);
+    for (const i of indices) cfg.push(`<model_instance><metadata key="object_id" value="${i + 1}"/><metadata key="instance_id" value="0"/></model_instance>`);
     cfg.push("</plate>");
   }
   const model = `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="${NS}">${BAMBU_IDENTITY}<resources>${objs.join("")}</resources><build>${build.join("")}</build></model>`;
