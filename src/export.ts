@@ -60,8 +60,15 @@ function seatOnPlate(shelves: Shelf[], alongX: number, alongY: number, usableWid
  * Nothing is left in a corner. Each shelf is centred across the bed on its own width and
  * the stack of shelves is centred front to back, so a plate holding one 250 mm lane puts
  * it on the centreline. The margin stays a hard floor - centring only ever adds to it.
+ *
+ * `gap` is separation on the bed, not a clearance between parts that touch, so it does
+ * not take `fit`. 6 mm is the top of the free range: plate counts are identical from
+ * 1 mm to 6 mm and 8 mm costs a plate on a 300 x 300 bed, so growing it is not free.
+ * Nor is shrinking it - Bambu's outer brim is 5 mm per side, and two brims across a
+ * 6 mm gap meet, which comes off the plate as one joined part. Brim is off by default
+ * and the packer cannot see the profile, so this is a floor to respect, not a check.
  */
-export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, number, number], margin: number, gap: number): Placement[] {
+export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, number, number], margin: number, gap = 6): Placement[] {
   const usableWidth = bed[0] - 2 * margin, usableDepth = bed[1] - 2 * margin;
   const flat: { name: string; mesh: MeshData }[] = [];
   for (const { mesh, qty } of parts)

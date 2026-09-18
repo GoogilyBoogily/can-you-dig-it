@@ -41,7 +41,6 @@ const K = {
   dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
   pegR: 2, pegH: 4, socR: 2.2, socD: 4.5,
   spliceBase: 30, spliceTip: 40, spliceDepth: 8, lapLen: 10,
-  partGap: 6,
 };
 
 export interface Derived {

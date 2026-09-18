@@ -102,6 +102,12 @@ test("small parts fill the space behind a lane instead of taking their own plate
     expect(parts.every((p) => p.name.startsWith("end-lip"))).toBe(false);
 });
 
+// The worker leaves gap off, so the default is the only spacing a print ever gets.
+test("the default gap is the 6 mm the plate counts were measured at", () => {
+  const byDefault = pack(defaultParts(), BED, MARGIN);
+  expect(byDefault.map((p) => [p.name, p.plate, ...p.bbox])).toEqual(packed.map((p) => [p.name, p.plate, ...p.bbox]));
+});
+
 test("a part is turned 90° only when that is what makes it fit", () => {
   const lanes = packed.filter((p) => p.name.startsWith("lane-"));
   // Lanes are 250 × 141 on a 250 × 250 usable bed: they fit flat, so they stay flat.

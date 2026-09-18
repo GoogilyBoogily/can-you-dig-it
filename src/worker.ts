@@ -54,7 +54,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         add("riser-08", set.riser08, o.lanesWide * 4, "riser");
       }
       set.cover.forEach((m, i) => add(set.cover.length > 1 ? (i === 0 ? "cover-front" : "cover-rear") : "cover", m, o.lanesWide, "cover"));
-      const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin, 6);
+      const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin);
       const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
       last = { parts, placed, options: o };
       const res: Res = { type: "built", id: req.id, parts, placed, nplates, ms: performance.now() - t0 };
