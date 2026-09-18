@@ -19,38 +19,102 @@ export function bboxOf(pos: Float32Array): MeshData["bbox"] {
   return b as MeshData["bbox"];
 }
 
-/** Shelf-pack into bed-sized plates (matches cansys.py pack()). Rotates 90° when that is the only way to fit. */
+const EPS = 1e-6;
+
+/** A row of parts across a plate. `height` is set by its first part and never grows. */
+interface Shelf { depth: number; height: number; width: number }
+
+/** Where one part ended up: which plate, which shelf, how far along it, and whether it was turned. */
+interface Seat { name: string; mesh: MeshData; plate: number; shelf: Shelf; offsetAlongShelf: number; rotated: boolean }
+
+/**
+ * The first shelf on this plate with room for a part `alongX × alongY`, or a new shelf
+ * behind the last one. Null when neither fits, which is the caller's signal to move to
+ * the next plate.
+ *
+ * A shelf never grows past the height of the part that opened it. Parts arrive sorted
+ * by Y extent descending, so the part that opens a shelf is the deepest that will ever
+ * want it - letting shelves grow packs no configuration any tighter.
+ */
+function seatOnPlate(shelves: Shelf[], alongX: number, alongY: number, usableWidth: number, usableDepth: number, gap: number): { shelf: Shelf; offsetAlongShelf: number } | null {
+  for (const shelf of shelves) {
+    const offsetAlongShelf = shelf.width === 0 ? 0 : shelf.width + gap;
+    if (offsetAlongShelf + alongX <= usableWidth + EPS && alongY <= shelf.height + EPS) return { shelf, offsetAlongShelf };
+  }
+  const last = shelves[shelves.length - 1];
+  const depth = last ? last.depth + last.height + gap : 0;
+  if (depth + alongY > usableDepth + EPS) return null;
+  const shelf: Shelf = { depth, height: alongY, width: 0 };
+  shelves.push(shelf);
+  return { shelf, offsetAlongShelf: 0 };
+}
+
+/**
+ * Shelf-pack into bed-sized plates, then centre what landed on each one.
+ *
+ * First fit across every plate opened so far, not just the newest: a part small enough
+ * to sit behind a lane goes there instead of claiming a plate of its own. Each part is
+ * tried flat and then turned 90°, so an end-lip that is 125 mm deep and would miss the
+ * strip behind a lane fits it turned.
+ *
+ * Nothing is left in a corner. Each shelf is centred across the bed on its own width and
+ * the stack of shelves is centred front to back, so a plate holding one 250 mm lane puts
+ * it on the centreline. The margin stays a hard floor - centring only ever adds to it.
+ */
 export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, number, number], margin: number, gap: number): Placement[] {
-  const W = bed[0] - 2 * margin, D = bed[1] - 2 * margin;
+  const usableWidth = bed[0] - 2 * margin, usableDepth = bed[1] - 2 * margin;
   const flat: { name: string; mesh: MeshData }[] = [];
   for (const { mesh, qty } of parts)
     for (let k = 0; k < qty; k++) flat.push({ name: qty > 1 ? `${mesh.name}-${String(k + 1).padStart(2, "0")}` : mesh.name, mesh });
   flat.sort((a, b) => (b.mesh.bbox[4] - b.mesh.bbox[1]) - (a.mesh.bbox[4] - a.mesh.bbox[1]));
-  const out: Placement[] = [];
-  let plate = 0, cx = 0, cy = 0, rowh = 0;
+
+  // Place boxes first, vertices later: the extents are all the packing needs, and
+  // holding off on the copy is what makes the centring below a pair of offsets.
+  const plates: Shelf[][] = [];
+  const seats: Seat[] = [];
   for (const { name, mesh } of flat) {
-    const bb = mesh.bbox;
-    let ex = bb[3] - bb[0], ey = bb[4] - bb[1];
-    const rot = ex > W && ey <= W && ex <= D;
-    let pos = mesh.pos;
-    let lo: [number, number, number] = [bb[0], bb[1], bb[2]];
-    if (rot) {
-      [ex, ey] = [ey, ex];
-      pos = new Float32Array(mesh.pos.length);
-      for (let i = 0; i < pos.length; i += 3) { pos[i] = -mesh.pos[i + 1]; pos[i + 1] = mesh.pos[i]; pos[i + 2] = mesh.pos[i + 2]; }
-      const b2 = bboxOf(pos); lo = [b2[0], b2[1], b2[2]];
+    const width = mesh.bbox[3] - mesh.bbox[0], depth = mesh.bbox[4] - mesh.bbox[1];
+    const orientations: [number, number, boolean][] = [[width, depth, false], [depth, width, true]];
+    let seat: Seat | null = null;
+    // One past the last plate is a fresh one, opened only once every existing plate is full.
+    for (let plate = 0; plate <= plates.length && !seat; plate++) {
+      const shelves = plates[plate] ?? [];
+      for (const [alongX, alongY, rotated] of orientations) {
+        if (alongX > usableWidth + EPS || alongY > usableDepth + EPS) continue;
+        const spot = seatOnPlate(shelves, alongX, alongY, usableWidth, usableDepth, gap);
+        if (!spot) continue;
+        spot.shelf.width = spot.offsetAlongShelf + alongX;
+        if (plate === plates.length) plates.push(shelves);
+        seat = { name, mesh, plate, shelf: spot.shelf, offsetAlongShelf: spot.offsetAlongShelf, rotated };
+        break;
+      }
     }
-    if (ex > W + 1e-6 || ey > D + 1e-6)
-      throw new Error(`${name} is ${ex.toFixed(0)} × ${ey.toFixed(0)} mm and fits no plate on a ${bed[0]} × ${bed[1]} mm bed`);
-    if (cx + ex > W + 1e-6) { cx = 0; cy += rowh + gap; rowh = 0; }
-    if (cy + ey > D + 1e-6) { plate++; cx = 0; cy = 0; rowh = 0; }
-    const off: [number, number, number] = [margin + cx - lo[0], margin + cy - lo[1], -lo[2]];
-    const placed = new Float32Array(pos.length);
-    for (let i = 0; i < pos.length; i += 3) { placed[i] = pos[i] + off[0]; placed[i + 1] = pos[i + 1] + off[1]; placed[i + 2] = pos[i + 2] + off[2]; }
-    out.push({ name, pos: placed, idx: mesh.idx, bbox: bboxOf(placed), plate });
-    cx += ex + gap; rowh = Math.max(rowh, ey);
+    if (!seat)
+      throw new Error(`${name} is ${width.toFixed(0)} × ${depth.toFixed(0)} mm and fits no plate on a ${bed[0]} × ${bed[1]} mm bed`);
+    seats.push(seat);
   }
-  return out;
+
+  // One centring offset per plate, front to back; the across-bed one is per shelf.
+  const frontPad = plates.map((shelves) => {
+    const last = shelves[shelves.length - 1];
+    return margin + (usableDepth - (last.depth + last.height)) / 2;
+  });
+
+  return seats.map(({ name, mesh, plate, shelf, offsetAlongShelf, rotated }) => {
+    const bb = mesh.bbox;
+    // Turning is -90° about Z (x' = -y, y' = x), so the turned box starts at -maxY, minX.
+    const low = rotated ? [-bb[4], bb[0]] : [bb[0], bb[1]];
+    const alongY = rotated ? bb[3] - bb[0] : bb[4] - bb[1];
+    const dx = margin + (usableWidth - shelf.width) / 2 + offsetAlongShelf - low[0];
+    const dy = frontPad[plate] + shelf.depth + (shelf.height - alongY) / 2 - low[1];
+    const pos = new Float32Array(mesh.pos.length);
+    for (let i = 0; i < pos.length; i += 3) {
+      pos[i] = (rotated ? -mesh.pos[i + 1] : mesh.pos[i]) + dx;
+      pos[i + 1] = (rotated ? mesh.pos[i] : mesh.pos[i + 1]) + dy;
+      pos[i + 2] = mesh.pos[i + 2] - bb[2];
+    }
+    return { name, pos, idx: mesh.idx, bbox: bboxOf(pos), plate };
+  });
 }
 
 // ---------------------------------------------------------------- Bambu plate grid

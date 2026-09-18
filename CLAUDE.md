@@ -83,6 +83,13 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - Bambu plates: `cols = ceil(sqrt(n))`, stride = bed × 1.2, rows toward −Y
   (`compute_colum_count` / `compute_origin` in BambuStudio `PartPlate.cpp`). Objects are
   baked into place; the config is belt-and-braces.
+- `pack()` is shelf packing with first fit across *every* plate opened so far, not just
+  the newest, and each part is tried flat then turned 90°. That is what drops an end-lip
+  or a riser into the strip behind a lane instead of giving it a plate of its own. A
+  shelf's height is set by the part that opens it and never grows — parts arrive sorted
+  by Y extent descending, so growing it packs nothing tighter. Then everything is
+  centred: each shelf across the bed on its own width, the stack front to back, and each
+  part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
 - Feet (risers) are optional and off; the lane sits flat on the shelf.
 
 ## Conventions
