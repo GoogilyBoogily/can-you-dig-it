@@ -98,3 +98,15 @@ test("a 3MF declares one plate block per plate, with its objects", () => {
   expect(config).toContain(`<metadata key="plater_id" value="1"/>`);
   expect(config).toContain(`<metadata key="plater_id" value="2"/>`);
 });
+
+// bbs_3mf.cpp sets m_is_bbl_3mf only when the Application metadata starts with
+// "BambuStudio-", and parses the rest as the generator version. Anything else is a
+// third-party file: project_settings.config is never read and Bambu Studio says
+// "load geometry data only". The version must sit at or below the user's app version
+// (a newer major is geometry-only again) and at or above 2.0.0 (older files get
+// legacy plate-size and prime-tower rewrites).
+test("a 3MF announces itself as a Bambu Studio project", () => {
+  const model = strFromU8(unzipSync(threeMf([onPlate(0)], BED))["3D/3dmodel.model"]);
+  expect(model).toContain(`<metadata name="Application">BambuStudio-02.00.00.00</metadata>`);
+  expect(model).toContain(`<metadata name="BambuStudio:3mfVersion">1</metadata>`);
+});

@@ -94,6 +94,14 @@ const CT = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.o
 const RELS = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
 const NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02";
 
+// Bambu Studio's importer (bbs_3mf.cpp, _handle_end_metadata) treats a 3MF as a
+// project only when the Application metadata starts with "BambuStudio-", and reads
+// the rest as the generator version. Any other name is a third-party file: it skips
+// project_settings.config and reports "load geometry data only". So the file claims
+// to come from Bambu Studio 2.0.0: new enough to dodge the legacy plate-size and
+// prime-tower rewrites (< 1.5.9, < 2.0.0), old enough that no 2.x app calls it newer.
+const BAMBU_IDENTITY = `<metadata name="Application">BambuStudio-02.00.00.00</metadata><metadata name="BambuStudio:3mfVersion">1</metadata>`;
+
 function objXml(id: number, m: MeshData, dx: number, dy: number): string {
   const parts: string[] = [`<object id="${id}" type="model" name="${m.name}"><mesh><vertices>`];
   const p = m.pos;
@@ -142,7 +150,7 @@ export function threeMf(placed: Placement[], bed: [number, number, number], opts
     for (const id of plates.get(k)!) cfg.push(`<model_instance><metadata key="object_id" value="${id}"/><metadata key="instance_id" value="0"/></model_instance>`);
     cfg.push("</plate>");
   }
-  const model = `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="${NS}"><metadata name="Application">can-you-dig-it</metadata><resources>${objs.join("")}</resources><build>${build.join("")}</build></model>`;
+  const model = `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="${NS}">${BAMBU_IDENTITY}<resources>${objs.join("")}</resources><build>${build.join("")}</build></model>`;
   const files: Record<string, Uint8Array> = {
     "[Content_Types].xml": strToU8(CT),
     "_rels/.rels": strToU8(RELS),
