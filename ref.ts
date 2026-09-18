@@ -11,7 +11,7 @@
 // than disagreement, and the tolerances in regress.test.ts are tight to match.
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { Geo, DEFAULTS, solve, buildAll, type Derived, type PartSet, type LaneRole } from "./src/geometry";
+import { Geo, DEFAULTS, solve, buildAll, type Derived, type Options, type PartSet, type LaneRole } from "./src/geometry";
 
 /** The dimensions solve() derives from DEFAULTS, pinned so a change to the arithmetic shows up. */
 export function refSpec(derived: Derived): Record<string, number> {
@@ -22,11 +22,15 @@ export function refSpec(derived: Derived): Record<string, number> {
 /**
  * Every part the snapshot covers, by the name it is stored under.
  * Two tiers give the top and bottom lanes; three are needed before a mid lane exists.
+ * The minimal design shares the lip and risers, so only its lanes and cover are stored.
  */
 export function refParts(geo: Geo): Record<string, Manifold> {
   const derived = solve(DEFAULTS);
+  const minimal: Options = { ...DEFAULTS, design: "minimal" };
   const twoTiers = buildAll(geo, DEFAULTS, derived);
   const threeTiers = buildAll(geo, { ...DEFAULTS, tiers: 3 }, derived);
+  const minimalTwo = buildAll(geo, minimal, derived);
+  const minimalThree = buildAll(geo, { ...minimal, tiers: 3 }, derived);
   const lane = (set: PartSet, role: LaneRole) => set.lanes.find((l) => l.role === role)!;
   return {
     "lane-top-front": lane(twoTiers, "top").front!,
@@ -40,6 +44,14 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     "end-lip": twoTiers.lip,
     "riser-08": twoTiers.riser08,
     "riser-24": twoTiers.riser24,
+    "minimal-lane-top-front": lane(minimalTwo, "top").front!,
+    "minimal-lane-top-rear": lane(minimalTwo, "top").rear!,
+    "minimal-lane-mid-front": lane(minimalThree, "mid").front!,
+    "minimal-lane-mid-rear": lane(minimalThree, "mid").rear!,
+    "minimal-lane-bottom-front": lane(minimalTwo, "bottom").front!,
+    "minimal-lane-bottom-rear": lane(minimalTwo, "bottom").rear!,
+    "minimal-cover-front": minimalTwo.cover[0],
+    "minimal-cover-rear": minimalTwo.cover[1],
   };
 }
 

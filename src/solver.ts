@@ -53,10 +53,13 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
         const cans = perLane * lanesMax;
         const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H);
         const lanes = lanesMax * tiers;
+        // per 480 mm lane and per cover, from filamentGrams on the default parts; the lip is ~9 g
+        const laneGrams = base.design === "minimal" ? 265 : 330;
+        const coverGrams = base.cover ? (base.design === "minimal" ? 90 : 130) : 0;
         out.push({
           options: o, derived: d, cans,
           footprint: [lanesMax * d.gangPitch, d.L, height],
-          gramsEst: lanes * (d.L / 480) * 250 + lanesMax * 30,
+          gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 9,
           warnings: w, style,
         });
       }

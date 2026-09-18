@@ -37,8 +37,19 @@ for (const [name, mesh] of Object.entries(parts)) {
   });
 }
 
+// 312 g with skins in the model (244 g before them); the window is a sanity check, not a pin
 test("filament estimate is sane", () => {
   const grams = filamentGrams(parts["lane-top-front"]) + filamentGrams(parts["lane-top-rear"]);
-  expect(grams).toBeGreaterThan(180);
-  expect(grams).toBeLessThan(320);
+  expect(grams).toBeGreaterThan(250);
+  expect(grams).toBeLessThan(400);
+});
+
+// The minimal design keeps every joint and takes out the material that carried nothing.
+// Solid volume, not the filament model, so the check does not move with print settings.
+// Measured when it landed: top 0.51, bottom 0.46, cover 0.69 - fails when something creeps back.
+const pairVolume = (prefix: string) => parts[`${prefix}-front`].volume() + parts[`${prefix}-rear`].volume();
+test("the minimal design is about half the material", () => {
+  expect(pairVolume("minimal-lane-top") / pairVolume("lane-top")).toBeLessThan(0.6);
+  expect(pairVolume("minimal-lane-bottom") / pairVolume("lane-bottom")).toBeLessThan(0.55);
+  expect(pairVolume("minimal-cover") / pairVolume("cover")).toBeLessThan(0.75);
 });

@@ -75,6 +75,19 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   seam band clips cells, so the pattern carries across the joint.
   Outer wall face is recessed to a 3.5 mm web with a 45° ceiling. Deck centre band is
   open with cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
+  Tie bands merge when they overlap: an interior tie can land inside the splice band,
+  and unmerged its far edge started the next opening 1.6 mm behind the seam — the
+  tongue's whole root (`test/splice.test.ts`).
+- Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
+  `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
+  only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
+  standard rail with the strip to the wall open, 2.5 mm ties, the end wall latticed on
+  its top row and recessed, the cover a perforated sheet (2× cells, ligament bars,
+  clipped at the frame). Solid volume is about half; the filament model says −19 % on
+  lanes because what is left is thin and prints dense. Spec in
+  `docs/superpowers/specs/2026-09-18-minimal-design.md`.
+- `filamentGrams` has skins: the core is what sits inside the perimeters with 1 mm of
+  material above and below. Without them a 2.4 mm plate read as 6 % infill.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
   slabs of its outline shrunk by the fillet inset, which follows the plan corners. Side
   walls round the outer top edge only, so the 3 mm seat the next tier sits on stays

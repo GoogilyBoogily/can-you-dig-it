@@ -1,4 +1,4 @@
-import { DEFAULTS, type Options } from "./geometry";
+import { DEFAULTS, DESIGNS, type Design, type Options } from "./geometry";
 import { fitSpace, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
@@ -25,11 +25,14 @@ function readOptions(): { space: Space; base: Options; cascade: boolean } {
   for (const k of Object.keys(LIMITS)) raw[k] = parseFloat(String(f.get(k)));
   readNumbers(raw); // throws naming the offending field
   const num = (k: string) => raw[k] ?? parseFloat(String(f.get(k)));
+  // A shared hash with an unknown design leaves the select blank; say so, as with numbers.
+  const design = f.get("design") as Design;
+  if (!DESIGNS.includes(design)) throw new Error("design: pick Standard or Minimal");
   const base: Options = {
     ...DEFAULTS,
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
-    cover: f.get("cover") === "on", solid: f.get("solid") === "on", feet: f.get("feet") === "on", fit: num("fit"),
+    cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, feet: f.get("feet") === "on", fit: num("fit"),
     hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on",
   };
   return { space: { w: num("w"), d: num("d"), h: num("h") }, base, cascade: f.get("cascade") === "on" };
@@ -305,7 +308,7 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
 loadProfile();
 
 // ------------------------------------------------------------- url state
-const KEYS = ["w", "d", "h", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "feet", "hexR", "hexAuto", "fit"];
+const KEYS = ["w", "d", "h", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "feet", "hexR", "hexAuto", "fit"];
 function syncHash() {
   const f = new FormData(form);
   const q = new URLSearchParams();

@@ -7,6 +7,11 @@ import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifo
 export type Vec2 = [number, number];
 
 // ---------------------------------------------------------------- spec
+/** standard: the lattice as designed. minimal: same joints and dimensions; wall web, deck
+ *  rails, ties and end wall thinned to what the loads need, the cover a perforated sheet. */
+export type Design = "standard" | "minimal";
+export const DESIGNS: readonly Design[] = ["standard", "minimal"];
+
 export interface Options {
   canD: number;
   canL: number;
@@ -20,7 +25,8 @@ export interface Options {
   fit: number;
   hexR: number; // cell radius when hexAuto is off
   hexAuto: boolean; // size cells so two whole rows fill the wall
-  solid: boolean;
+  solid: boolean; // no lattice at all; overrides design
+  design: Design;
   cover: boolean;
   feet: boolean; // 24 mm risers under the bottom tier (off: lane sits flat on the shelf)
   bed: [number, number, number];
@@ -30,14 +36,14 @@ export interface Options {
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
   cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
-  solid: false, cover: true, feet: false, bed: [256, 256, 256], bedMargin: 3,
+  solid: false, design: "standard", cover: true, feet: false, bed: [256, 256, 256], bedMargin: 3,
 };
 
 // fixed design constants (same names as cansys.py)
 const K = {
   deckLo: 4, topgap: 2, slack: 8, lipH: 20, cornerR: 12, edgeR: 3,
   hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
-  border: 5, web: 3.5, skin: 1.8,
+  border: 5, web: 3.5,
   dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
   pegR: 2, pegH: 4, socR: 2.2, socD: 4.5,
   spliceBase: 30, spliceTip: 40, spliceDepth: 8, lapLen: 10,
@@ -284,6 +290,7 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
   // both of them: nothing seats on it, and a can slides in over the inner one
   if (top) for (const side of [1, -1]) cuts.push(g.prismY(g.roundOver(L / 2 - (side > 0 ? 0 : o.wall), ewh, side, K.edgeR), IW, -IW / 2));
   if (!o.solid) {
+    const minimal = o.design === "minimal";
     const b = K.border;
     const keep: CS[] = [];
     for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
@@ -292,8 +299,9 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
     const wcells = g.hexCells(d.hexR, d.lig, panel, Math.sqrt(3), keep);
     if (wcells) for (const sy of [1, -1]) cuts.push(g.prismY(wcells, o.wall + 4, sy * py - (o.wall + 4) / 2));
 
-    // recess the outer face over the lattice field; 45 deg ceiling
-    const rd = o.wall - K.web;
+    // recess the outer face over the lattice field; 45 deg ceiling. The minimal web is
+    // four 0.42 mm lines, the same floor as the ligament width: two perimeters a side, no infill
+    const rd = o.wall - (minimal ? K.ligMin : K.web);
     if (rd > 0.2) {
       const field = panel.subtract(g.cs2d(...keep));
       const zt = H - b;
@@ -313,7 +321,7 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
     if (d.split) ties.add(Math.round((-K.spliceDepth / 2) * 10) / 10);
     const nt = Math.max(1, Math.round((x1 - x0) / 80) - 1);
     for (let i = 0; i < nt; i++) ties.add(Math.round((x0 + ((x1 - x0) * (i + 1)) / (nt + 1)) * 10) / 10);
-    const tw = 8;
+    const tw = minimal ? 2.5 : 8;
     // the lip tie holds the lip pockets, the splice tie the deck tongue: 10 mm each side.
     // An interior tie can land inside one of those bands; merge, or its far edge would
     // start the next opening inside the band and leave the tongue rooted on a sliver.
@@ -326,9 +334,26 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
       else edges.push(t - half, t + half);
     }
     edges.push(x1);
+    // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
+    // strip between fin and wall opens too. A necked can is widest at its body, which
+    // ends ~12 mm short of each end; pushed over by the full side play the body edge sits
+    // at IW/2 - 15.5, still over the fin. It stands on the bed: compression, no bridging.
+    const strip = IW / 2 - d.railHy - 2.5;
     for (let i = 0; i + 1 < edges.length; i += 2) {
       const a = edges[i], bb = edges[i + 1];
-      if (bb - a > 12) cuts.push(g.box(bb - a, 2 * d.railHy, dhi + 4, (a + bb) / 2, 0, dhi / 2 + 1));
+      if (bb - a <= 12) continue;
+      cuts.push(g.box(bb - a, 2 * d.railHy, dhi + 4, (a + bb) / 2, 0, dhi / 2 + 1));
+      if (minimal) for (const sy of [1, -1]) cuts.push(g.box(bb - a, strip, dhi + 4, (a + bb) / 2, sy * (IW / 2 - strip / 2), dhi / 2 + 1));
+    }
+    // minimal: the high-end wall only closes the chute above, so it gets the lattice too.
+    // The deck's end block is a keep-out: a cell there would notch it, so only the top
+    // row cuts, level with the side walls'. A loading lip is too low for any cell.
+    if (minimal) {
+      const ezt = ewh - b, gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
+      const ecells = g.hexCells(d.hexR, d.lig, g.rect(gy0, b, gy1, ezt), Math.sqrt(3), [g.rect(-IW / 2, 0, IW / 2, dhi + 1)]);
+      if (ecells) cuts.push(g.prismX(ecells, o.wall + 4, L / 2 - o.wall - 2));
+      cuts.push(g.prismX(g.rect(gy0, b - 1, gy1, ezt - rd), rd + 1, L / 2 - rd));
+      cuts.push(g.prismY(g.poly([[L / 2 - rd, ezt - rd], [L / 2 + 1, ezt - rd], [L / 2 + 1, ezt + 1]]), gy1 - gy0, gy0));
     }
   }
   for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(g.cyl(K.socR + fit, K.socD, sx * px, sy * py, -0.01));
@@ -404,11 +429,24 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   if (!o.solid) {
     for (const sx of [1, -1]) for (const sy of [1, -1]) keep.push(g.rect(sx * d.px - 8, sy * d.py - 8, sx * d.px + 8, sy * d.py + 8));
     // bigger cells and fat bars than the walls: a grille, not a lattice
-    let cells = g.hexCells(1.4 * d.hexR, 0.5 * d.hexR, g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14), 1, keep);
-    if (cells && d.split) {
+    const field = g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14);
+    let cells: CS | null;
+    if (o.design === "minimal") {
+      // a perforated sheet: cells twice the size on the ligament rule, running to the
+      // frame and clipped there. Whole cells leave the open area to luck - how many fit
+      // between the pegs and the window swings with the can - where clipping makes it
+      // the cell's own 83 % of the field whatever the size.
+      const R = 2 * d.hexR;
+      const grid = g.hexCells(R, ligFor(R), field.offset(2 * R, "Miter"), 1, []);
+      cells = grid && grid.intersect(field).subtract(g.cs2d(...keep));
+    } else {
+      cells = g.hexCells(1.4 * d.hexR, 0.5 * d.hexR, field, 1, keep);
+    }
+    if (cells) {
       // the seam crosses the field; clip cells at its solid band rather than dropping
       // them, so the pattern carries over the joint instead of leaving a blank
-      const pieces = cells.subtract(g.rect(-6, -OW, 6, OW)).decompose().filter((piece) => piece.area() > 40);
+      if (d.split) cells = cells.subtract(g.rect(-6, -OW, 6, OW));
+      const pieces = cells.decompose().filter((piece) => piece.area() > 40);
       cells = pieces.length ? g.cs2d(...pieces) : null;
     }
     if (cells) cuts.push(g.prismZ(cells, t + 2, -1));
@@ -438,15 +476,19 @@ export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
   return set;
 }
 
-/** Filament estimate: layer-sum of (shell + infill * core), like cansys.py. */
-export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, density = 1.27): number {
+/** Filament estimate: layer-sum of (shell + infill * core), like cansys.py, with skins:
+ *  the core is what sits inside the perimeters with `skin` of material above and below.
+ *  A slicer prints the rest solid, so a plate thinner than two skins has no core at all
+ *  and a sloped deck top is solid along the whole slope, not only at its edge. */
+export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, density = 1.27, skin = 1): number {
   const bb = m.boundingBox();
   let solid = 0;
   for (let z = bb.min[2] + dz / 2; z < bb.max[2]; z += dz) {
     const s = m.slice(z);
     const a = s.area();
     if (a <= 0) continue;
-    const ia = Math.max(s.offset(-shell, "Miter").area(), 0);
+    const core = s.offset(-shell, "Miter").intersect(m.slice(z + skin)).intersect(m.slice(z - skin));
+    const ia = Math.max(core.area(), 0);
     solid += a - ia + infill * ia;
   }
   return (solid * dz) / 1000 * density;

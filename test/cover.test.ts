@@ -21,6 +21,7 @@ const shortLane = { ...DEFAULTS, length: 240, cover: true }; // one cover piece
 // open. The 20 mm loading lip alone never worked - the gap under a full cover is canD - 18.
 test("a can drops through the cover at the loading end of a cascade", () => {
   expect(coverHitByDroppedCan({ ...shortLane, cascade: true })).toBe(0);
+  expect(coverHitByDroppedCan({ ...shortLane, cascade: true, design: "minimal" })).toBe(0);
 });
 
 // A flat top tier loads from the front over its lip; a window there would drop cans onto
