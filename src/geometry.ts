@@ -314,10 +314,16 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
     const nt = Math.max(1, Math.round((x1 - x0) / 80) - 1);
     for (let i = 0; i < nt; i++) ties.add(Math.round((x0 + ((x1 - x0) * (i + 1)) / (nt + 1)) * 10) / 10);
     const tw = 8;
+    // the lip tie holds the lip pockets, the splice tie the deck tongue: 10 mm each side.
+    // An interior tie can land inside one of those bands; merge, or its far edge would
+    // start the next opening inside the band and leave the tongue rooted on a sliver.
     const edges: number[] = [x0];
     for (const t of [...ties].sort((a, b) => a - b)) {
-      const extra = Math.abs(t - lipx) < 1 ? 6 : d.split && Math.abs(t + K.spliceDepth / 2) < 1 ? K.spliceDepth / 2 + 2 : 0;
-      edges.push(t - (tw / 2 + extra), t + (tw / 2 + extra));
+      const special = Math.abs(t - lipx) < 1 || (d.split && Math.abs(t + K.spliceDepth / 2) < 1);
+      const half = special ? 10 : tw / 2;
+      const last = edges.length - 1;
+      if (last > 0 && t - half <= edges[last]) edges[last] = Math.max(edges[last], t + half);
+      else edges.push(t - half, t + half);
     }
     edges.push(x1);
     for (let i = 0; i + 1 < edges.length; i += 2) {
