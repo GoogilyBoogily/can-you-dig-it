@@ -56,9 +56,18 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - Long lanes split at x=0: rear half carries a deck dovetail tongue + outer wall
   half-laps; front half has the socket + inner laps. Slides together vertically, no glue.
 - Honeycomb: wall cells are stretched √3 so ligaments are vertical and peaks are 45°
-  (self-supporting). Cells cut by the top edge are dropped (flat-topped hole = bridge).
+  (self-supporting). Only whole cells are cut, centred in the panel; a cell touching a
+  keep-out (dovetail, splice) is dropped, not clipped, so every hole is the same shape
+  and the solid bands read as intended. `hexAuto` sizes the radius so two rows fill the
+  upper-deck wall; the ligament follows the radius (`ligFor`). End walls are solid. The
+  cover is a grille: 1.4× the wall radius with bars half the radius wide, and only the
+  seam band clips cells, so the pattern carries across the joint.
   Outer wall face is recessed to a 3.5 mm web with a 45° ceiling. Deck centre band is
   open with cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
+- Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
+  slabs of its outline shrunk by the fillet inset, which follows the plan corners. Side
+  walls round the outer top edge only, so the 3 mm seat the next tier sits on stays
+  flat; peg pads stay flat through it. A loading lip rounds both edges.
 - Every clearance gets `fit` added. Don't add per-joint tolerance knobs.
 - Bambu plates: `cols = ceil(sqrt(n))`, stride = bed × 1.2, rows toward −Y
   (`compute_colum_count` / `compute_origin` in BambuStudio `PartPlate.cpp`). Objects are

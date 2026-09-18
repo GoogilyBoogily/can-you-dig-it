@@ -33,7 +33,7 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
 - Lanes longer than the bed split into **-front** / **-rear** halves joined by a deck
   dovetail tongue and wall half-laps; slide together vertically, no glue.
 - **riser-08 / -24**: peg-and-socket feet; stack for height.
-- **cover**: hex-perforated top so the stack is a shelf, with a can-sized window over the
+- **cover**: hex grille top so the stack is a shelf, with a can-sized window over the
   top tier's high end. That is where cans go in: drop one through, it rolls to the chute.
 
 Lateral dovetails at the lane ends gang lanes side by side. Pegs on the wall tops

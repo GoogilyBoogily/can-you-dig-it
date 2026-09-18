@@ -18,8 +18,8 @@ export interface Options {
   wall: number;
   clearance: number;
   fit: number;
-  hexR: number;
-  lig: number;
+  hexR: number; // cell radius when hexAuto is off
+  hexAuto: boolean; // size cells so two whole rows fill the wall
   solid: boolean;
   cover: boolean;
   feet: boolean; // 24 mm risers under the bottom tier (off: lane sits flat on the shelf)
@@ -29,13 +29,14 @@ export interface Options {
 
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
-  cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 9, lig: 1.7,
+  cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
   solid: false, cover: true, feet: false, bed: [256, 256, 256], bedMargin: 3,
 };
 
 // fixed design constants (same names as cansys.py)
 const K = {
-  deckLo: 4, topgap: 2, slack: 8, lipH: 20, cornerR: 10, edgeR: 3,
+  deckLo: 4, topgap: 2, slack: 8, lipH: 20, cornerR: 12, edgeR: 3,
+  hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
   border: 5, web: 3.5, skin: 1.8,
   dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
   pegR: 2, pegH: 4, socR: 2.2, socD: 4.5,
@@ -47,8 +48,22 @@ export interface Derived {
   n: number; nBottom: number; split: boolean;
   L: number; IW: number; OW: number; H: number; Hb: number;
   run: number; dhi: number; dhiB: number; tan: number; inset: number;
+  hexR: number; lig: number;
   xd: number; px: number; py: number; lipy: number; lipx: number; railHy: number;
   gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
+}
+
+/** Ligament grows with the cell so the bars stay in proportion; never under four 0.42 mm lines. */
+const ligFor = (R: number) => Math.max(K.ligMin, K.ligRatio * R);
+
+/** The radius at which two whole stretched rows fill a panel of height `panelH`:
+ *  sqrt(3) * (2R + 1.5P) with P = R + lig / sqrt(3), 1 mm spare so float noise cannot
+ *  drop the top row. Same cells on every tier, sized from the upper deck. */
+function autoHexR(panelH: number): number {
+  const rows = 3.5 * Math.sqrt(3);
+  let R = (panelH - 1) / (rows + 1.5 * K.ligRatio);
+  if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - 1.5 * K.ligMin) / rows;
+  return Math.min(K.hexMax, Math.max(K.hexMin, R));
 }
 
 export function solve(o: Options): Derived {
@@ -70,8 +85,9 @@ export function solve(o: Options): Derived {
   const H = Math.ceil(dhi + o.canD + K.topgap);
   const dhiB = K.deckLo + L * tan;
   const Hb = Math.ceil(dhiB + o.canD + K.topgap);
+  const hexR = o.hexAuto ? autoHexR(H - 2 * K.border) : o.hexR;
   return {
-    n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset,
+    n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2,
     lipy: IW / 2 - 14, lipx: -L / 2 + inset + 8, railHy: IW / 2 - 20,
     gangPitch: OW + K.dovetail,
@@ -94,7 +110,6 @@ export function check(o: Options, d: Derived): string[] {
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
   if (o.wall < K.dovetail + 2.5) w.push(`WARN wall ${o.wall} mm leaves under 2.5 mm behind the dovetail`);
-  if (!o.solid && o.lig < 1.6) w.push(`WARN ligament ${o.lig} mm is under four 0.42 mm lines`);
   return w;
 }
 
@@ -158,9 +173,10 @@ export class Geo {
   /**
    * Hexagon holes on a uniform-gap grid inside `bounds`, returned as one
    * multi-polygon CrossSection. ystretch = sqrt(3) makes the self-supporting
-   * cell: vertical side ligaments, 45 deg peaks. Cells cut by the top edge are
-   * dropped (a flat-topped hole is a bridge); bottom/side cuts are kept.
-   * `holes` are solid keep-outs the cells are clipped around.
+   * cell: vertical side ligaments, 45 deg peaks. Only whole cells are kept and
+   * the grid is centred in the panel, so every hole is the same shape and the
+   * border reads as a frame. A cell touching one of the `holes` keep-outs is
+   * dropped rather than clipped, for the same reason.
    */
   hexCells(R: number, t: number, bounds: CS, ystretch = 1, holes: CS[] = []): CS | null {
     const P = R + t / Math.sqrt(3);
@@ -171,25 +187,51 @@ export class Geo {
       const a = ((90 + 60 * k) * Math.PI) / 180;
       hexa.push([R * Math.cos(a), R * Math.sin(a) * ystretch]);
     }
-    const keep = holes.length ? bounds.subtract(this.CrossSection.union(holes)) : bounds;
     const { min: [x0, y0], max: [x1, y1] } = bounds.bounds();
-    const minArea = 2.5 * t * t;
-    const cells: CS[] = [];
-    const nrow = Math.floor((y1 - y0 - 2 * hh) / dy) + 1;
-    for (let j = -1; j <= nrow; j++) {
+    const centres: Vec2[] = [];
+    for (let j = 0; y0 + hh + j * dy + hh <= y1 + 1e-6; j++) {
       const cy = y0 + hh + j * dy;
-      if (cy + hh > y1 + 1e-6) continue;
-      const off = j % 2 ? dx / 2 : 0; // note: JS % keeps sign; -1 % 2 = -1 → truthy, matches Python odd
-      for (let i = -1; i <= Math.floor((x1 - x0) / dx) + 2; i++) {
-        const cx = x0 + hw + i * dx + off;
-        const c = this.poly(hexa.map(([px, py]) => [px + cx, py + cy] as Vec2)).intersect(keep);
-        for (const g of c.decompose()) {
-          const b = g.bounds();
-          if (g.area() >= minArea && b.max[0] - b.min[0] >= 2 * t) cells.push(g);
-        }
+      for (let i = 0; ; i++) {
+        const cx = x0 + hw + i * dx + (j % 2 ? dx / 2 : 0);
+        if (cx + hw > x1 + 1e-6) break;
+        centres.push([cx, cy]);
       }
     }
+    if (!centres.length) return null;
+    const xs = centres.map(([x]) => x), ys = centres.map(([, y]) => y);
+    const shiftX = (x0 + x1) / 2 - (Math.min(...xs) + Math.max(...xs)) / 2;
+    const shiftY = (y0 + y1) / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
+    const blocked = holes.length ? this.CrossSection.union(holes) : null;
+    const cells: CS[] = [];
+    for (const [cx, cy] of centres) {
+      const cell = this.poly(hexa.map(([px, py]) => [px + cx + shiftX, py + cy + shiftY] as Vec2));
+      if (blocked && cell.intersect(blocked).area() > 1e-6) continue;
+      cells.push(cell);
+    }
     return cells.length ? this.CrossSection.union(cells) : null;
+  }
+
+  /**
+   * Round the outer top edges of `body` at height `top` by radius r. Manifold has no
+   * fillet, so: keep everything below top-r, and above it a stack of thin slabs of
+   * `plan` (the part's outline) shrunk by the fillet's inset at that height. A 2D
+   * offset follows the outline round its corners, which a straight cut cannot.
+   * The slabs are the stair-steps the printer lays down anyway. `pads` stay flat
+   * through the whole height: seats for pegs.
+   */
+  roundTop(body: M, plan: CS, top: number, r: number, pads: CS[] = [], steps = 8): M {
+    const bb = body.boundingBox();
+    const zMin = bb.min[2] - 1, zMax = bb.max[2] + 1;
+    const big = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1]) + 20;
+    const keep: M[] = [this.box(big, big, top - r - zMin, 0, 0, (top - r + zMin) / 2)];
+    for (let k = 0; k < steps; k++) {
+      const z0 = top - r + (r * k) / steps, z1 = top - r + (r * (k + 1)) / steps;
+      const rise = (z0 + z1) / 2 - (top - r);
+      const inset = r - Math.sqrt(r * r - rise * rise);
+      keep.push(this.prismZ(plan.offset(-inset, "Round", 2, 24), z1 - z0 + 0.01, z0));
+    }
+    for (const pad of pads) keep.push(this.prismZ(pad, zMax - zMin, zMin));
+    return this.isect(body, this.union(keep));
   }
 }
 
@@ -221,7 +263,11 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
     g.box(L, o.wall, H, 0, -py, H / 2),
     g.box(o.wall, IW, ewh, L / 2 - o.wall / 2, 0, ewh / 2),
   ]);
-  if (K.cornerR > 0) body = g.isect(body, g.prismZ(g.roundedRect(L, OW, K.cornerR), H + 2, -1));
+  const outline = g.roundedRect(L, OW, K.cornerR);
+  body = g.isect(body, g.prismZ(outline, H + 2, -1));
+  const pegPads: CS[] = [];
+  for (const sx of [1, -1]) for (const sy of [1, -1]) pegPads.push(g.rect(sx * px - K.pegR - 1, sy * py - K.pegR - 1, sx * px + K.pegR + 1, sy * py + K.pegR + 1));
+  body = g.roundTop(body, outline, H, K.edgeR, pegPads);
 
   const adds: M[] = [body];
   for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(g.cyl(K.pegR, K.pegH, sx * px, sy * py, H));
@@ -235,15 +281,16 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
   body = g.union(adds);
 
   const cuts: M[] = [];
-  // round over the top outer edges: corner square minus the fillet circle, run along X
-  for (const sy of [1, -1]) cuts.push(g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1));
+  // a loading lip is lower than the side walls, so its own top edges get rounded here,
+  // both of them: nothing seats on it, and a can slides in over the inner one
+  if (top) for (const side of [1, -1]) cuts.push(g.prismY(g.roundOver(L / 2 - (side > 0 ? 0 : o.wall), ewh, side, K.edgeR), IW, -IW / 2));
   if (!o.solid) {
     const b = K.border;
     const keep: CS[] = [];
     for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
     if (d.split) keep.push(g.rect(-K.lapLen - 2.5, 0, 2.5, H));
     const panel = g.rect(-L / 2 + b, b, L / 2 - b, H - b);
-    const wcells = g.hexCells(o.hexR, o.lig, panel, Math.sqrt(3), keep);
+    const wcells = g.hexCells(d.hexR, d.lig, panel, Math.sqrt(3), keep);
     if (wcells) for (const sy of [1, -1]) cuts.push(g.prismY(wcells, o.wall + 4, sy * py - (o.wall + 4) / 2));
 
     // recess the outer face over the lattice field; 45 deg ceiling
@@ -261,12 +308,6 @@ export function buildLane(g: Geo, o: Options, d: Derived, bottom = false, top = 
         }
       }
     }
-    // end wall (only when tall enough for a row of cells)
-    if (ewh - 2 * b > 2 * Math.sqrt(3) * o.hexR) {
-      const ecells = g.hexCells(o.hexR, o.lig, g.rect(-IW / 2 + b, b, IW / 2 - b, ewh - b), Math.sqrt(3));
-      if (ecells) cuts.push(g.prismX(ecells, o.wall + 4, L / 2 - o.wall - 2));
-    }
-
     // deck centre band: open between the rails, cross-ties every ~80 mm
     const x0 = xd + 6, x1 = L / 2 - o.wall - 6;
     const ties = new Set<number>([Math.round(lipx * 10) / 10]);
@@ -327,7 +368,8 @@ export function splitLane(g: Geo, o: Options, d: Derived, lane: M, bottom = fals
 }
 
 export function buildLip(g: Geo, o: Options, d: Derived): M {
-  const parts = [g.box(5, d.IW - 1, K.lipH, 0, 0, K.lipH / 2)];
+  const outline = g.roundedRect(5, d.IW - 1, 2.4);
+  const parts = [g.roundTop(g.prismZ(outline, K.lipH), outline, K.lipH, 2)];
   for (const sy of [1, -1]) parts.push(g.box(4.8, 12, 6, 0, sy * d.lipy, -3));
   const scoop = g.cyl(22, 8, 0, 0, -4, 64).rotate([0, 90, 0]).translate([0, 0, K.lipH + 12]);
   return g.diff(g.union(parts), [scoop]);
@@ -340,7 +382,8 @@ export function buildRiser(g: Geo, o: Options, h: number, side = 20): M {
 
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   const { L, OW } = d, t = 2.4;
-  const plate = g.prismZ(g.roundedRect(L, OW, K.cornerR), t, 0);
+  const outline = g.roundedRect(L, OW, K.cornerR);
+  const plate = g.roundTop(g.prismZ(outline, t), outline, t, t / 2);
   const cuts: M[] = [];
   for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(g.cyl(K.socR + o.fit, t + 1, sx * d.px, sy * d.py, -0.5));
   // cascade loading window: the top tier loads from above at its high end, so the cover
@@ -355,8 +398,14 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   }
   if (!o.solid) {
     for (const sx of [1, -1]) for (const sy of [1, -1]) keep.push(g.rect(sx * d.px - 8, sy * d.py - 8, sx * d.px + 8, sy * d.py + 8));
-    if (d.split) keep.push(g.rect(-6, -OW, 6, OW));
-    const cells = g.hexCells(o.hexR, o.lig, g.rect(-L / 2 + 10, -OW / 2 + 10, L / 2 - 10, OW / 2 - 10), 1, keep);
+    // bigger cells and fat bars than the walls: a grille, not a lattice
+    let cells = g.hexCells(1.4 * d.hexR, 0.5 * d.hexR, g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14), 1, keep);
+    if (cells && d.split) {
+      // the seam crosses the field; clip cells at its solid band rather than dropping
+      // them, so the pattern carries over the joint instead of leaving a blank
+      const pieces = cells.subtract(g.rect(-6, -OW, 6, OW)).decompose().filter((piece) => piece.area() > 40);
+      cells = pieces.length ? g.cs2d(...pieces) : null;
+    }
     if (cells) cuts.push(g.prismZ(cells, t + 2, -1));
   }
   const m = g.diff(plate, cuts);

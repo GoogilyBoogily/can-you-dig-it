@@ -13,6 +13,7 @@ export const LIMITS: Record<string, Limit> = {
   bedX: { min: 50, max: 1000, label: "bed X" },
   bedY: { min: 50, max: 1000, label: "bed Y" },
   bedZ: { min: 50, max: 1000, label: "bed Z" },
+  hexR: { min: 6, max: 20, label: "hex cell" },
   // fit is a tolerance offset, not a dimension: 0 is the default and negative is valid.
   fit: { min: -2, max: 2, label: "fit" },
 };
