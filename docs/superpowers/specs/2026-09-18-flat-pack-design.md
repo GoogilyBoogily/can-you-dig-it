@@ -32,8 +32,8 @@ unchanged except that the splice depth replaces the half-lap length in `plateX`.
 
 | plate | printed | carries |
 |---|---|---|
-| deck | flat, as the wedge always was, OW wide | openings and ties as before, slots for the wall tabs, pin holes at ±px, the end-wall slot, lip pockets, the splice tongue or socket |
-| side wall ×2 | flat, outer face up | the lattice and recess pocket, the dovetail rib (+Y) or groove (−Y), tabs down through the deck, pins up at ±px, notches at ±px where there's no deck under the wall, a notch at the end for the end wall's tab, the splice tongue or socket |
+| deck | flat, the wedge between the walls | openings and ties as before, ears under the walls with slots for their tabs, the end-wall slot, lip pockets, the splice tongue or socket |
+| side wall ×2 | flat, outer face up | the lattice and recess pocket, the dovetail rib (+Y) or groove (−Y), notches over the ears with a tab down through each, pins up at ±px and notches at ±px for the pins below, a notch at the end for the end wall's tab, the splice tongue or socket |
 | end wall | flat, outer face up | lattice and recess, a tab down into the deck, a tab each side into the side walls |
 | cover | as before | pin holes instead of peg sockets |
 | end-lip | flat, blade on the bed | tabs in the bed plane, the scoop as a vertical cylinder, the face-up edges rounded |
@@ -46,34 +46,33 @@ pin on a riser. Every hole a tab enters is the tab plus `dtCl + fit` a side.
 
 ### Wall ↔ deck, and the tier stack
 
-The deck stays OW wide, so it runs under the walls as it always did, and each wall stands
-on the rail under it. The wall's bottom edge follows the deck top: z = 0 across the
-chute, then `deckLo` at `xd` rising at the slope, flat for the last `wall` mm where the
-end wall sits. Tabs hang off that edge and go down through slots in the rail to the bed,
-or to the wall top of the tier below. They locate the wall in X and Y. The deck is
-sandwiched between the tier below and the wall above and carries load straight through.
+Walls stack on walls, as the monolith's did: a side wall is a full-height rectangle that
+stands on the shelf or on the wall top of the tier below. The deck sits between the walls,
+`IW` wide, and under each wall it puts out an ear — 12 mm long, the wall's thickness,
+`deckLo` (4 mm) tall — with a closed slot through it. The wall notches over the ear (the
+notch stays inside the 5 mm border, so no cell is lost to it) and a tab inside the notch
+drops through the ear's slot to the wall top below. The ear carries the deck on the tier
+below; the tab locates the wall in X and Y.
 
-Tabs sit in the rail under the wall, which is solid along the whole deck in both designs,
-so they need no tie under them: one 7 mm in from each end of the deck, and one at every
-interior tie that's more than 12 mm from the seam and from ±px. That gives every half of
-a split lane at least one tab. In the minimal design the slot's inner edge meets the open
-strip beside the fin, so the tab is held on three sides there. Widening the ties to close
-it cost 60 g a lane, and the wall can't go inward without leaving the rail anyway.
+The first cut of this had the wall standing on an OW-wide deck rail with its bottom edge
+following the deck top, and every cell that touched that sloped edge dropped: one row
+gone over the whole deck, two at the high end, +15 % lane volume, and the walls read as
+mostly solid. Ears give the wall its straight bottom edge and all three rows back for
++6 % (526 cm³ against 498 as one print, 315 g against 305).
 
-The rails' outer faces recess to the same web as the wall above, with pads round the
-slots and pin holes, so the wall's recess runs on down the deck instead of stopping on a
-ledge. That's 25 cm³ a lane in the standard design and 60 in minimal.
+Ears go one 7 mm in from each end of the deck and one at every interior tie that's more
+than 12 mm from the seam and from ±px, so every half of a split lane has at least one.
 
-Pins at ±px on the wall tops register the next tier in X and the cover in X and Y. Where
-the tier above has deck over the pin it sinks into a hole in that deck. Where it doesn't
-(the chute end) it goes into a notch in the upper wall's bottom edge.
+Pins at ±px on the wall tops go into a notch in the bottom edge of the wall above and
+register it in X; the cover's closed holes take the top tier's and register it in X and
+Y. A riser is a wall-thick foot with the same boss, into the bottom wall's notch.
 
 ### End wall
 
 Stands on the flattened deck end at z = t_e. One tab down into a closed slot in the
-deck, one tab each side, 12 tall, into a notch in the side wall's bottom edge. The side
-walls drop over those tabs as they drop onto the deck, so the whole tier assembles top
-down. A loading-lip end wall (top lane) is the same plate, shorter. Only the outer top
+deck, one tab each side running from the wall top below to 12 mm above the deck, into a
+notch in the side wall's bottom edge. The side walls drop over those tabs as they drop
+onto the ears, so the whole tier assembles top down. A loading-lip end wall (top lane) is the same plate, shorter. Only the outer top
 edge rounds: the inner one would be a round on the bed edge, and a can loaded over the
 lip slides over the outer edge anyway.
 
@@ -95,14 +94,11 @@ groove open at the top as before.
 
 ## What the lattice looks like now
 
-Same cells, same `autoHexR`. The wall panel is everything above the wall's bottom edge
-plus the 5 mm border, so along the deck the bottom row drops out as the deck rises. From
-outside you can read where the deck is. In the chute all three rows fit as before. That
-band is what the flat-pack costs: a standard top lane is 575 cm³ against 498 as one
-print (331 g against 305 in the filament model), a minimal one 288 against 242.
+Same cells, same `autoHexR`, same three rows the whole length: the wall is the rectangle
+it always was. The only new keep-out is the end notch band.
 
-The recess is a pocket now, vertical sides, no 45° ceiling. Pads stay round the tab
-roots, the end-wall notch and the dovetail bands.
+The recess is a pocket now, vertical sides, no 45° ceiling. Pads stay round the ear
+notches, the end-wall notch and the dovetail bands.
 
 ## Rounding
 

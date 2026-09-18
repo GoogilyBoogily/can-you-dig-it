@@ -186,7 +186,7 @@ export class Viewer {
       const coverRot = cascade && (o.tiers - 1) % 2 === 1;
       const coverPush: [number, number, number] = [0, gI * STEP, (o.tiers + 1) * STEP];
       if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
-      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.piny, -24, false, [0, gI * STEP, -STEP]);
+      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
     }
     this.addFloor();
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);

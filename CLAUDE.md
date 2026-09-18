@@ -71,20 +71,24 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   modelled in the orientation it prints in, outer face up, and stood up only in the
   viewer. The rule every feature has to pass: it is in-plane (tab, notch, slot, dovetail,
   hex cell), grows up from the print face (rib, pin, boss), or is a pocket in the print
-  face (recess, groove). Nothing on the bed face, nothing under an edge.
+  face (recess, groove). Nothing on the bed face, nothing under an edge. A hole a tab
+  passes through has to be in a plate it crosses face to face (the deck's ears, the
+  cover); a notch in a plate's edge is through its thickness and locates X only.
   `test/overhang.test.ts` holds every snapshot part to it (no downward face flatter than
   45° off the bed; the dovetail flanks lean 56° and are the one exception). This exists
   because regular hexes cannot be self-supporting in a standing wall — every orientation
   of a 120° hexagon has a ceiling edge at ≤ 30° — and Bambu at its 30° threshold supported
   all of them. Spec in `docs/superpowers/specs/2026-09-18-flat-pack-design.md`.
 - One tab for every joint: 8 wide, 3 thick, flush with the plate's inner face (the bed
-  side when it prints — flush with the outer face it would hang in the air). Walls stand
-  on the deck rail; tabs hang off the wall's bottom edge down through closed slots in
-  the rail, which is what locates a wall in X and Y. An upper tier's wall tabs bottom out
-  on the wall tops below; the deck is sandwiched. Pins (2.4 mm tabs) at ±px on the wall
-  tops register the tier above in X (a hole in its deck, or a notch in its wall where the
-  chute is) and the cover in X and Y. Tabs go where the rail is solid, not in ties;
-  widening ties for them cost 60 g a lane.
+  side when it prints — flush with the outer face it would hang in the air). Walls stack
+  on walls, full-height rectangles, so the lattice keeps its three rows end to end. The
+  deck sits between them, IW wide, and puts a 12 × 6 × 4 mm ear under each wall with a
+  closed slot in it; the wall notches over the ear inside its 5 mm border and drops a
+  tab through the slot to the wall top below. That is what locates a wall in X and Y and
+  carries the deck on the tier below. The first cut stood the wall on an OW-wide rail
+  with a sloped bottom edge and lost a row of cells to it (+15 % volume); ears cost +6 %.
+  Pins (2.4 mm tabs) at ±px on the wall tops go into notches in the wall above (X) and
+  the cover's holes (X and Y). Ears go where the deck is solid, not in ties.
 - Cascade: tiers alternate 180° about Z. Upper decks lose one can-length to the drop
   chute (`inset = canD + 6 + wall`); the bottom deck runs full length to the end-lip.
 - High-end wall is full height only when a tier sits above it (it closes that tier's
@@ -97,20 +101,16 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   printed face-up is a 10 mm cantilever.
 - Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
   the whole point of the flat-pack. Only whole cells are cut, centred in the panel; a
-  cell touching a keep-out (dovetail, splice, the band under the wall's sloped bottom
-  edge) is dropped, not clipped, so every hole is the same shape and the solid bands read
-  as intended. The wall's bottom edge follows the deck top, so along the deck the bottom
-  row drops out as the deck rises — that band is what the flat-pack costs (+15 % lane
-  volume standard, +19 % minimal). `hexAuto` sizes the radius so three rows fill the
+  cell touching a keep-out (dovetail, splice, end notch) is dropped, not clipped, so
+  every hole is the same shape and the solid bands read as intended. `hexAuto` sizes the radius so three rows fill the
   upper-deck wall; the ligament follows the radius (`ligFor`). The high-end wall gets the
   same lattice and recess. The standard cover is a grille with its own radius (three
   whole rows fill its field, bars half the radius) — it used to borrow the wall's and
   lost a row whenever that changed — and only the seam band clips cells, so the pattern
   carries across the joint.
   Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
-  through the bottom border, with pads left round every tab root and the end-wall
-  notch. The deck rails' outer faces recess to the same web with pads round the slots
-  and pin holes, so the recess runs on down the deck instead of stopping on a ledge. The
+  through the bottom border, with pads left round every ear notch and the end-wall
+  notch. The
   dovetail bands stay full: the −Y face needs 3 mm behind its groove, and the +Y recess
   cut runs 1 mm past the face and would sever the rib. Deck centre band is open with
   cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
@@ -143,7 +143,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   centred: each shelf across the bed on its own width, the stack front to back, and each
   part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
 - Feet (risers) are optional and off; the lane sits flat on the shelf. A riser is a
-  block with a boss that sinks into the bottom deck's pin hole.
+  wall-thick foot under ±px with a boss into the wall's bottom notch.
 
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.

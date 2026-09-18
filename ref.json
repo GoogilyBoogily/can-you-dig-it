@@ -59,31 +59,31 @@
   ]
  },
  "riser-08": {
-  "vol": 3257.6,
+  "vol": 1017.6,
   "bbox": [
    [
     -10,
-    -10,
+    -3,
     0
    ],
    [
     10,
-    10,
+    3,
     10.4
    ]
   ]
  },
  "riser-24": {
-  "vol": 9657.6,
+  "vol": 2937.6,
   "bbox": [
    [
     -10,
-    -10,
+    -3,
     0
    ],
    [
     10,
-    10,
+    3,
     26.4
    ]
   ]
@@ -119,7 +119,7 @@
   ]
  },
  "lane-top-deck-front": {
-  "vol": 85827.3,
+  "vol": 77127.1,
   "bbox": [
    [
     -162,
@@ -134,7 +134,7 @@
   ]
  },
  "lane-top-deck-rear": {
-  "vol": 272730.6,
+  "vol": 241085.1,
   "bbox": [
    [
     -8,
@@ -149,7 +149,7 @@
   ]
  },
  "lane-top-wall-tongue-front": {
-  "vol": 58833.6,
+  "vol": 51824.3,
   "bbox": [
    [
     0,
@@ -164,7 +164,7 @@
   ]
  },
  "lane-top-wall-tongue-rear": {
-  "vol": 48983.4,
+  "vol": 51772.7,
   "bbox": [
    [
     -240,
@@ -179,7 +179,7 @@
   ]
  },
  "lane-top-wall-socket-front": {
-  "vol": 52636.1,
+  "vol": 45920.8,
   "bbox": [
    [
     -240,
@@ -194,7 +194,7 @@
   ]
  },
  "lane-top-wall-socket-rear": {
-  "vol": 44532,
+  "vol": 45869.2,
   "bbox": [
    [
     -8,
@@ -209,7 +209,7 @@
   ]
  },
  "lane-top-end-wall": {
-  "vol": 11689.1,
+  "vol": 12580.2,
   "bbox": [
    [
     -45.068,
@@ -224,7 +224,7 @@
   ]
  },
  "lane-mid-deck-front": {
-  "vol": 85827.3,
+  "vol": 77127.1,
   "bbox": [
    [
     -162,
@@ -239,7 +239,7 @@
   ]
  },
  "lane-mid-deck-rear": {
-  "vol": 272730.6,
+  "vol": 241085.1,
   "bbox": [
    [
     -8,
@@ -254,7 +254,7 @@
   ]
  },
  "lane-mid-wall-tongue-front": {
-  "vol": 58833.6,
+  "vol": 51824.3,
   "bbox": [
    [
     0,
@@ -269,7 +269,7 @@
   ]
  },
  "lane-mid-wall-tongue-rear": {
-  "vol": 48983.4,
+  "vol": 51772.7,
   "bbox": [
    [
     -240,
@@ -284,7 +284,7 @@
   ]
  },
  "lane-mid-wall-socket-front": {
-  "vol": 52636.1,
+  "vol": 45920.8,
   "bbox": [
    [
     -240,
@@ -299,7 +299,7 @@
   ]
  },
  "lane-mid-wall-socket-rear": {
-  "vol": 44532,
+  "vol": 45869.2,
   "bbox": [
    [
     -8,
@@ -314,7 +314,7 @@
   ]
  },
  "lane-mid-end-wall": {
-  "vol": 21082.8,
+  "vol": 21973.9,
   "bbox": [
    [
     -94,
@@ -329,7 +329,7 @@
   ]
  },
  "lane-bottom-deck-front": {
-  "vol": 151361.2,
+  "vol": 135018.5,
   "bbox": [
    [
     -240,
@@ -344,7 +344,7 @@
   ]
  },
  "lane-bottom-deck-rear": {
-  "vol": 331956,
+  "vol": 293239.7,
   "bbox": [
    [
     -8,
@@ -359,7 +359,7 @@
   ]
  },
  "lane-bottom-wall-tongue-front": {
-  "vol": 60843.6,
+  "vol": 55610.5,
   "bbox": [
    [
     0,
@@ -374,7 +374,7 @@
   ]
  },
  "lane-bottom-wall-tongue-rear": {
-  "vol": 49192.2,
+  "vol": 55623.1,
   "bbox": [
    [
     -240,
@@ -389,7 +389,7 @@
   ]
  },
  "lane-bottom-wall-socket-front": {
-  "vol": 54742.4,
+  "vol": 49413,
   "bbox": [
    [
     -240,
@@ -404,7 +404,7 @@
   ]
  },
  "lane-bottom-wall-socket-rear": {
-  "vol": 44747.3,
+  "vol": 49425.6,
   "bbox": [
    [
     -8,
@@ -419,7 +419,7 @@
   ]
  },
  "lane-bottom-end-wall": {
-  "vol": 21140,
+  "vol": 22178.3,
   "bbox": [
    [
     -98,
@@ -434,7 +434,7 @@
   ]
  },
  "minimal-lane-top-deck-front": {
-  "vol": 40347.7,
+  "vol": 35912.3,
   "bbox": [
    [
     -162,
@@ -449,7 +449,7 @@
   ]
  },
  "minimal-lane-top-deck-rear": {
-  "vol": 93260.7,
+  "vol": 73472.7,
   "bbox": [
    [
     -8,
@@ -464,7 +464,7 @@
   ]
  },
  "minimal-lane-top-wall-tongue-front": {
-  "vol": 42174.8,
+  "vol": 38995.1,
   "bbox": [
    [
     0,
@@ -479,7 +479,7 @@
   ]
  },
  "minimal-lane-top-wall-tongue-rear": {
-  "vol": 36039.6,
+  "vol": 39207.1,
   "bbox": [
    [
     -240,
@@ -494,7 +494,7 @@
   ]
  },
  "minimal-lane-top-wall-socket-front": {
-  "vol": 35977.3,
+  "vol": 33091.6,
   "bbox": [
    [
     -240,
@@ -509,7 +509,7 @@
   ]
  },
  "minimal-lane-top-wall-socket-rear": {
-  "vol": 31588.2,
+  "vol": 33303.6,
   "bbox": [
    [
     -8,
@@ -524,7 +524,7 @@
   ]
  },
  "minimal-lane-top-end-wall": {
-  "vol": 8481.1,
+  "vol": 9372.2,
   "bbox": [
    [
     -45.068,
@@ -539,7 +539,7 @@
   ]
  },
  "minimal-lane-mid-deck-front": {
-  "vol": 40347.7,
+  "vol": 35912.3,
   "bbox": [
    [
     -162,
@@ -554,7 +554,7 @@
   ]
  },
  "minimal-lane-mid-deck-rear": {
-  "vol": 93260.7,
+  "vol": 73472.7,
   "bbox": [
    [
     -8,
@@ -569,7 +569,7 @@
   ]
  },
  "minimal-lane-mid-wall-tongue-front": {
-  "vol": 42174.8,
+  "vol": 38995.1,
   "bbox": [
    [
     0,
@@ -584,7 +584,7 @@
   ]
  },
  "minimal-lane-mid-wall-tongue-rear": {
-  "vol": 36039.6,
+  "vol": 39207.1,
   "bbox": [
    [
     -240,
@@ -599,7 +599,7 @@
   ]
  },
  "minimal-lane-mid-wall-socket-front": {
-  "vol": 35977.3,
+  "vol": 33091.6,
   "bbox": [
    [
     -240,
@@ -614,7 +614,7 @@
   ]
  },
  "minimal-lane-mid-wall-socket-rear": {
-  "vol": 31588.2,
+  "vol": 33303.6,
   "bbox": [
    [
     -8,
@@ -629,7 +629,7 @@
   ]
  },
  "minimal-lane-mid-end-wall": {
-  "vol": 14553.6,
+  "vol": 15444.7,
   "bbox": [
    [
     -94,
@@ -644,7 +644,7 @@
   ]
  },
  "minimal-lane-bottom-deck-front": {
-  "vol": 60183.5,
+  "vol": 51365.6,
   "bbox": [
    [
     -240,
@@ -659,7 +659,7 @@
   ]
  },
  "minimal-lane-bottom-deck-rear": {
-  "vol": 111804.2,
+  "vol": 87650.2,
   "bbox": [
    [
     -8,
@@ -674,7 +674,7 @@
   ]
  },
  "minimal-lane-bottom-wall-tongue-front": {
-  "vol": 43343,
+  "vol": 41477.5,
   "bbox": [
    [
     0,
@@ -689,7 +689,7 @@
   ]
  },
  "minimal-lane-bottom-wall-tongue-rear": {
-  "vol": 36283,
+  "vol": 41564.2,
   "bbox": [
    [
     -240,
@@ -704,7 +704,7 @@
   ]
  },
  "minimal-lane-bottom-wall-socket-front": {
-  "vol": 37241.8,
+  "vol": 35280,
   "bbox": [
    [
     -240,
@@ -719,7 +719,7 @@
   ]
  },
  "minimal-lane-bottom-wall-socket-rear": {
-  "vol": 31838.1,
+  "vol": 35366.7,
   "bbox": [
    [
     -8,
@@ -734,7 +734,7 @@
   ]
  },
  "minimal-lane-bottom-end-wall": {
-  "vol": 14629.1,
+  "vol": 15667.4,
   "bbox": [
    [
     -98,
