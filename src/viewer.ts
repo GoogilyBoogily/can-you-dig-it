@@ -11,6 +11,12 @@ export class Viewer {
   private ren: THREE.WebGLRenderer;
   private group = new THREE.Group();
   private cans = new THREE.Group();
+  /** Floor furniture under the model: the grid, and the printer bed for scale. Rebuilt
+   *  with every view (the group is replaced), so the on/off state lives here. */
+  private grid: THREE.Object3D = new THREE.Group();
+  private bed: THREE.Object3D = new THREE.Group();
+  private gridOn = true;
+  private bedOn = false;
   /** Assembly meshes with where they sit and where the explode slider pushes them at 1. */
   private exploded: { mesh: THREE.Object3D; rest: THREE.Vector3; push: THREE.Vector3 }[] = [];
   private explodeT = 0;
@@ -100,16 +106,21 @@ export class Viewer {
   /** Cans in the assembly view; the frame is taken with them in so the camera does not jump. */
   showCans(on: boolean) { this.cans.visible = on; }
 
+  showGrid(on: boolean) { this.gridOn = on; this.grid.visible = on; }
+
+  /** The printer bed, centred under the model, so the footprint reads against the plate. */
+  showBed(on: boolean) { this.bedOn = on; this.bed.visible = on; }
+
   /** Pull the assembly apart along each joint: 0 is assembled, 1 is fully open. */
   explode(t: number) {
     this.explodeT = t;
     for (const { mesh, rest, push } of this.exploded) mesh.position.copy(rest).addScaledVector(push, t);
   }
 
-  showPart(p: PartOut) {
+  showPart(p: PartOut, bed: [number, number, number]) {
     this.clear();
     this.group.add(this.mesh(p.mesh, COL[p.role]));
-    this.addFloor();
+    this.addFloor(bed);
     this.phi = 1.05; this.frame(0.9);
   }
 
@@ -190,7 +201,7 @@ export class Viewer {
       if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
       if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
     }
-    this.addFloor();
+    this.addFloor(o.bed);
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
     this.explode(this.explodeT);
   }
@@ -208,10 +219,16 @@ export class Viewer {
     this.phi = 0.8; this.frame(1.1);
   }
 
-  private addFloor() {
+  private addFloor(bed: [number, number, number]) {
     const b = new THREE.Box3().setFromObject(this.group);
     const s = Math.max(300, b.getSize(new THREE.Vector3()).length());
+    const c = b.getCenter(new THREE.Vector3());
     const gh = new THREE.GridHelper(s, 20, 0xb8c0cc, 0xd6dbe3); gh.rotation.x = Math.PI / 2;
-    const c = b.getCenter(new THREE.Vector3()); gh.position.set(c.x, c.y, b.min.z - 0.5); this.group.add(gh);
+    gh.position.set(c.x, c.y, b.min.z - 0.5); gh.visible = this.gridOn;
+    this.grid = gh; this.group.add(gh);
+    // the bed's top face sits just under the grid so the lines draw over it
+    const bedMesh = new THREE.Mesh(new THREE.BoxGeometry(bed[0], bed[1], 2), new THREE.MeshStandardMaterial({ color: COL.bed, roughness: 0.9 }));
+    bedMesh.position.set(c.x, c.y, b.min.z - 1.6); bedMesh.visible = this.bedOn;
+    this.bed = bedMesh; this.group.add(bedMesh);
   }
 }
