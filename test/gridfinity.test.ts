@@ -3,7 +3,7 @@
 import { test, expect } from "bun:test";
 import Module from "manifold-3d";
 import { Geo, DEFAULTS, solve, check, buildAll, buildLanePlates, baseHeight, type Options } from "../src/geometry";
-import { fitSpace } from "../src/solver";
+import { fitSpace, laneNeeds } from "../src/solver";
 
 const wasm = await Module(); wasm.setup();
 const geo = new Geo(wasm);
@@ -109,4 +109,13 @@ test("the solver reports the floor, keeps it inside the shelf, and charges the u
     const stack = l.style === "cascade" ? l.derived.Hb + (l.options.tiers - 1) * l.derived.H : l.options.tiers * l.derived.H;
     expect(l.footprint[2]).toBe(7 + stack);
   }
+});
+
+test("a 12 in shelf is too narrow for a 4-cell floor, and the empty state says so in cells", () => {
+  expect(fitSpace({ w: 160, d: 305, h: 254, front: 0 }, grid, { cascade: true })).toEqual([]);
+  expect(laneNeeds(grid)).toEqual({ w: 168, h: 7 + solve({ ...grid, cascade: false, length: 200 }).H, cells: 4 });
+  expect(laneNeeds(DEFAULTS).w).toBe(141 + 8);
+  // no side gap on a grid: a 168 mm shelf takes the 4-cell baseplate exactly
+  expect(fitSpace({ w: 168, d: 460, h: 254, front: 0 }, grid, { cascade: true }).length).toBeGreaterThan(0);
+  expect(fitSpace({ w: 167, d: 460, h: 254, front: 0 }, grid, { cascade: true })).toEqual([]);
 });

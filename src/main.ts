@@ -1,5 +1,5 @@
 import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
-import { fitSpace, type Layout, type Space } from "./solver";
+import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, type Placement } from "./export";
@@ -81,7 +81,9 @@ function refit(want = 0) {
   const box = $("layouts");
   box.innerHTML = "";
   if (!layouts.length) {
-    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs about ${(base.canL + 16).toFixed(0)} mm of width and ${(base.canD + 30).toFixed(0)} mm of height.</p>`;
+    const need = laneNeeds(base);
+    const width = need.cells ? `${need.w} mm of width (${need.cells} Gridfinity cells)` : `${need.w.toFixed(0)} mm of width`;
+    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs ${width} and ${need.h.toFixed(0)} mm of height${need.cells ? "; a narrower base is Flat or Feet" : ""}.</p>`;
     chosen = null; chosenIndex = 0; return;
   }
   const h = document.createElement("h2"); h.textContent = "Layouts that fit"; box.appendChild(h);

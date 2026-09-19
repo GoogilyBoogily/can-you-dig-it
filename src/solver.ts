@@ -14,7 +14,17 @@ export interface Layout {
   style: "cascade" | "flat";
 }
 
-const SIDE_GAP = 4;    // per side
+const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
+
+/** Shelf width kept beside a gang. On a grid the floor already sits 0.25 mm inside its
+ *  cells and the baseplate is what touches the shelf, so a 4-cell floor fits a 168 mm shelf. */
+const sideRoom = (base: Options) => (base.base === "gridfinity" ? 0 : 2 * SIDE_GAP);
+
+/** The least shelf one lane needs, for the empty state: one flat tier on its base. */
+export function laneNeeds(base: Options): { w: number; h: number; cells?: number } {
+  const d = solve({ ...base, cascade: false, length: 200 });
+  return { w: d.gangPitch + sideRoom(base), h: baseHeight(base.base) + d.H, cells: base.base === "gridfinity" ? d.gridY : undefined };
+}
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {
   const out: Layout[] = [];
@@ -23,7 +33,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     const usableD = space.d - space.front;
     const seed: Options = { ...base, cascade: style === "cascade", length: 480 };
     const seedD = solve(seed);
-    const lanesMax = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    const lanesMax = Math.floor((space.w - sideRoom(base)) / seedD.gangPitch);
     if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, the single-plate size, and the shortest lane for
     // every whole-can count under that - deck that holds no can is filament and shelf
