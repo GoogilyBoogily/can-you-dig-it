@@ -13,7 +13,7 @@ const PLATES = 16;
 
 /** A box the size of a real part's bounds. The packer reads bounds, so a box is the part. */
 const boxOf = (name: string): MeshData => {
-  const [lo, hi] = (ref as any)[name].bbox as [number[], number[]];
+  const { min: lo, max: hi } = (ref as any)[name] as { min: number[]; max: number[] };
   const [x, y, z] = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
   const pos = new Float32Array([0, 0, 0, x, 0, 0, x, y, 0, 0, y, 0, 0, 0, z, x, 0, z, x, y, z, 0, y, z]);
   return { name, pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos) };

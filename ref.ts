@@ -78,16 +78,18 @@ if (import.meta.main) {
   wasm.setup();
   const geo = new Geo(wasm);
 
-  const snapshot: Record<string, unknown> = { spec: refSpec(solve(DEFAULTS)) };
+  // One line per part, so a diff line names its part and says min or max: "lane-top-deck-rear
+  // max" moved, not an unlabelled number. The kernel version sits in spec so an upgrade
+  // that shifts the float noise shows why.
+  const manifoldVersion: string = (await Bun.file(new URL("node_modules/manifold-3d/package.json", import.meta.url)).json()).version;
+  const lines = [`"spec": ${JSON.stringify({ ...refSpec(solve(DEFAULTS)), manifold: manifoldVersion })}`];
   for (const [name, mesh] of Object.entries(refParts(geo))) {
     if (mesh.status() !== "NoError") throw new Error(`${name} is not a valid solid: ${mesh.status()}`);
     const box = mesh.boundingBox();
-    snapshot[name] = {
-      vol: Number(mesh.volume().toFixed(1)),
-      bbox: [[...box.min], [...box.max]].map((corner) => corner.map((v) => Number(v.toFixed(3)))),
-    };
+    const round3 = (values: number[]) => values.map((v) => Number(v.toFixed(3)));
+    lines.push(`${JSON.stringify(name)}: ${JSON.stringify({ vol: Number(mesh.volume().toFixed(3)), min: round3([...box.min]), max: round3([...box.max]) })}`);
   }
 
-  await Bun.write("ref.json", JSON.stringify(snapshot, null, 1) + "\n");
-  console.log(`wrote ref.json: ${Object.keys(snapshot).length - 1} parts`);
+  await Bun.write("ref.json", `{\n${lines.join(",\n")}\n}\n`);
+  console.log(`wrote ref.json: ${lines.length - 1} parts`);
 }

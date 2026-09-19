@@ -16,9 +16,10 @@ const VOLUME_TOLERANCE = 1e-4; // 0.01 %
 const BOUND_TOLERANCE = 0.01;  // mm
 
 test("derived dimensions match the snapshot", () => {
-  const expected = ref.spec as Record<string, number>;
+  const { manifold, ...expected } = ref.spec;
+  expect(typeof manifold).toBe("string"); // the kernel the numbers came from, for the diff reader
   for (const [key, value] of Object.entries(refSpec(derived)))
-    expect(Math.abs(value - expected[key]), key).toBeLessThanOrEqual(BOUND_TOLERANCE);
+    expect(Math.abs(value - (expected as Record<string, number>)[key]), key).toBeLessThanOrEqual(BOUND_TOLERANCE);
 });
 
 const parts = snapshotParts();
@@ -35,8 +36,8 @@ for (const [name, mesh] of Object.entries(parts)) {
     const box = mesh.boundingBox();
     expect(Math.abs(mesh.volume() / expected.vol - 1), `${name} volume`).toBeLessThanOrEqual(VOLUME_TOLERANCE);
     for (let i = 0; i < 3; i++) {
-      expect(Math.abs(box.min[i] - expected.bbox[0][i]), `${name} min[${i}]`).toBeLessThanOrEqual(BOUND_TOLERANCE);
-      expect(Math.abs(box.max[i] - expected.bbox[1][i]), `${name} max[${i}]`).toBeLessThanOrEqual(BOUND_TOLERANCE);
+      expect(Math.abs(box.min[i] - expected.min[i]), `${name} min[${i}]`).toBeLessThanOrEqual(BOUND_TOLERANCE);
+      expect(Math.abs(box.max[i] - expected.max[i]), `${name} max[${i}]`).toBeLessThanOrEqual(BOUND_TOLERANCE);
     }
     expect(mesh.status()).toBe("NoError");
   });
