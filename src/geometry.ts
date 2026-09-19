@@ -72,8 +72,11 @@ export const DEFAULTS: Options = {
 };
 
 // fixed design constants
-const K = {
+export const K = {
   deckLo: 4, topgap: 2, slack: 8, lipH: 20, edgeR: 3,
+  lipInset: 8, // the lip pockets, and the first can, this far in from the deck start
+  minimalT: 2.5, // the minimal design's fins, ties and end ties
+  padRise: 4, // a recess pad stands this far above the notch it guards
   hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
   border: 5, web: 3.5,
   dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
@@ -87,6 +90,9 @@ const K = {
   gridPitch: 42, gridGap: 0.25, unitH: 7, footFlat: 35.6, footChamferLo: 0.8, footWall: 1.8,
   footChamferHi: 2.15, footR: 3.75, magnetR: 3.25, magnetDepth: 2.4, magnetPitch: 26,
 };
+
+/** PETG, g/cm³: the filament estimates and the solid-print weight. */
+export const DENSITY = 1.27;
 
 /** Height the base adds under the bottom tier: what the solver charges the shelf for. On
  *  a grid the feet sit inside the baseplate, so the unit is the whole of it. */
@@ -124,8 +130,8 @@ function autoR(panelH: number, [a, b]: readonly [number, number]): number {
 /** Where a wall's lattice field starts. A hexagon only lands a 60° tip over an ear notch;
  *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
  *  across 12.5 mm, so every other pattern starts above the recess pads that guard the
- *  tab roots (notchH + 4). Hex keeps the border so its snapshot does not move. */
-const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + K.dtCl + o.fit + 4);
+ *  tab roots (notchH + padRise). Hex keeps the border so its snapshot does not move. */
+const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + K.dtCl + o.fit + K.padRise);
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
@@ -157,7 +163,7 @@ export function solve(o: Options): Derived {
   // tier is as tall as that plus the lip gap needs too, or a short or level lane held
   // cans it could not give up. Upper cascade decks have no lip (their front is the
   // chute); the bottom deck always does
-  const front = K.deckLo + 8 * tan + K.lipH + o.canD + o.lipGap;
+  const front = K.deckLo + K.lipInset * tan + K.lipH + o.canD + o.lipGap;
   const H = Math.ceil(Math.max(dhi + o.canD + K.topgap, o.cascade ? 0 : front));
   const dhiB = K.deckLo + L * tan;
   const Hb = Math.ceil(Math.max(dhiB + o.canD + K.topgap, front));
@@ -432,11 +438,11 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   const dhi = bottom ? d.dhiB : d.dhi;
   const H = bottom ? d.Hb : d.H;
   const te = K.deckLo + (xe - xd) * d.tan;
-  const lipx = xd + 8;
+  const lipx = xd + K.lipInset;
   const minimal = o.design === "minimal";
 
   // deck centre band: open between the rails, cross-ties every ~80 mm, a tie at each end
-  const endTie = minimal ? 2.5 : 6;
+  const endTie = minimal ? K.minimalT : 6;
   const x0 = xd + endTie, x1 = xe - endTie;
   const nt = Math.max(1, Math.round((x1 - x0) / 80) - 1);
   const interior: number[] = [];
@@ -449,7 +455,7 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   const tabs = [xd + tabIn, xe - tabIn, ...interior.filter(clear)];
   const ties = new Set<number>([round1(lipx), ...interior]);
   if (d.split) ties.add(round1(-K.spliceDepth / 2));
-  const tw = minimal ? 2.5 : 8;
+  const tw = minimal ? K.minimalT : 8;
   // the lip tie holds the lip pockets, the splice tie the deck tongue: 10 mm each side.
   // An interior tie can land inside one of those bands; merge, or its far edge would
   // start the next opening inside the band and leave the tongue rooted on a sliver.
@@ -495,7 +501,7 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     // strip between fin and wall opens too. A necked can is widest at its body, which
     // ends ~12 mm short of each end; pushed over by the full side play the body edge sits
     // at IW/2 - 15.5, still over the fin. It stands on the bed: compression, no bridging.
-    const strip = IW / 2 - d.railHy - 2.5;
+    const strip = IW / 2 - d.railHy - K.minimalT;
     // under each ear the strip keeps an ear-high plinth out to the fin, as wide as the
     // wall's pad round its notch: an ear is rooted in the deck by 1 mm, and inside a
     // 2.5 mm tie the tab hole takes all of it. Six loose 12 × 6 × 4 chips a lane, once
@@ -568,7 +574,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
     const keep: CS[] = [];
     if (gang) for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
     if (d.split) keep.push(g.rect(-K.spliceDepth - 2.5, 0, 2.5, H));
-    const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + 4);
+    const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + K.padRise);
     keep.push(endNotch);
     const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
     const wcells = g.cellsOf(o.pattern, d.hexR, d.lig, panel, keep);
@@ -582,7 +588,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
     // side, no infill
     const rd = o.wall - (minimal ? K.ligMin : K.web);
     if (rd > 0.2) {
-      const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + 4))];
+      const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
       const field = panel.subtract(g.cs2d(...keep));
       for (const comp of field.decompose()) {
         const { min: [gx0], max: [gx1] } = comp.bounds();
@@ -854,7 +860,7 @@ function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Pla
  *  the core is what sits inside the perimeters with `skin` of material above and below.
  *  A slicer prints the rest solid, so a plate thinner than two skins has no core at all
  *  and a sloped deck top is solid along the whole slope, not only at its edge. */
-export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, density = 1.27, skin = 1): number {
+export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, density = DENSITY, skin = 1): number {
   const bb = m.boundingBox();
   let solid = 0;
   for (let z = bb.min[2] + dz / 2; z < bb.max[2]; z += dz) {

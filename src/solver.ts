@@ -1,6 +1,6 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
-import { solve, check, laneLengthFor, baseHeight, type Options, type Derived } from "./geometry";
+import { K, solve, check, laneLengthFor, baseHeight, type Options, type Derived } from "./geometry";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -15,7 +15,6 @@ export interface Layout {
 }
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
-const GRID = 42;       // Gridfinity cell pitch
 
 /** The least shelf one lane needs, for the empty state: one flat tier on its base. */
 export function laneNeeds(base: Options): { w: number; h: number } {
@@ -30,18 +29,18 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     const usableD = space.d - space.front;
     // each lane's feet take the cells that cover it, or all the shelf has room for when
     // that is fewer, and lanes go a floor apart on the baseplate
-    const shelfCells: [number, number] = [Math.floor(usableD / GRID), Math.floor(space.w / GRID)];
+    const shelfCells: [number, number] = [Math.floor(usableD / K.gridPitch), Math.floor(space.w / K.gridPitch)];
     const seed: Options = { ...base, cascade: style === "cascade", length: 480, shelfCells };
     const seedD = solve(seed);
     const grid = base.base === "gridfinity";
     let lanesMax = grid ? Math.floor(shelfCells[1] / seedD.floorCells[1]) : Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
-    while (grid && lanesMax > 0 && lanesMax * seedD.gangPitch - 2 * 0.25 > space.w) lanesMax--; // a lane wider than its cells
+    while (grid && lanesMax > 0 && lanesMax * seedD.gangPitch - 2 * K.gridGap > space.w) lanesMax--; // a lane wider than its cells
     if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, the single-plate size, and the shortest lane for
     // every whole-can count under that - deck that holds no can is filament and shelf
     // spent on nothing, and what it frees at the front is where a hand goes
     const lengths = new Set<number>();
-    const maxLen = Math.min(usableD, 2 * (base.bed[0] - 2 * base.bedMargin - 10));
+    const maxLen = Math.min(usableD, 2 * (base.bed[0] - 2 * base.bedMargin - 10)); // 10: 2 mm inside solve()'s spliceDepth cap
     lengths.add(Math.floor(maxLen));
     // The single-plate size is only a candidate while it still fits the shelf.
     lengths.add(Math.floor(Math.min(maxLen, base.bed[0] - 2 * base.bedMargin)));

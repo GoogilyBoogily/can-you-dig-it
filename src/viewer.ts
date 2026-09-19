@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import type { Derived, Options } from "./geometry";
+import { K, type Derived, type Options } from "./geometry";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -165,7 +165,6 @@ export class Viewer {
     const can = new THREE.CylinderGeometry(o.canD / 2, o.canD / 2, o.canL, 36); // axis = Y = across the lane
     const canMat = new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 });
     const cans = new THREE.Group(); cans.visible = this.cans.visible; this.cans = cans; this.group.add(cans);
-    const deckLo = 4;
     for (let gI = 0; gI < o.lanesWide; gI++) {
       const y = gI * G;
       for (let t = 0; t < o.tiers; t++) {
@@ -184,12 +183,12 @@ export class Viewer {
           else putPlate(lane, name, plate, "");
         }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
-        if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, deckLo + 8 * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);
+        if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, K.deckLo + K.lipInset * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);
         // cans, in the lane's own frame
         const n = isBottom || !cascade ? (cascade ? d.nBottom : d.n) : d.n;
         for (let i = 0; i < n; i++) {
-          const xl = xd + 8 + 2.5 + o.canD / 2 + i * (o.canD + 0.5);
-          const zl = deckLo + (xl - xd) * d.tan + o.canD / 2;
+          const xl = xd + K.lipInset + 2.5 + o.canD / 2 + i * (o.canD + 0.5);
+          const zl = K.deckLo + (xl - xd) * d.tan + o.canD / 2;
           const c = new THREE.Mesh(can, canMat);
           c.position.set(rot ? -xl : xl, y, z + zl); cans.add(c); track(c, 0, gI * STEP, t * STEP);
         }

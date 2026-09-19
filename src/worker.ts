@@ -1,6 +1,6 @@
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { Geo, solve, buildAll, filamentGrams, type Options, type PartSet, type Plate } from "./geometry";
+import { DENSITY, Geo, solve, buildAll, filamentGrams, type Options, type PartSet, type Plate } from "./geometry";
 import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./export";
 
 export type Req =
@@ -40,7 +40,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const parts: PartOut[] = [];
       const add = (name: string, m: Manifold | undefined, qty: number, role: PartOut["role"]) => {
         if (!m || qty <= 0) return;
-        parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), solidGrams: m.volume() / 1000 * 1.27, role });
+        parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), solidGrams: m.volume() / 1000 * DENSITY, role });
       };
       const qtyOf = { bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: cascade ? o.lanesWide : o.lanesWide * o.tiers };
       const addPlate = (base: string, plate: Plate, qty: number) => {
