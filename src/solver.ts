@@ -43,6 +43,8 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
       const d = solve(o);
       if (seen.has(d.L)) continue;
       seen.add(d.L);
+      const floorL = d.floor[2] - d.floor[0]; // on a grid the floor runs past the lane
+      if (floorL > usableD) continue;
       const cascade = d.inset > 0;
       const riser = baseHeight(base.base);
       const tierH = space.h - riser;
@@ -63,7 +65,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
       const coverGrams = base.cover ? (base.design === "minimal" ? 90 : 130) : 0;
       out.push({
         options: o, derived: d, cans,
-        footprint: [lanesMax * d.gangPitch, d.L, height],
+        footprint: [lanesMax * d.gangPitch, floorL, height],
         gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 9,
         warnings: w, style,
       });

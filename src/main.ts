@@ -1,4 +1,4 @@
-import { DEFAULTS, DESIGNS, PATTERNS, BASES, type Design, type Pattern, type Base, type Options } from "./geometry";
+import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
 import { fitSpace, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
@@ -35,11 +35,13 @@ function readOptions(): { space: Space; base: Options; cascade: boolean } {
   if (!PATTERNS.includes(pattern)) throw new Error("pattern: pick Hex, Circles, Kumiko, Slats or Breeze block");
   const standsOn = f.get("base") as Base;
   if (!BASES.includes(standsOn)) throw new Error("base: pick Flat, Feet or Gridfinity");
+  const across = f.get("across") as Across, along = f.get("along") as Along;
+  if (!ACROSS.includes(across) || !ALONG.includes(along)) throw new Error("grid position: pick left, centre or right, and front, centre or back");
   const base: Options = {
     ...DEFAULTS,
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
-    cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, pattern, base: standsOn, magnets: f.get("magnets") === "on", fit: num("fit"),
+    cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, pattern, base: standsOn, magnets: f.get("magnets") === "on", across, along, fit: num("fit"),
     hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"),
   };
   return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: f.get("cascade") === "on" };
@@ -184,7 +186,7 @@ function renderResults() {
     <dt>Capacity</dt><dd>${layout.cans} cans</dd>
     <dt>Footprint</dt><dd>${layout.footprint.map((v) => v.toFixed(0)).join(" × ")} mm</dd>
     <dt>Lane</dt><dd>${d.L.toFixed(0)} × ${d.OW.toFixed(0)} × ${d.H} mm${d.split ? ", two keyed halves" : ""}</dd>
-    ${o.base === "gridfinity" ? `<dt>Base</dt><dd>Gridfinity, ${d.gridX} × ${d.gridY} cells per lane${o.magnets ? ", 6 × 2 mm magnet pockets" : ""}</dd>` : ""}
+    ${o.base === "gridfinity" ? `<dt>Base</dt><dd>Gridfinity, ${d.gridX} × ${d.gridY} cells per lane, lane ${o.along === "centre" && o.across === "centre" ? "centred" : `at the ${[o.along, o.across].filter((p) => p !== "centre").join(" ")}`}${o.magnets ? ", 6 × 2 mm magnet pockets" : ""}</dd>` : ""}
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
@@ -336,7 +338,7 @@ loadProfile();
 // Every field readOptions() consumes, plus the layout the user clicked. Checkboxes are
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
-const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "hexR", "hexAuto", "slope", "fit"];
+const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "fit"];
 function syncHash() {
   const q = new URLSearchParams();
   for (const k of KEYS) {

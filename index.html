@@ -96,6 +96,18 @@
         </select></label>
         <label class="check"><input name="magnets" type="checkbox"> Magnet pockets (6 × 2 mm) in Gridfinity feet</label>
       </div>
+      <div class="row">
+        <label class="grow">On the grid, across <select name="across">
+          <option value="left">Left</option>
+          <option value="centre" selected>Centred</option>
+          <option value="right">Right</option>
+        </select></label>
+        <label class="grow">Along <select name="along">
+          <option value="front">Front</option>
+          <option value="centre" selected>Centred</option>
+          <option value="back">Back</option>
+        </select></label>
+      </div>
       <label class="fit">Fit
         <input name="fit" type="range" min="-0.2" max="0.3" step="0.05" value="0">
         <output name="fitOut">0.00</output>

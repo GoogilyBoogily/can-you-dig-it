@@ -60,10 +60,13 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, set, "top");
   }
-  // the Gridfinity deck, with and without magnet pockets, and the flat stack's (a top
-  // lane's deck on the unit). solve() per option: the lane snaps to whole cells
-  for (const [name, variant] of Object.entries({ "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "flat-grid-deck": { cascade: false } })) {
-    const o: Options = { ...DEFAULTS, base: "gridfinity", ...variant };
+  // the Gridfinity deck: centred, with magnet pockets, in a corner of its floor, and the
+  // flat stack's (a top lane's deck on the unit). 410 mm: six cans on the bottom deck,
+  // ten cells, which a 256 bed prints in two halves where the default 480 would not
+  const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410 };
+  const gridVariants: Record<string, Partial<Options>> = { "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "grid-deck-corner": { across: "left", along: "front" }, "flat-grid-deck": { cascade: false } };
+  for (const [name, variant] of Object.entries(gridVariants)) {
+    const o: Options = { ...grid, ...variant };
     const plate = buildAll(geo, o, solve(o)).gridDeck!;
     parts[`${name}-front`] = plate.front!;
     parts[`${name}-rear`] = plate.rear!;

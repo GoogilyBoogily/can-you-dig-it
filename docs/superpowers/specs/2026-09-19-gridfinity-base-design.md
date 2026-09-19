@@ -32,9 +32,21 @@ dovetails go away in this mode: the walls are 30 mm apart and the baseplate is t
 gang joint. A 305 mm shelf holds one such lane where it held two plain ones; that is
 the price of the grid, and the reason this is a select and not the default.
 
-Lane length snaps up to whole cells per can count - under 42 mm of extra deck, less
-than a can - and a split lane keeps an even count so the seam is a cell line. On a
-256 mm bed a half carries 5 cells, so the lane tops out at 419.5 mm.
+The lane keeps the length its cans need; the floor is whole cells round it, in both
+axes, and two selects say where the lane sits on that floor: across (left, centre,
+right - left is +Y, seen from the front) and along (front, centre, back - front is
+the lip end). Flush with an edge, the spare goes to the other side, so a lane can
+stand in the corner of a drawer's baseplate; centred keeps it symmetric. Nine
+positions, defaults centre/centre.
+
+It is the floor that has to fit the bed. It splits at x = 0 with the deck, and the
+seam runs through a foot as often as not: a foot cut square by the dovetail seam
+prints as it is (the cut face is vertical), the tongue carries floor and foot chunk
+with it, and the baseplate pocket locks the two halves. Magnet pockets the seam would
+halve are skipped. On a 256 mm bed a default can's 480 mm lane needs twelve cells,
+503.5 mm, and no alignment gets a half under 250: six cans, 410 mm on ten cells, is
+the longest that prints. The solver drops any lane whose floor outruns the shelf and
+reports the floor as the footprint.
 
 ## Geometry
 
@@ -48,7 +60,9 @@ top corner and bind in a r4 pocket. The upper chamfer runs on 2 mm past the prof
 neighbouring feet then meet in a 45° ridge across the 0.5 mm gap, the pit between four
 rounded corners closes 1.9 mm up, and the floor slab starts above that. Stopped at the
 profile, every gap and pit would have had a flat ceiling of floor over it. The run-on
-is clipped at the bin's edge, so the outline stays `n·42 − 0.5`.
+is clipped at the bin's edge, so the outline stays `n·42 − 0.5`. The outline's r3.75
+corners are squared only where the lane's own corner lands on one: flush in a corner,
+a deck ear would otherwise hang a square millimetre over the round.
 
 The split keeps the tongue: `splitDeck` takes the deck's bottom z so the dovetail runs
 through floor and pan and the rear half's tongue stands on the bed.

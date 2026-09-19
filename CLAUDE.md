@@ -173,12 +173,20 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   Feet only on the deck's bed face: that is the one face of the lane that prints the
   way a bin does. The upper chamfer runs 2 mm past the profile so neighbouring feet
   meet in a ridge and the corner pits close at 45°: the floor has no flat underside.
-  `solve()` snaps `L` to whole cells (even when split, so the seam is a cell line),
-  `gangPitch` to `ny·42`, and the gang dovetails are off (the baseplate is the joint).
-  A default can pays 141 → 168 across and 480 → 419.5 long on a 256 bed; that is why
-  it is a select, not the default. `PartSet.gridDeck` replaces that role's deck in the
-  worker; `o.magnets` cuts 6.5 × 2.4 pockets on the 26 mm square, the one bridged
-  ceiling `test/overhang.test.ts` allows. `baseHeight()` is what the solver charges.
+  The lane keeps its can-driven size; the floor is whole cells round it (`d.floor`),
+  and `o.across` / `o.along` (left, centre, right / front, centre, back) say which
+  edge the lane is flush with - the spare goes to the other side, so a lane can sit in
+  a drawer's corner. `gangPitch` is `ny·42` and the gang dovetails are off (the
+  baseplate is the joint). The floor is what has to fit the bed: `split` and `plateX`
+  are the floor's, and the seam at x = 0 runs through a foot as often as not - a foot
+  cut square prints as it is and the pocket locks it; only magnet pockets the seam
+  crosses are skipped. The solver drops a lane whose floor outruns the shelf and
+  reports the floor as the footprint. A default can pays 141 → 168 across, and 480
+  needs 12 cells (503.5), too long for a 256 bed in halves: 410 (six cans) is the
+  longest that prints. That is why it is a select, not the default. `PartSet.gridDeck`
+  replaces that role's deck in the worker; `o.magnets` cuts 6.5 × 2.4 pockets on the
+  26 mm square, the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()`
+  is what the solver charges.
   Spec in `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
 
 ## Conventions
