@@ -1,6 +1,6 @@
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { Geo, solve, buildAll, filamentGrams, type Options, type PartSet } from "./geometry";
+import { Geo, solve, buildAll, filamentGrams, type Options, type PartSet, type Plate } from "./geometry";
 import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./export";
 
 export type Req =
@@ -43,14 +43,20 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), solidGrams: m.volume() / 1000 * 1.27, role });
       };
       const qtyOf = { bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: cascade ? o.lanesWide : o.lanesWide * o.tiers };
+      const addPlate = (base: string, plate: Plate, qty: number) => {
+        add(base, plate.whole, qty, "lane");
+        add(`${base}-front`, plate.front, qty, "lane");
+        add(`${base}-rear`, plate.rear, qty, "lane");
+      };
+      // the shelf lane's deck is the grid deck instead, one per lane across
+      const shelfRole = cascade ? "bottom" : "top";
       for (const ln of set.lanes) for (const plate of ln.plates) {
-        const base = cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`;
-        add(base, plate.whole, qtyOf[ln.role], "lane");
-        add(`${base}-front`, plate.front, qtyOf[ln.role], "lane");
-        add(`${base}-rear`, plate.rear, qtyOf[ln.role], "lane");
+        const onGrid = set.gridDeck && ln.role === shelfRole && plate.name === "deck";
+        addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role] - (onGrid ? o.lanesWide : 0));
       }
+      if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
       add("end-lip", set.lip, nLip, "lip");
-      if (o.feet) {
+      if (o.base === "feet") {
         add("riser-24", set.riser24, o.lanesWide * 4, "riser");
         add("riser-08", set.riser08, o.lanesWide * 4, "riser");
       }

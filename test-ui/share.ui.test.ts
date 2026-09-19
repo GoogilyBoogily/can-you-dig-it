@@ -30,6 +30,8 @@ test("every option survives the hash, including boxes turned off and the layout 
   await page.selectOption("#form [name=design]", "minimal");
   await page.selectOption("#form [name=pattern]", "slat");
   await page.fill("#form [name=slope]", "5");
+  await page.selectOption("#form [name=base]", "gridfinity");
+  await page.check("#form [name=magnets]");
   await page.waitForSelector(".layout");
   await page.locator(".layout").nth(1).click();
   const shared = page.url();
@@ -43,6 +45,8 @@ test("every option survives the hash, including boxes turned off and the layout 
   expect(await again.inputValue("#form [name=design]")).toBe("minimal");
   expect(await again.inputValue("#form [name=pattern]")).toBe("slat");
   expect(await again.inputValue("#form [name=slope]")).toBe("5");
+  expect(await again.inputValue("#form [name=base]")).toBe("gridfinity");
+  expect(await again.isChecked("#form [name=magnets]")).toBe(true);
   await again.waitForSelector(".layout");
   expect(await again.locator(".layout").nth(1).getAttribute("aria-pressed")).toBe("true");
   // Same inputs, same ranking: the recipient sees the layout the sender clicked.

@@ -1,6 +1,6 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
-import { solve, check, laneLengthFor, type Options, type Derived } from "./geometry";
+import { solve, check, laneLengthFor, baseHeight, type Options, type Derived } from "./geometry";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -8,14 +8,13 @@ export interface Layout {
   options: Options;  // lanesWide, tiers and the rest live here - never copied out
   derived: Derived;  // L, and every other dimension solve() produced
   cans: number;
-  footprint: [number, number, number]; // w, d, h of the assembly incl. risers
+  footprint: [number, number, number]; // w, d, h of the assembly incl. the base
   gramsEst: number; // rough, from the lane count (refined after geometry)
   warnings: string[];
   style: "cascade" | "flat";
 }
 
 const SIDE_GAP = 4;    // per side
-const RISER = 24;      // riser height when feet are on
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {
   const out: Layout[] = [];
@@ -37,12 +36,15 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     for (const bottom of style === "cascade" ? [false, true] : [false]) {
       for (let cans = 1; laneLengthFor(seed, cans, bottom) <= maxLen; cans++) lengths.add(Math.ceil(laneLengthFor(seed, cans, bottom)));
     }
+    const seen = new Set<number>(); // on a grid several candidates snap to one lane
     for (const length of lengths) {
       if (length < 120) continue;
       const o: Options = { ...base, length, cascade: style === "cascade", lanesWide: lanesMax, tiers: 1 };
       const d = solve(o);
+      if (seen.has(d.L)) continue;
+      seen.add(d.L);
       const cascade = d.inset > 0;
-      const riser = base.feet ? RISER : 0;
+      const riser = baseHeight(base.base);
       const tierH = space.h - riser;
       let tiers = cascade
         ? (tierH >= d.Hb ? 1 + Math.floor((tierH - d.Hb) / d.H) : 0)

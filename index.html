@@ -88,7 +88,14 @@
         <label>Deck slope <input name="slope" type="number" min="0" max="10" step="0.5" value="3"><span>°</span></label>
         <span class="hint">3° rolls a can to the front on its own. Lower is a shorter tier, so more of them stack.</span>
       </div>
-      <label class="check"><input name="feet" type="checkbox"> 24 mm feet under the bottom tier (for wire shelves or a lip that needs clearing)</label>
+      <div class="pair">
+        <label class="grow">Base <select name="base">
+          <option value="flat">Flat on the shelf</option>
+          <option value="feet">24 mm feet (wire shelves, a lip to clear)</option>
+          <option value="gridfinity">Gridfinity baseplate</option>
+        </select></label>
+        <label class="check"><input name="magnets" type="checkbox"> Magnet pockets (6 × 2 mm) in Gridfinity feet</label>
+      </div>
       <label class="fit">Fit
         <input name="fit" type="range" min="-0.2" max="0.3" step="0.05" value="0">
         <output name="fitOut">0.00</output>

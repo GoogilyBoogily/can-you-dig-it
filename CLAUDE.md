@@ -165,8 +165,21 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   by Y extent descending, so growing it packs nothing tighter. Then everything is
   centred: each shelf across the bed on its own width, the stack front to back, and each
   part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
-- Feet (risers) are optional and off; the lane sits flat on the shelf. A riser is a
-  wall-thick foot under ±px with a boss into the wall's bottom notch.
+- `o.base`: flat (default, the lane sits on the shelf), feet, or gridfinity. A riser is a
+  wall-thick foot under ±px with a boss into the wall's bottom notch. Gridfinity
+  (2026-09-19): the shelf lane's deck grows a 7 mm unit below z = 0 - a floor of whole
+  42 mm cells (`n·42 − 0.5`, past the walls) with the spec foot under every cell, hulled
+  so the 45° chamfers are exact, and the riser's boss at ±px; walls stand on the floor.
+  Feet only on the deck's bed face: that is the one face of the lane that prints the
+  way a bin does. The upper chamfer runs 2 mm past the profile so neighbouring feet
+  meet in a ridge and the corner pits close at 45°: the floor has no flat underside.
+  `solve()` snaps `L` to whole cells (even when split, so the seam is a cell line),
+  `gangPitch` to `ny·42`, and the gang dovetails are off (the baseplate is the joint).
+  A default can pays 141 → 168 across and 480 → 419.5 long on a 256 bed; that is why
+  it is a select, not the default. `PartSet.gridDeck` replaces that role's deck in the
+  worker; `o.magnets` cuts 6.5 × 2.4 pockets on the 26 mm square, the one bridged
+  ceiling `test/overhang.test.ts` allows. `baseHeight()` is what the solver charges.
+  Spec in `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
 
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.

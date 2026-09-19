@@ -60,6 +60,14 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, set, "top");
   }
+  // the Gridfinity deck, with and without magnet pockets, and the flat stack's (a top
+  // lane's deck on the unit). solve() per option: the lane snaps to whole cells
+  for (const [name, variant] of Object.entries({ "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "flat-grid-deck": { cascade: false } })) {
+    const o: Options = { ...DEFAULTS, base: "gridfinity", ...variant };
+    const plate = buildAll(geo, o, solve(o)).gridDeck!;
+    parts[`${name}-front`] = plate.front!;
+    parts[`${name}-rear`] = plate.rear!;
+  }
   return parts;
 }
 
