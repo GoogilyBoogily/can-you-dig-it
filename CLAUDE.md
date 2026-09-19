@@ -181,12 +181,17 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   cells in a 150 mm shelf; the baseplate must end at those cells on that side).
   `o.across` / `o.along` (left, centre, right / front, centre, back) say which edge of
   its floor the lane is flush with, the spare going opposite. Lanes go a floor apart
-  (`gangPitch = floorCells·42`), gang dovetails off. `d.foot` (lane ∪ floor) is what
+  (`gangPitch = max(floorCells·42, OW + 0.5)`: a skirted lane on fewer cells than cover
+  it falls back to its own width), gang dovetails off. `d.foot` (lane ∪ floor) is what
   stands on the shelf, fits the bed and splits at x = 0 - through a foot as often as
   not; a foot cut square prints as it is and the pocket locks it. `o.magnets` cuts
   6.5 × 2.4 pockets on the 26 mm square in every foot, skipping any the seam would
   halve: the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()` is 7,
   what the solver charges. Spec in `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
+  The Gridfinity standard itself (pitch, foot and socket profiles, lip, magnet pockets,
+  sources) is digested in `docs/gridfinity-spec.md`, with a column mapping each number to
+  its `K` constant. Read it before touching a grid dimension; if it and `K` disagree, one
+  of them is wrong and both get fixed in the same commit.
 
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.

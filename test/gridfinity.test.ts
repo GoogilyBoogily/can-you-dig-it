@@ -3,7 +3,7 @@
 // docs/superpowers/specs/2026-09-19-gridfinity-base-design.md.
 import { test, expect } from "bun:test";
 import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, check, buildAll, buildLanePlates, baseHeight, type Options } from "../src/geometry";
+import { Geo, DEFAULTS, solve, check, buildAll, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
 
 const wasm = await Module(); wasm.setup();
@@ -14,6 +14,13 @@ const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410, shelfCells
 const d = solve(grid);
 const deck = buildAll(geo, grid, d).gridDeck!;
 const whole = geo.union([deck.front!, deck.rear!]);
+
+test("a bin is n · 42 − 0.5 across, the half-mm shared between its two sides (docs/gridfinity-spec.md)", () => {
+  expect(gridSpan(1)).toBe(41.5);
+  expect(gridSpan(2)).toBe(83.5);
+  expect(gridCells(83.5)).toBe(2);
+  expect(gridCells(83.6)).toBe(3);
+});
 
 test("the lane keeps its length; its floor is the cells that cover it, a cell apart from the next", () => {
   expect(d.L).toBe(410);
