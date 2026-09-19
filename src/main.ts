@@ -1,5 +1,5 @@
-import { DEFAULTS, DESIGNS, PATTERNS, type Design, type Pattern, type Options } from "./geometry";
-import { fitSpace, type Layout, type Space } from "./solver";
+import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
+import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, type Placement } from "./export";
@@ -11,6 +11,8 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const form = $<HTMLFormElement>("form");
 const viewer = new Viewer($("viewer"));
 $("showCans").querySelector("input")!.addEventListener("change", (e) => viewer.showCans((e.target as HTMLInputElement).checked));
+$("showGrid").querySelector("input")!.addEventListener("change", (e) => viewer.showGrid((e.target as HTMLInputElement).checked));
+$("showBed").querySelector("input")!.addEventListener("change", (e) => viewer.showBed((e.target as HTMLInputElement).checked));
 $("explode").querySelector("input")!.addEventListener("input", (e) => viewer.explode(Number((e.target as HTMLInputElement).value)));
 const worker = new Worker(new URL("worker.js", document.baseURI), { type: "module" });
 
@@ -33,12 +35,16 @@ function readOptions(): { space: Space; base: Options; cascade: boolean } {
   if (!DESIGNS.includes(design)) throw new Error("design: pick Standard or Minimal");
   const pattern = f.get("pattern") as Pattern;
   if (!PATTERNS.includes(pattern)) throw new Error("pattern: pick Hex, Circles, Kumiko, Slats or Breeze block");
+  const standsOn = f.get("base") as Base;
+  if (!BASES.includes(standsOn)) throw new Error("base: pick Flat, Feet or Gridfinity");
+  const across = f.get("across") as Across, along = f.get("along") as Along;
+  if (!ACROSS.includes(across) || !ALONG.includes(along)) throw new Error("grid position: pick left, centre or right, and front, centre or back");
   const base: Options = {
     ...DEFAULTS,
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
-    cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, pattern, feet: f.get("feet") === "on", fit: num("fit"),
-    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"),
+    cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, pattern, base: standsOn, magnets: f.get("magnets") === "on", across, along, fit: num("fit"),
+    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"), lipGap: num("lipGap"),
   };
   return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: f.get("cascade") === "on" };
 }
@@ -55,6 +61,7 @@ form.addEventListener("input", (e) => {
     (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   }
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
+  if (t.name === "lipGap") (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = t.value;
   refit(); // first: it resets the chosen layout, which the hash carries
   syncHash();
 });
@@ -77,7 +84,8 @@ function refit(want = 0) {
   const box = $("layouts");
   box.innerHTML = "";
   if (!layouts.length) {
-    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs about ${(base.canL + 16).toFixed(0)} mm of width and ${(base.canD + 30).toFixed(0)} mm of height.</p>`;
+    const need = laneNeeds(base);
+    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs ${need.w.toFixed(0)} mm of width and ${need.h.toFixed(0)} mm of height.</p>`;
     chosen = null; chosenIndex = 0; return;
   }
   const h = document.createElement("h2"); h.textContent = "Layouts that fit"; box.appendChild(h);
@@ -158,8 +166,10 @@ function showTab(key: string) {
   $("plates").querySelectorAll(".plate").forEach((b) => b.setAttribute("aria-pressed", String(b.getAttribute("data-key") === key)));
   const { layout, parts, placed } = built;
   $("showCans").hidden = $("explode").hidden = key !== "assembly";
+  // the plate view is the bed, so its toggles make no sense there
+  $("showGrid").hidden = $("showBed").hidden = key.startsWith("plate:");
   if (key === "assembly") viewer.showAssembly(parts, layout.options, layout.derived);
-  else if (key.startsWith("part:")) { const p = parts.find((x) => x.name === key.slice(5)); if (p) viewer.showPart(p); }
+  else if (key.startsWith("part:")) { const p = parts.find((x) => x.name === key.slice(5)); if (p) viewer.showPart(p, layout.options.bed); }
   else if (key.startsWith("plate:")) { const n = Number(key.slice(6)); viewer.showPlate(placed.filter((p) => p.plate === n), layout.options.bed); }
 }
 
@@ -182,8 +192,9 @@ function renderResults() {
     <dt>Capacity</dt><dd>${layout.cans} cans</dd>
     <dt>Footprint</dt><dd>${layout.footprint.map((v) => v.toFixed(0)).join(" × ")} mm</dd>
     <dt>Lane</dt><dd>${d.L.toFixed(0)} × ${d.OW.toFixed(0)} × ${d.H} mm${d.split ? ", two keyed halves" : ""}</dd>
+    ${o.base === "gridfinity" ? `<dt>Base</dt><dd>Gridfinity feet, ${d.floorCells[0]} × ${d.floorCells[1]} cells per lane, lane ${o.along === "centre" && o.across === "centre" ? "centred" : `at the ${[o.along, o.across].filter((p) => p !== "centre").join(" ")}`}${d.foot[3] - d.foot[1] > d.floor[3] - d.floor[1] + 0.01 ? `; ${((d.OW - (d.floor[3] - d.floor[1])) / 2).toFixed(1)} mm skirt a side past the baseplate` : ""}${o.magnets ? "; 6 × 2 mm magnet pockets" : ""}</dd>` : ""}
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
-    <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
+    <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}; ${(d.Hb - 24 - 8 * d.tan - o.canD).toFixed(0)} mm over the can as it clears the lip</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
     <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
@@ -333,7 +344,7 @@ loadProfile();
 // Every field readOptions() consumes, plus the layout the user clicked. Checkboxes are
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
-const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "feet", "hexR", "hexAuto", "slope", "fit"];
+const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
 function syncHash() {
   const q = new URLSearchParams();
   for (const k of KEYS) {
@@ -352,6 +363,7 @@ function loadHash() {
   }
   (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number((form.elements.namedItem("fit") as HTMLInputElement).value).toFixed(2);
+  (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = (form.elements.namedItem("lipGap") as HTMLInputElement).value;
   return Number(q.get("layout") ?? 0);
 }
 

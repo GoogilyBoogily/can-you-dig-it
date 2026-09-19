@@ -11,6 +11,12 @@ export class Viewer {
   private ren: THREE.WebGLRenderer;
   private group = new THREE.Group();
   private cans = new THREE.Group();
+  /** Floor furniture under the model: the grid, and the printer bed for scale. Rebuilt
+   *  with every view (the group is replaced), so the on/off state lives here. */
+  private grid: THREE.Object3D = new THREE.Group();
+  private bed: THREE.Object3D = new THREE.Group();
+  private gridOn = true;
+  private bedOn = false;
   /** Assembly meshes with where they sit and where the explode slider pushes them at 1. */
   private exploded: { mesh: THREE.Object3D; rest: THREE.Vector3; push: THREE.Vector3 }[] = [];
   private explodeT = 0;
@@ -100,16 +106,21 @@ export class Viewer {
   /** Cans in the assembly view; the frame is taken with them in so the camera does not jump. */
   showCans(on: boolean) { this.cans.visible = on; }
 
+  showGrid(on: boolean) { this.gridOn = on; this.grid.visible = on; }
+
+  /** The printer bed, centred under the model, so the footprint reads against the plate. */
+  showBed(on: boolean) { this.bedOn = on; this.bed.visible = on; }
+
   /** Pull the assembly apart along each joint: 0 is assembled, 1 is fully open. */
   explode(t: number) {
     this.explodeT = t;
     for (const { mesh, rest, push } of this.exploded) mesh.position.copy(rest).addScaledVector(push, t);
   }
 
-  showPart(p: PartOut) {
+  showPart(p: PartOut, bed: [number, number, number]) {
     this.clear();
     this.group.add(this.mesh(p.mesh, COL[p.role]));
-    this.addFloor();
+    this.addFloor(bed);
     this.phi = 1.05; this.frame(0.9);
   }
 
@@ -167,8 +178,10 @@ export class Viewer {
         lane.position.set(0, y, z); if (rot) lane.rotation.z = Math.PI;
         this.group.add(lane); track(lane, 0, gI * STEP, t * STEP);
         for (const plate of ["deck", "wall-tongue", "wall-socket", "end-wall"]) {
-          if (d.split && plate !== "end-wall") { putPlate(lane, `${pre}-${plate}-front`, plate, "-front"); putPlate(lane, `${pre}-${plate}-rear`, plate, "-rear"); }
-          else putPlate(lane, `${pre}-${plate}`, plate, "");
+          // the shelf lane's deck carries the Gridfinity unit below z = 0, like the risers do
+          const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : `${pre}-${plate}`;
+          if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }
+          else putPlate(lane, name, plate, "");
         }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
         if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, deckLo + 8 * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);
@@ -186,9 +199,9 @@ export class Viewer {
       const coverRot = cascade && (o.tiers - 1) % 2 === 1;
       const coverPush: [number, number, number] = [0, gI * STEP, (o.tiers + 1) * STEP];
       if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
-      if (o.feet) for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
+      if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
     }
-    this.addFloor();
+    this.addFloor(o.bed);
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
     this.explode(this.explodeT);
   }
@@ -206,10 +219,16 @@ export class Viewer {
     this.phi = 0.8; this.frame(1.1);
   }
 
-  private addFloor() {
+  private addFloor(bed: [number, number, number]) {
     const b = new THREE.Box3().setFromObject(this.group);
     const s = Math.max(300, b.getSize(new THREE.Vector3()).length());
+    const c = b.getCenter(new THREE.Vector3());
     const gh = new THREE.GridHelper(s, 20, 0xb8c0cc, 0xd6dbe3); gh.rotation.x = Math.PI / 2;
-    const c = b.getCenter(new THREE.Vector3()); gh.position.set(c.x, c.y, b.min.z - 0.5); this.group.add(gh);
+    gh.position.set(c.x, c.y, b.min.z - 0.5); gh.visible = this.gridOn;
+    this.grid = gh; this.group.add(gh);
+    // the bed's top face sits just under the grid so the lines draw over it
+    const bedMesh = new THREE.Mesh(new THREE.BoxGeometry(bed[0], bed[1], 2), new THREE.MeshStandardMaterial({ color: COL.bed, roughness: 0.9 }));
+    bedMesh.position.set(c.x, c.y, b.min.z - 1.6); bedMesh.visible = this.bedOn;
+    this.bed = bedMesh; this.group.add(bedMesh);
   }
 }

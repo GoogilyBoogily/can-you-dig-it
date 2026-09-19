@@ -165,8 +165,28 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   by Y extent descending, so growing it packs nothing tighter. Then everything is
   centred: each shelf across the bed on its own width, the stack front to back, and each
   part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
-- Feet (risers) are optional and off; the lane sits flat on the shelf. A riser is a
-  wall-thick foot under ±px with a boss into the wall's bottom notch.
+- `o.base`: flat (default, the lane sits on the shelf), feet, or gridfinity. A riser is a
+  wall-thick foot under ±px with a boss into the wall's bottom notch. Gridfinity
+  (2026-09-19): the shelf lane's deck grows a 7 mm unit below z = 0 - a floor of whole
+  42 mm cells with the spec foot proud under every cell (hulled so the 45° chamfers are
+  exact; the upper chamfers run on through the 2.25 mm floor and clip flat at z = 0, so
+  the merged run-ons are the floor and no underside is flat) and the riser's boss at
+  ±px; the walls stand on the floor. It drops into whatever baseplate the user has; we
+  do not make one (a cut did, pockets and all - it made the lane not a bin, and on a
+  narrow shelf was a slab). Feet only on the deck's bed face: the one face of the lane
+  that prints the way a bin does. `PartSet.gridDeck` replaces that role's deck in the
+  worker. `o.shelfCells` (the solver sets it, `floor(depth / 42)`, `floor(width / 42)`)
+  caps `d.floorCells`, the cells that cover the lane: fewer, and the lane overhangs its
+  feet on a skirt, solid down to the shelf beside the baseplate (a 138 mm lane on 3
+  cells in a 150 mm shelf; the baseplate must end at those cells on that side).
+  `o.across` / `o.along` (left, centre, right / front, centre, back) say which edge of
+  its floor the lane is flush with, the spare going opposite. Lanes go a floor apart
+  (`gangPitch = floorCells·42`), gang dovetails off. `d.foot` (lane ∪ floor) is what
+  stands on the shelf, fits the bed and splits at x = 0 - through a foot as often as
+  not; a foot cut square prints as it is and the pocket locks it. `o.magnets` cuts
+  6.5 × 2.4 pockets on the 26 mm square in every foot, skipping any the seam would
+  halve: the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()` is 7,
+  what the solver charges. Spec in `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
 
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.

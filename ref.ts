@@ -60,6 +60,20 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, set, "top");
   }
+  // Gridfinity: the shelf lane's deck on its feet - a 410 lane (six cans, ten cells, the
+  // longest a 256 bed prints in halves); with magnet pockets; in a corner of its floor;
+  // the flat stack's; and on a 150 × 304 shelf (7 × 3 cells), where the lane overhangs
+  // three cells on skirts
+  const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410, shelfCells: [10, 9] };
+  const gridVariants: Record<string, Partial<Options>> = {
+    "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "grid-deck-corner": { across: "left", along: "front" },
+    "flat-grid-deck": { cascade: false }, "narrow-grid-deck": { length: 278, shelfCells: [7, 3], lanesWide: 1, cascade: false },
+  };
+  for (const [name, variant] of Object.entries(gridVariants)) {
+    const o: Options = { ...grid, ...variant };
+    const deck = buildAll(geo, o, solve(o)).gridDeck!;
+    if (deck.whole) parts[name] = deck.whole; else { parts[`${name}-front`] = deck.front!; parts[`${name}-rear`] = deck.rear!; }
+  }
   return parts;
 }
 

@@ -1,6 +1,6 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
-import { solve, check, laneLengthFor, type Options, type Derived } from "./geometry";
+import { solve, check, laneLengthFor, baseHeight, type Options, type Derived } from "./geometry";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -8,23 +8,34 @@ export interface Layout {
   options: Options;  // lanesWide, tiers and the rest live here - never copied out
   derived: Derived;  // L, and every other dimension solve() produced
   cans: number;
-  footprint: [number, number, number]; // w, d, h of the assembly incl. risers
+  footprint: [number, number, number]; // w, d, h of the assembly incl. the base
   gramsEst: number; // rough, from the lane count (refined after geometry)
   warnings: string[];
   style: "cascade" | "flat";
 }
 
-const SIDE_GAP = 4;    // per side
-const RISER = 24;      // riser height when feet are on
+const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
+const GRID = 42;       // Gridfinity cell pitch
+
+/** The least shelf one lane needs, for the empty state: one flat tier on its base. */
+export function laneNeeds(base: Options): { w: number; h: number } {
+  const d = solve({ ...base, cascade: false, length: 200 });
+  return { w: d.gangPitch + 2 * SIDE_GAP, h: baseHeight(base) + d.H };
+}
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {
   const out: Layout[] = [];
   const styles: ("cascade" | "flat")[] = opts.cascade ? ["cascade", "flat"] : ["flat"];
   for (const style of styles) {
     const usableD = space.d - space.front;
-    const seed: Options = { ...base, cascade: style === "cascade", length: 480 };
+    // each lane's feet take the cells that cover it, or all the shelf has room for when
+    // that is fewer, and lanes go a floor apart on the baseplate
+    const shelfCells: [number, number] = [Math.floor(usableD / GRID), Math.floor(space.w / GRID)];
+    const seed: Options = { ...base, cascade: style === "cascade", length: 480, shelfCells };
     const seedD = solve(seed);
-    const lanesMax = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    const grid = base.base === "gridfinity";
+    let lanesMax = grid ? Math.floor(shelfCells[1] / seedD.floorCells[1]) : Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    while (grid && lanesMax > 0 && lanesMax * seedD.gangPitch - 2 * 0.25 > space.w) lanesMax--; // a lane wider than its cells
     if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, the single-plate size, and the shortest lane for
     // every whole-can count under that - deck that holds no can is filament and shelf
@@ -37,12 +48,15 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     for (const bottom of style === "cascade" ? [false, true] : [false]) {
       for (let cans = 1; laneLengthFor(seed, cans, bottom) <= maxLen; cans++) lengths.add(Math.ceil(laneLengthFor(seed, cans, bottom)));
     }
+    const seen = new Set<number>();
     for (const length of lengths) {
       if (length < 120) continue;
-      const o: Options = { ...base, length, cascade: style === "cascade", lanesWide: lanesMax, tiers: 1 };
+      const o: Options = { ...seed, length, lanesWide: lanesMax, tiers: 1 };
       const d = solve(o);
+      if (seen.has(d.L)) continue;
+      seen.add(d.L);
       const cascade = d.inset > 0;
-      const riser = base.feet ? RISER : 0;
+      const riser = baseHeight(o);
       const tierH = space.h - riser;
       let tiers = cascade
         ? (tierH >= d.Hb ? 1 + Math.floor((tierH - d.Hb) / d.H) : 0)
@@ -61,7 +75,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
       const coverGrams = base.cover ? (base.design === "minimal" ? 90 : 130) : 0;
       out.push({
         options: o, derived: d, cans,
-        footprint: [lanesMax * d.gangPitch, d.L, height],
+        footprint: [grid ? (lanesMax - 1) * d.gangPitch + d.foot[3] - d.foot[1] : lanesMax * d.gangPitch, grid ? d.foot[2] - d.foot[0] : d.L, height],
         gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 9,
         warnings: w, style,
       });

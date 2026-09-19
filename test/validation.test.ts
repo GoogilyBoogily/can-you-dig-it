@@ -96,7 +96,7 @@ test("every limit names a sane range", () => {
 // The form's own defaults must survive validation, or the page dies on load.
 test("the shipped defaults pass validation", () => {
   expect(() => readNumbers({
-    w: 300, d: 520, h: 240, front: 0, canD: 66, canL: 122.5, bedX: 256, bedY: 256, bedZ: 256, hexR: 13, slope: 3, fit: 0,
+    w: 300, d: 520, h: 240, front: 0, canD: 66, canL: 122.5, bedX: 256, bedY: 256, bedZ: 256, hexR: 13, slope: 3, lipGap: 5, fit: 0,
   })).not.toThrow();
 });
 

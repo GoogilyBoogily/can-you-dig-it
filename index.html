@@ -88,7 +88,31 @@
         <label>Deck slope <input name="slope" type="number" min="0" max="10" step="0.5" value="3"><span>°</span></label>
         <span class="hint">3° rolls a can to the front on its own. Lower is a shorter tier, so more of them stack.</span>
       </div>
-      <label class="check"><input name="feet" type="checkbox"> 24 mm feet under the bottom tier (for wire shelves or a lip that needs clearing)</label>
+      <label class="fit">Lip headroom
+        <input name="lipGap" type="range" min="0" max="20" step="1" value="5">
+        <output name="lipGapOut">5</output>
+        <span class="hint">mm over a can as it comes out over the lip. The tier grows when the slope alone does not give it.</span>
+      </label>
+      <div class="pair">
+        <label class="grow">Base <select name="base">
+          <option value="flat">Flat on the shelf</option>
+          <option value="feet">24 mm feet (wire shelves, a lip to clear)</option>
+          <option value="gridfinity">Gridfinity baseplate</option>
+        </select></label>
+        <label class="check"><input name="magnets" type="checkbox"> Magnet pockets (6 × 2 mm) in the feet</label>
+      </div>
+      <div class="row">
+        <label class="grow">Lane on its cells, across <select name="across">
+          <option value="left">Left</option>
+          <option value="centre" selected>Centred</option>
+          <option value="right">Right</option>
+        </select></label>
+        <label class="grow">Along <select name="along">
+          <option value="front">Front</option>
+          <option value="centre" selected>Centred</option>
+          <option value="back">Back</option>
+        </select></label>
+      </div>
       <label class="fit">Fit
         <input name="fit" type="range" min="-0.2" max="0.3" step="0.05" value="0">
         <output name="fitOut">0.00</output>
@@ -104,6 +128,8 @@
     <div class="stagebar">
       <div class="tabs" id="tabs" role="tablist"></div>
       <label class="check" id="showCans" hidden><input type="checkbox" checked> Show cans</label>
+      <label class="check" id="showGrid" hidden><input type="checkbox" checked> Show grid</label>
+      <label class="check" id="showBed" hidden><input type="checkbox"> Show printer bed</label>
       <label class="check" id="explode" hidden>Pull apart <input type="range" min="0" max="1" step="0.01" value="0"></label>
       <div class="status" id="status">Enter your shelf size to begin.</div>
       <button type="button" id="share" title="Copy a link to this design">Share</button>
