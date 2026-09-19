@@ -22,7 +22,7 @@ export function refSpec(derived: Derived): Record<string, number> {
 /**
  * Every part the snapshot covers, by the name it is stored under.
  * Two tiers give the top and bottom lanes; three are needed before a mid lane exists.
- * The minimal design shares the lip and risers, so only its lanes and cover are stored.
+ * The minimal design shares the lip and riser, so only its lanes and cover are stored.
  */
 export function refParts(geo: Geo): Record<string, Manifold> {
   const derived = solve(DEFAULTS);
@@ -35,8 +35,7 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     "cover-front": twoTiers.cover[0],
     "cover-rear": twoTiers.cover[1],
     "end-lip": twoTiers.lip,
-    "riser-08": twoTiers.riser08,
-    "riser-24": twoTiers.riser24,
+    "riser-24": twoTiers.riser,
     "minimal-cover-front": minimalTwo.cover[0],
     "minimal-cover-rear": minimalTwo.cover[1],
   };

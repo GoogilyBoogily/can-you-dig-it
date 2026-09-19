@@ -56,10 +56,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       }
       if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
       add("end-lip", set.lip, nLip, "lip");
-      if (o.base === "feet") {
-        add("riser-24", set.riser24, o.lanesWide * 4, "riser");
-        add("riser-08", set.riser08, o.lanesWide * 4, "riser");
-      }
+      if (o.base === "feet") add("riser-24", set.riser, o.lanesWide * 4, "riser");
       set.cover.forEach((m, i) => add(set.cover.length > 1 ? (i === 0 ? "cover-front" : "cover-rear") : "cover", m, o.lanesWide, "cover"));
       const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin);
       const nplates = Math.max(...placed.map((p) => p.plate)) + 1;

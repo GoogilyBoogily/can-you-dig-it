@@ -411,7 +411,7 @@ export type PlateName = "deck" | "wall-tongue" | "wall-socket" | "end-wall";
 export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
 export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
-  lip: M; riser08: M; riser24: M; cover: M[];
+  lip: M; riser: M; cover: M[];
   gridDeck?: Plate; // the deck of the lane on the shelf, on its Gridfinity unit
 }
 
@@ -840,7 +840,7 @@ export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
   return {
     lanes: roles.map((role) => ({ role, plates: buildLanePlates(g, o, d, role) })),
     lip: buildLip(g, o, d),
-    riser08: buildRiser(g, o, 8), riser24: buildRiser(g, o, 24),
+    riser: buildRiser(g, o, 24),
     cover: o.cover ? buildCover(g, o, d) : [],
     gridDeck: o.base === "gridfinity" ? buildGridDeckPlate(g, o, d, cascade ? "bottom" : "top") : undefined,
   };
