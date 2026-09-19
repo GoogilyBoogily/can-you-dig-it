@@ -22,6 +22,13 @@ test("derived dimensions match the snapshot", () => {
 });
 
 const parts = snapshotParts();
+
+// A part added to refParts() before `bun run ref` used to die on `expected.vol` of
+// undefined; a part removed left its key in ref.json for good. Same set, both ways.
+test("ref.json holds exactly the parts refParts() builds", () => {
+  expect(Object.keys(ref).filter((key) => key !== "spec").sort()).toEqual(Object.keys(parts).sort());
+});
+
 for (const [name, mesh] of Object.entries(parts)) {
   test(`${name} matches the snapshot volume and bounds`, () => {
     const expected = (ref as any)[name];
