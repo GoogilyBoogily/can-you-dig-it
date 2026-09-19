@@ -15,9 +15,11 @@ const derived = solve(DEFAULTS);
 const VOLUME_TOLERANCE = 1e-4; // 0.01 %
 const BOUND_TOLERANCE = 0.01;  // mm
 
-test("derived dimensions match the snapshot", () => {
+test("derived dimensions match the snapshot", async () => {
   const { manifold, ...expected } = ref.spec;
-  expect(typeof manifold).toBe("string"); // the kernel the numbers came from, for the diff reader
+  // the kernel the numbers came from: a bump without `bun run ref` leaves the label lying
+  const installed = (await Bun.file(new URL("../node_modules/manifold-3d/package.json", import.meta.url)).json()).version;
+  expect(manifold).toBe(installed);
   for (const [key, value] of Object.entries(refSpec(derived)))
     expect(Math.abs(value - (expected as Record<string, number>)[key]), key).toBeLessThanOrEqual(BOUND_TOLERANCE);
 });

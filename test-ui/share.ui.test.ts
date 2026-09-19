@@ -69,6 +69,33 @@ test("a hash naming a layout that does not exist opens on the best layout", asyn
   await page.close();
 });
 
+// A built result used to stay on the page, downloads and all, after the form went
+// invalid or stopped fitting: "Download 3MF" handed out geometry for numbers that were gone.
+test("an invalid form or a shelf nothing fits takes the old build and its downloads away", async () => {
+  const page = await browser.newPage();
+  await page.goto(`${URL_}#w=160&d=305&h=254`);
+  await page.waitForSelector("#dl3mf:not([disabled])", { timeout: 90000 });
+  await page.fill("#form [name=w]", "10");
+  await page.waitForFunction(() => document.getElementById("status")!.textContent!.startsWith("Check your numbers"));
+  expect(await page.isHidden("#results")).toBe(true);
+  await page.fill("#form [name=w]", "60");
+  await page.fill("#form [name=h]", "60");
+  await page.waitForFunction(() => document.getElementById("status")!.textContent!.startsWith("Nothing fits"));
+  expect(await page.isHidden("#results")).toBe(true);
+  await page.close();
+});
+
+// With the worker script gone, build() used to post into the void and overwrite the
+// engine message with "Building parts…" for good.
+test("a worker that fails to load keeps its message on the status line", async () => {
+  const page = await browser.newPage();
+  await page.route("**/worker.js", (route) => route.fulfill({ status: 404 }));
+  await page.goto(`${URL_}#w=160&d=305&h=254`);
+  await page.waitForTimeout(1500); // past the 250 ms build debounce
+  expect(await page.textContent("#status")).toContain("geometry engine failed to start");
+  await page.close();
+});
+
 test("Share copies the full URL even before anything was typed", async () => {
   const context = await browser.newContext();
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://localhost:${PORT}` });

@@ -14,18 +14,20 @@ function setStatus(text: string, busy = false) { const s = $("status"); s.textCo
 /** Every failure goes on the status line and to the console: the line says what, the console keeps the stack. */
 function fail(text: string, err?: unknown) { setStatus(text); console.error(err ?? text); }
 const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
-// A throw inside a change handler (a bad preset, a broken index.json) otherwise dies unseen.
-window.addEventListener("error", (e) => fail(`Something went wrong: ${e.message}`, e.error));
-window.addEventListener("unhandledrejection", (e) => fail(`Something went wrong: ${reason(e.reason)}`, e.reason));
 
 let viewer: Viewer;
 try {
   viewer = new Viewer($("viewer"));
 } catch (err) {
-  // Without WebGL nothing below can show a part; say so instead of a page that never responds.
-  fail(`The 3D view needs WebGL, which this browser does not offer: ${reason(err)}`, err);
+  // Without WebGL nothing below can show a part; say so instead of a page that never
+  // responds. The rethrow is the browser's own uncaught report, stack and all.
+  setStatus(`The 3D view needs WebGL, which this browser does not offer: ${reason(err)}`);
   throw err;
 }
+// A throw inside a change handler (a bad preset, a broken index.json) otherwise dies unseen.
+// Registered after the Viewer so its rethrow above keeps its own message.
+window.addEventListener("error", (e) => fail(`Something went wrong: ${e.message}`, e.error));
+window.addEventListener("unhandledrejection", (e) => fail(`Something went wrong: ${reason(e.reason)}`, e.reason));
 $("showCans").querySelector("input")!.addEventListener("change", (e) => viewer.showCans((e.target as HTMLInputElement).checked));
 $("showGrid").querySelector("input")!.addEventListener("change", (e) => viewer.showGrid((e.target as HTMLInputElement).checked));
 $("showBed").querySelector("input")!.addEventListener("change", (e) => viewer.showBed((e.target as HTMLInputElement).checked));
@@ -38,6 +40,7 @@ let chosenIndex = 0; // position in the ranked list; the hash carries it so a sh
 let built: { parts: PartOut[]; placed: Placement[]; nplates: number; layout: Layout } | null = null;
 let buildId = 0, exportId = 0, buildTimer = 0;
 let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
+let workerDead: string | null = null; // the worker script failed to load: the message every build() shows instead
 
 // ------------------------------------------------------------- inputs
 /** The form as the solver takes it; throws naming a bad field. */
@@ -71,10 +74,11 @@ function refit(want = 0) {
   try {
     ({ space, base, cascade } = readOptions());
   } catch (err) {
-    // Say which field is wrong rather than building nothing and staying quiet.
-    fail(`Check your numbers: ${reason(err)}`, err);
+    // Say which field is wrong rather than building nothing and staying quiet. Not
+    // fail(): this fires on every keystroke while a number is half typed.
+    setStatus(`Check your numbers: ${reason(err)}`);
     $("layouts").innerHTML = "";
-    chosen = null; chosenIndex = 0;
+    dropBuild();
     return;
   }
   layouts = fitSpace(space, base, { cascade });
@@ -82,8 +86,11 @@ function refit(want = 0) {
   box.innerHTML = "";
   if (!layouts.length) {
     const need = laneNeeds(base);
-    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs ${need.w.toFixed(0)} mm of width and ${need.h.toFixed(0)} mm of height.</p>`;
-    chosen = null; chosenIndex = 0; return;
+    const nothing = `Nothing fits. A single lane needs ${need.w.toFixed(0)} mm of width and ${need.h.toFixed(0)} mm of height.`;
+    box.innerHTML = `<p class="empty">${nothing}</p>`;
+    setStatus(nothing);
+    dropBuild();
+    return;
   }
   const h = document.createElement("h2"); h.textContent = "Layouts that fit"; box.appendChild(h);
   const start = layouts[want] ? want : 0; // a hash can say layout=-1 or 1.5; both fall back to the best
@@ -109,6 +116,14 @@ function choose(i: number) {
   buildTimer = window.setTimeout(build, 250);
 }
 
+/** The form no longer describes what was built: take the old result off the page so the
+ *  downloads cannot hand out geometry for numbers that are gone. */
+function dropBuild() {
+  chosen = null; chosenIndex = 0; built = null;
+  $("results").hidden = true;
+  viewer.reset();
+}
+
 /** Downloads export whatever the worker built last, so block them until it matches the screen. */
 function setBuildPending(pending: boolean) {
   buildPending = pending;
@@ -118,6 +133,7 @@ function setBuildPending(pending: boolean) {
 // ------------------------------------------------------------- build
 function build() {
   if (!chosen) return;
+  if (workerDead) { setStatus(workerDead); return; } // posting to a dead worker would only overwrite the message
   const id = ++buildId;
   setBuildPending(true);
   setStatus("Building parts…", true);
@@ -128,9 +144,9 @@ function build() {
 worker.onmessage = (e: MessageEvent<Res>) => {
   const r = e.data;
   if (r.type === "error") {
-    // Only the build on screen may re-enable downloads: a superseded build's error must not
-    // unlock an export of whatever the worker built before it.
-    if (r.id === buildId) setBuildPending(false);
+    // Only the build on screen may re-enable downloads: a superseded build's error, or an
+    // export's, must not unlock an export of whatever the worker built before it.
+    if (r.of === "build" && r.id === buildId) setBuildPending(false);
     fail(`Something went wrong: ${r.message}`);
     return;
   }
@@ -144,9 +160,13 @@ worker.onmessage = (e: MessageEvent<Res>) => {
   setStatus(`${built.layout.cans} cans · ${r.nplates} plates · ~${(totalGrams(r.parts) / 1000).toFixed(2)} kg · built in ${(r.ms / 1000).toFixed(1)} s`);
 };
 
+// The worker script failing to load or parse. Nothing will ever be built, so every later
+// build() shows this instead of "Building parts…". preventDefault keeps the browser from
+// re-raising it on window, where the generic handler would overwrite the message.
 worker.onerror = (e) => {
-  setBuildPending(false);
-  fail(`The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`, e);
+  e.preventDefault();
+  workerDead = `The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`;
+  fail(workerDead, e);
 };
 worker.onmessageerror = (e) => fail("The geometry engine sent something unreadable - reload the page.", e);
 
@@ -320,7 +340,12 @@ pick.translucent.addEventListener("change", () => { if (built) renderResults(); 
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
   .then((loaded: ProfileIndex) => { index = loaded; showProfile(); })
-  .catch((err) => fail(`Couldn't load the printer list, so only a 3MF can supply print settings: ${reason(err)}`, err));
+  .catch((err) => {
+    // On the print-settings label, not the status line: the first build lands ~250 ms
+    // later and would wipe it before anyone read it.
+    console.error(err);
+    $("profileNow").textContent += ` Couldn't load the printer list, so only a 3MF can supply print settings: ${reason(err)}`;
+  });
 
 $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   const input = e.target as HTMLInputElement;

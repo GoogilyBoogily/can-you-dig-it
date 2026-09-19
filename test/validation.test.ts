@@ -142,7 +142,8 @@ test("the fit slider's full range is accepted", () => {
 test("every number input in index.html carries its LIMITS bounds", async () => {
   const html = await Bun.file(new URL("../index.html", import.meta.url)).text();
   const inputs = [...html.matchAll(/<input name="(\w+)" type="number"([^>]*)>/g)];
-  expect(inputs.length).toBeGreaterThan(0);
+  // every number input, or one written with its attributes in another order slips past
+  expect(inputs.length).toBe(html.match(/type="number"/g)!.length);
   for (const [, name, attrs] of inputs) {
     const limit = LIMITS[name];
     expect(limit, name).toBeDefined();

@@ -12,9 +12,12 @@ export interface PartOut { name: string; mesh: MeshData; qty: number; grams: num
 export type Res =
   | { type: "built"; id: number; parts: PartOut[]; placed: Placement[]; nplates: number; ms: number }
   | { type: "file"; id: number; name: string; bytes: Uint8Array }
-  | { type: "error"; id: number; message: string };
+  | { type: "error"; id: number; of: Req["type"]; message: string };
 
 const wasmP = Module({ locateFile: () => new URL("manifold.wasm", import.meta.url).href }).then((w) => { w.setup(); return w; });
+// A load failure rejects before any message arrives; mark it handled here (the first
+// request reports it) so the worker does not also raise an unhandled rejection.
+wasmP.catch((err) => console.error("geometry engine failed to load", err));
 
 function toMesh(name: string, m: Manifold): MeshData {
   const mg = m.getMesh();
@@ -28,7 +31,7 @@ let last: { parts: PartOut[]; placed: Placement[]; options: Options } | null = n
 self.onmessage = async (e: MessageEvent<Req>) => {
   const req = e.data;
   try {
-    const wasm = await wasmP;
+    const wasm = await wasmP.catch((err) => { throw new Error(`the geometry engine failed to load - reload the page (${err instanceof Error ? err.message : err})`); });
     if (req.type === "build") {
       const t0 = performance.now();
       const o = req.options;
@@ -54,6 +57,6 @@ self.onmessage = async (e: MessageEvent<Req>) => {
   } catch (err) {
     console.error(err); // the message crosses to the page; the stack only lives here
     const message = err instanceof Error ? err.message : String(err);
-    (self as any).postMessage({ type: "error", id: req.id, message } satisfies Res);
+    (self as any).postMessage({ type: "error", id: req.id, of: req.type, message } satisfies Res);
   }
 };

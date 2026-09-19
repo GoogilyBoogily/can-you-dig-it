@@ -124,15 +124,15 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
   });
 }
 
+/** The part a placed copy came from: `lane-deck-02` → `lane-deck`. */
+export const stripCopy = (name: string) => name.replace(/-\d{2}$/, "");
+
 /**
  * What sits on a plate, biggest part first: `2x lane-deck, end-lip`. The Plates panel
  * and the 3MF plate name both come from here, so what the page says is on a plate is
  * what the slicer calls it. ASCII `x`, not `×`: Bambu Studio puts the plate name into
  * the gcode file it exports.
  */
-/** The part a placed copy came from: `lane-deck-02` → `lane-deck`. */
-export const stripCopy = (name: string) => name.replace(/-\d{2}$/, "");
-
 export function plateSummary(items: Placement[]): string {
   const names = items.map((i) => stripCopy(i.name));
   return [...new Set(names)].map((nm) => { const c = names.filter((x) => x === nm).length; return c > 1 ? `${c}x ${nm}` : nm; }).join(", ");
