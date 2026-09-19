@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import { extractProfile, threeMf, bboxOf, type Placement } from "../src/export";
-import { readStoredProfile, saveStoredProfile, type StoredProfile } from "../src/profile";
+import { readStoredProfile, saveStoredProfile, PROFILE_KEY, type StoredProfile } from "../src/profile";
 
 const PROFILE_TEXT = `{"printer_settings_id":"Bambu Lab P1S 0.4 nozzle","layer_height":"0.28","filament_type":["PETG"]}`;
 const PROFILE = strToU8(PROFILE_TEXT);
@@ -70,10 +70,16 @@ test("a profile survives the round trip back out through extractProfile", () => 
 // it is what keeps the reader and the writer honest about each other.
 const storedJson = (profile: StoredProfile): string => {
   const written: Record<string, string> = {};
-  const storage = { setItem: (_k: string, v: string) => { written.value = v; } };
+  const storage = { setItem: (k: string, v: string) => { written[k] = v; } };
+  // bun runs every test file in one process: put the real storage back afterwards
+  const real = (globalThis as any).localStorage;
   (globalThis as any).localStorage = storage;
-  expect(saveStoredProfile(profile)).toBeNull();
-  return written.value;
+  try {
+    expect(saveStoredProfile(profile)).toBeNull();
+  } finally {
+    (globalThis as any).localStorage = real;
+  }
+  return written[PROFILE_KEY];
 };
 
 test.each([

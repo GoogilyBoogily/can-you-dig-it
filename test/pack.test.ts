@@ -98,7 +98,7 @@ test("the shelves on a plate are centred front to back", () => {
 
 // A deck leaves a 250 × 109 mm strip behind it that nothing else in the set fits
 // unturned. Turned 90°, an end-lip or an end wall does - and the plate it used to need
-// disappears. 34 plates for the default gang; the count is what the packer is judged on.
+// disappears. PLATES for the default gang; the count is what the packer is judged on.
 test("small parts fill the space behind a deck instead of taking their own plate", () => {
   expect(byPlate(packed).length).toBe(PLATES);
   for (const parts of byPlate(packed))
