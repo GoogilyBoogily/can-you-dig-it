@@ -28,12 +28,15 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   const styles: ("cascade" | "flat")[] = opts.cascade ? ["cascade", "flat"] : ["flat"];
   for (const style of styles) {
     const usableD = space.d - space.front;
-    // the baseplate takes the whole cells the shelf has room for; the lanes' pad grows it
-    // past them when a lane is wider or longer than they are
+    // the baseplate takes the whole cells the shelf has room for; each lane's feet take
+    // the cells that cover it, or all the shelf has when that is fewer, and lanes go a
+    // floor apart on the plate
     const baseCells: [number, number] = [Math.floor(usableD / GRID), Math.floor(space.w / GRID)];
     const seed: Options = { ...base, cascade: style === "cascade", length: 480, baseCells };
     const seedD = solve(seed);
-    const lanesMax = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    const grid = base.base === "gridfinity";
+    let lanesMax = grid ? Math.floor(baseCells[1] / seedD.floorCells[1]) : Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    while (grid && lanesMax > 0 && lanesMax * seedD.gangPitch - 2 * 0.25 > space.w) lanesMax--; // a lane wider than its cells
     if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, the single-plate size, and the shortest lane for
     // every whole-can count under that - deck that holds no can is filament and shelf
@@ -73,7 +76,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
       const coverGrams = base.cover ? (base.design === "minimal" ? 90 : 130) : 0;
       out.push({
         options: o, derived: d, cans,
-        footprint: [base.base === "gridfinity" ? d.plate[3] - d.plate[1] : lanesMax * d.gangPitch, base.base === "gridfinity" ? d.plate[2] - d.plate[0] : d.L, height],
+        footprint: [grid ? Math.max(d.plate[3] - d.plate[1], d.foot[3] - d.foot[1]) : lanesMax * d.gangPitch, grid ? Math.max(d.plate[2] - d.plate[0], d.foot[2] - d.foot[0]) : d.L, height],
         gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 9,
         warnings: w, style,
       });

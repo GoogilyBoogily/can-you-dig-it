@@ -167,8 +167,10 @@ export class Viewer {
         lane.position.set(0, y, z); if (rot) lane.rotation.z = Math.PI;
         this.group.add(lane); track(lane, 0, gI * STEP, t * STEP);
         for (const plate of ["deck", "wall-tongue", "wall-socket", "end-wall"]) {
-          if (d.split && plate !== "end-wall") { putPlate(lane, `${pre}-${plate}-front`, plate, "-front"); putPlate(lane, `${pre}-${plate}-rear`, plate, "-rear"); }
-          else putPlate(lane, `${pre}-${plate}`, plate, "");
+          // the shelf lane's deck carries the Gridfinity unit below z = 0, like the risers do
+          const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : `${pre}-${plate}`;
+          if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }
+          else putPlate(lane, name, plate, "");
         }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
         if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, deckLo + 8 * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);
@@ -188,7 +190,8 @@ export class Viewer {
       if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
       if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
     }
-    // the baseplate lies under the gang as built, its top at the shelf plane the lanes stand on
+    // the baseplate lies under the gang as built; the feet reach its bottom, so it sits
+    // where they do
     for (const p of parts) if (p.role === "base") put(this.group, p.name, 0, 0, -baseHeight(o), false, [0, 0, -STEP]);
     this.addFloor();
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);

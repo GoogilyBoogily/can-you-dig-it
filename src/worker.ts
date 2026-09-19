@@ -48,7 +48,13 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         add(`${base}-front`, plate.front, qty, "lane");
         add(`${base}-rear`, plate.rear, qty, "lane");
       };
-      for (const ln of set.lanes) for (const plate of ln.plates) addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role]);
+      // on a grid the shelf lane's deck is the grid deck instead, one per lane across
+      const shelfRole = cascade ? "bottom" : "top";
+      for (const ln of set.lanes) for (const plate of ln.plates) {
+        const onGrid = set.gridDeck && ln.role === shelfRole && plate.name === "deck";
+        addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role] - (onGrid ? o.lanesWide : 0));
+      }
+      if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
       set.baseplate.forEach((tile, i) => add(set.baseplate.length > 1 ? `baseplate-${i + 1}` : "baseplate", tile, 1, "base"));
       add("end-lip", set.lip, nLip, "lip");
       if (o.base === "feet") {

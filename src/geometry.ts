@@ -27,13 +27,13 @@ export const ROWS: Record<Pattern, readonly [number, number]> = {
 };
 
 /** flat: the lane sits on the shelf. feet: 24 mm risers under the bottom tier (wire
- *  shelves, a lip to clear). gridfinity: a Gridfinity baseplate for the shelf with a
- *  solid pad under the lanes; the lanes stand on it as they stand on the shelf. Spec in
+ *  shelves, a lip to clear). gridfinity: a Gridfinity baseplate for the shelf, and the
+ *  bottom deck grows a 7 mm unit of feet that drop into it like a bin. Spec in
  *  docs/superpowers/specs/2026-09-19-gridfinity-base-design.md. */
 export type Base = "flat" | "feet" | "gridfinity";
 export const BASES: readonly Base[] = ["flat", "feet", "gridfinity"];
-/** Where the lanes' pad sits on the baseplate: the free cells go to the other side.
- *  Across the lane, left is +Y (seen from the front); along it, front is the lip end. */
+/** Where the lanes sit on the baseplate: the free cells go to the other side. Across
+ *  the lane, left is +Y (seen from the front); along it, front is the lip end. */
 export type Across = "left" | "centre" | "right";
 export type Along = "front" | "centre" | "back";
 export const ACROSS: readonly Across[] = ["left", "centre", "right"];
@@ -57,8 +57,8 @@ export interface Options {
   pattern: Pattern;
   cover: boolean;
   base: Base; // what the bottom tier stands on
-  magnets: boolean; // a floored baseplate with 6 × 2 mm magnet pockets in every free cell
-  across: Across; along: Along; // the lanes' pad on the baseplate
+  magnets: boolean; // a floored baseplate with 6 × 2 mm magnet pockets in every cell
+  across: Across; along: Along; // the lanes on the baseplate
   baseCells: [number, number]; // baseplate cells along and across the lane: what the shelf takes
   bed: [number, number, number];
   bedMargin: number;
@@ -80,16 +80,26 @@ const K = {
   // is a tab as tall as the cover is thick, so it sits flush through the cover's hole
   tabW: 8, tabT: 3, pinH: 2.4, coverT: 2.4, sideTabH: 12, earW: 12,
   spliceBase: 30, spliceTip: 40, spliceDepth: 8,
-  // Gridfinity: 42 mm cells. A baseplate pocket, top down: 42 wide at the rim, a 2.15
-  // chamfer, 1.8 vertical, a 0.7 chamfer to 36.3 at the bottom, 4.65 deep, corners r4 at
-  // the rim and concentric below. Magnets 6 × 2 on a 26 mm square, in a 3.2 mm floor
-  // under the pockets when asked for; 0.8 mm of skin stays under a pocket
-  gridPitch: 42, pocketD: 4.65, pocketChamferHi: 2.15, pocketWall: 1.8, pocketChamferLo: 0.7, pocketR: 4,
-  floorT: 3.2, magnetR: 3.25, magnetDepth: 2.4, magnetPitch: 26, padMargin: 1,
+  // Gridfinity: 42 mm cells, a 7 mm unit; a bin is n·42 − 0.5 across. A foot, bottom
+  // up: a 35.6 flat, 0.8 chamfer, 1.8 wall, 2.15 chamfer, 41.5 at the top, corners
+  // concentric with r 3.75 at the top. A baseplate pocket is the foot in negative, 0.25
+  // bigger all round: 42 at the rim, 2.15 chamfer, 1.8 wall, 0.7 chamfer to 36.3 at the
+  // bottom, 4.65 deep, r4 at the rim. Magnets 6 × 2 on a 26 mm square, in a 3.2 mm
+  // floor under the pockets when asked for; 0.8 mm of skin stays under a pocket
+  gridPitch: 42, gridGap: 0.25, unitH: 7, footFlat: 35.6, footChamferLo: 0.8, footWall: 1.8,
+  footChamferHi: 2.15, footR: 3.75,
+  pocketD: 4.65, pocketChamferHi: 2.15, pocketWall: 1.8, pocketChamferLo: 0.7, pocketR: 4,
+  floorT: 3.2, magnetR: 3.25, magnetDepth: 2.4, magnetPitch: 26,
 };
 
-/** Height the base adds under the bottom tier: what the solver charges the shelf for. */
-export const baseHeight = (o: Options) => (o.base === "feet" ? 24 : o.base === "gridfinity" ? K.pocketD + (o.magnets ? K.floorT : 0) : 0);
+/** Height the base adds under the bottom tier: what the solver charges the shelf for. On
+ *  a grid the feet sit inside the baseplate, so the unit is the whole of it - plus the
+ *  magnet floor when there is one. */
+export const baseHeight = (o: Options) => (o.base === "feet" ? 24 : o.base === "gridfinity" ? K.unitH + (o.magnets ? K.floorT : 0) : 0);
+/** Whole Gridfinity cells that cover `span` mm. */
+export const gridCells = (span: number) => Math.ceil((span + 2 * K.gridGap) / K.gridPitch);
+/** The width of `cells` whole cells, gap included: the bin's edge. */
+export const gridSpan = (cells: number) => cells * K.gridPitch - 2 * K.gridGap;
 
 export interface Derived {
   n: number; nBottom: number; split: boolean;
@@ -98,7 +108,10 @@ export interface Derived {
   hexR: number; lig: number;
   xd: number; px: number; py: number; piny: number; lipy: number; lipx: number; railHy: number;
   gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
-  plate: [number, number, number, number]; // the baseplate's x0, y0, x1, y1 in the gang frame (lane 0 at y = 0)
+  floorCells: [number, number]; // the lane's own cells along and across: what covers it, or what the shelf has
+  floor: [number, number, number, number]; // the lane's floor of feet, x0 y0 x1 y1 in the lane frame, centred
+  foot: [number, number, number, number]; // lane and floor together: what has to fit the bed
+  plate: [number, number, number, number]; // the baseplate, in the gang frame (lane 0 at y = 0)
 }
 
 /** Ligament grows with the cell so the bars stay in proportion; never under four 0.42 mm lines. */
@@ -123,12 +136,14 @@ const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo +
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
 
-/** Where a `span` sits round `[lo, hi]`: flush with one end or centred, the spare on
- *  the other side. Never shorter than what it is round. */
-function alignSpan(lo: number, hi: number, span: number, at: "lo" | "centre" | "hi"): [number, number] {
-  span = Math.max(span, hi - lo);
-  const x0 = at === "lo" ? lo : at === "hi" ? hi - span : (lo + hi - span) / 2;
-  return [x0, x0 + span];
+/** Where a baseplate of `cells` sits round the lanes' cells `[lo, hi]` (cell lines): flush
+ *  with one end or centred, the spare whole cells on the other side - a half cell would
+ *  put the feet between pockets. */
+function alignCells(lo: number, hi: number, cells: number, at: "lo" | "centre" | "hi"): [number, number] {
+  const spare = Math.max(0, cells - Math.round((hi - lo) / K.gridPitch));
+  const k = at === "lo" ? 0 : at === "hi" ? spare : Math.floor(spare / 2);
+  const x0 = lo - k * K.gridPitch;
+  return [x0, x0 + Math.max(cells, Math.round((hi - lo) / K.gridPitch)) * K.gridPitch];
 }
 
 export function solve(o: Options): Derived {
@@ -150,20 +165,33 @@ export function solve(o: Options): Derived {
   const dhiB = K.deckLo + L * tan;
   const Hb = Math.ceil(dhiB + o.canD + K.topgap);
   const hexR = o.hexAuto ? autoR(H - K.border - fieldBottom(o), ROWS[o.pattern]) : o.hexR;
-  const split = L > usableX;
-  const gangPitch = OW + K.dovetail;
-  // the baseplate: the cells the shelf takes (the solver's baseCells), never smaller than
-  // the gang's pad, placed round the pad where the alignment says
-  const padTop = (o.lanesWide - 1) * gangPitch + OW / 2;
-  const [bx0, bx1] = alignSpan(-L / 2, L / 2, o.baseCells[0] * K.gridPitch, o.along === "front" ? "lo" : o.along === "back" ? "hi" : "centre");
-  const [by0, by1] = alignSpan(-OW / 2, padTop, o.baseCells[1] * K.gridPitch, o.across === "right" ? "lo" : o.across === "left" ? "hi" : "centre");
+  // on a grid the lane's floor is the whole cells that cover it, or as many as the shelf
+  // has (baseCells) with the lane overhanging on a skirt, centred under the lane. Lanes
+  // sit a floor apart: the baseplate joins them, not a dovetail. Lane and floor together
+  // have to fit the bed, so that is what splits at x = 0 - through a foot as often as
+  // not; a foot cut square by the seam prints as it is and the pocket locks it. The
+  // baseplate is the shelf's cells, placed round the lanes' cells where the alignment says
+  const grid = o.base === "gridfinity";
+  const floorCells: [number, number] = grid ? [Math.min(gridCells(L), o.baseCells[0]), Math.min(gridCells(OW), o.baseCells[1])] : [0, 0];
+  const [fx0, fx1] = grid ? [-gridSpan(floorCells[0]) / 2, gridSpan(floorCells[0]) / 2] : [-L / 2, L / 2];
+  const [fy0, fy1] = grid ? [-gridSpan(floorCells[1]) / 2, gridSpan(floorCells[1]) / 2] : [-OW / 2, OW / 2];
+  const foot: Derived["foot"] = [Math.min(fx0, -L / 2), Math.min(fy0, -OW / 2), Math.max(fx1, L / 2), Math.max(fy1, OW / 2)];
+  const split = foot[2] - foot[0] > usableX;
+  const gangPitch = grid ? Math.max(floorCells[1] * K.gridPitch, OW + 2 * K.gridGap) : OW + K.dovetail;
+  const plate: Derived["plate"] = grid
+    ? (() => {
+      const [bx0, bx1] = alignCells(fx0 - K.gridGap, fx1 + K.gridGap, o.baseCells[0], o.along === "front" ? "lo" : o.along === "back" ? "hi" : "centre");
+      const [by0, by1] = alignCells(fy0 - K.gridGap, (o.lanesWide - 1) * gangPitch + fy1 + K.gridGap, o.baseCells[1], o.across === "right" ? "lo" : o.across === "left" ? "hi" : "centre");
+      return [bx0, by0, bx1, by1];
+    })()
+    : [-L / 2, -OW / 2, L / 2, (o.lanesWide - 1) * gangPitch + OW / 2];
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
     lipy: IW / 2 - 14, lipx: -L / 2 + inset + 8, railHy: IW / 2 - 20,
     gangPitch,
-    plateX: split ? L / 2 + K.spliceDepth : L, plateY: OW + K.dovetail,
-    usableX, usableY, usableZ, plate: [bx0, by0, bx1, by1],
+    plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0], plateY: grid ? foot[3] - foot[1] : OW + K.dovetail,
+    usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot, plate,
   };
 }
 
@@ -389,6 +417,7 @@ export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
   lip: M; riser08: M; riser24: M; cover: M[];
   baseplate: M[]; // Gridfinity baseplate tiles, each within the bed; empty on another base
+  gridDeck?: Plate; // the deck of the lane on the shelf, on its Gridfinity unit
 }
 
 /** What every plate of one lane shares: where the deck is, how tall the walls are, and
@@ -512,7 +541,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const H = ln.H, b = K.border;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const c = K.dtCl + o.fit;
-  const gang = o.lanesWide > 1;
+  const gang = o.lanesWide > 1 && o.base !== "gridfinity"; // on a grid the baseplate joins lanes
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   const piny = sy * d.piny;
   const notchH = K.deckLo + c;
@@ -629,14 +658,18 @@ const trapezoid = (base: number, tip: number, depth: number, vc: number, grow = 
   [0.5, vc - base / 2 - grow], [0.5, vc + base / 2 + grow], [-depth - grow, vc + tip / 2 + grow], [-depth - grow, vc - tip / 2 - grow],
 ];
 
-/** Deck: the tongue is the wedge itself inside the trapezoid, so it carries the slope. */
-export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): [M, M] {
+/** Deck: the tongue is the wedge itself inside the trapezoid, so it carries the slope.
+ *  `zb` is the deck's underside: a grid deck's floor and feet hang below the pan, and
+ *  the tongue takes them too, so it stands on the bed instead of over the socket. */
+export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): [M, M] {
   const cl = K.dtCl + o.fit;
-  const wedge = g.prismY(g.poly([[ln.xd, 0], [d.L / 2, 0], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]), d.OW, -d.OW / 2);
-  const tongue = g.isect(wedge, g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0)), ln.H, -1));
-  const socket = g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0, cl)), ln.H + 2, -1);
+  const w = d.plateY; // wider than any tongue; the floor of a grid deck is this wide
+  const wedge = g.prismY(g.poly([[ln.xd, zb], [d.L / 2, zb], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]), w, -w / 2);
+  const tongue = g.isect(wedge, g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0)), ln.H - zb, zb - 1));
+  const socket = g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0, cl)), ln.H + 2 - zb, zb - 1);
   return splitPlate(g, deck, tongue, socket);
 }
+
 
 /** Wall: the same dovetail sized to the wall height at the seam, slid together in Y
  *  before the wall goes on the deck. Runs on the wall in the lane frame. */
@@ -666,31 +699,22 @@ export function buildRiser(g: Geo, o: Options, h: number, side = 20): M {
   return g.union([g.box(side, o.wall, h, 0, 0, h / 2), tab(g, "x", K.pinH, 0, 0, h)]);
 }
 
-/** A Gridfinity baseplate for the shelf, printed as it lies: `d.plate` of whole cells, a
- *  pocket in every cell clear of the lanes' pad, the pad solid and flush with the rim
- *  with a riser boss at every lane's ±px and a pocket for the lip's tabs. The lanes
- *  stand on it exactly as they stand on the shelf. With magnets a floor under the
- *  pockets carries 6 × 2 magnets on the 26 mm square. Tiles at cell lines to fit the
- *  bed, keyed with the deck's dovetail wherever a cut runs through solid: at a cell
- *  line the rim is a knife edge, so a cut through pockets just butts, and the lane
- *  standing across the seam holds it. */
+/** A Gridfinity baseplate for the shelf, printed as it lies: `d.plate` of whole cells
+ *  with a pocket in every one; with magnets, a floor under the pockets carrying 6 × 2
+ *  magnets on the 26 mm square. The lanes' feet drop into it like any bin's. Tiles at
+ *  cell lines to fit the bed and just butt, as baseplates do - at a cell line the rim is
+ *  a knife edge with nothing to key - and the lane standing across a seam holds it. */
 export function buildBaseplate(g: Geo, o: Options, d: Derived): M[] {
-  const { L, OW, gangPitch: G, plate: [x0, y0, x1, y1] } = d;
-  const H = baseHeight(o), P = K.gridPitch, m = K.padMargin;
-  const pad = [-L / 2 - m, -OW / 2 - m, L / 2 + m, (o.lanesWide - 1) * G + OW / 2 + m];
-  const free: [number, number, number, number][] = [];
-  for (let i = 0; (i + 1) * P <= x1 - x0 + 1e-6; i++) for (let j = 0; (j + 1) * P <= y1 - y0 + 1e-6; j++) {
-    const c: [number, number, number, number] = [x0 + i * P, y0 + j * P, x0 + (i + 1) * P, y0 + (j + 1) * P];
-    if (c[2] <= pad[0] || c[0] >= pad[2] || c[3] <= pad[1] || c[1] >= pad[3]) free.push(c);
-  }
+  const { plate: [x0, y0, x1, y1] } = d;
+  const H = K.pocketD + (o.magnets ? K.floorT : 0), P = K.gridPitch;
   // the pocket, rim down: hulls of the profile's rounded rectangles, like a bin's foot
-  // in negative. A skeleton pocket runs through; a floored one stops on the floor
+  // in negative. A skeleton pocket runs through; a floored one stops on the floor. The
+  // vertical run overlaps both chamfers by 0.01: butted exactly, float left a membrane
+  // between them that read as a flat ceiling
   const { pocketChamferHi: hi, pocketWall: wall, pocketChamferLo: lo, pocketR: r } = K;
   const mid = P - 2 * hi, bottom = mid - 2 * lo; // 37.7, 36.3
   const ring = (side: number, radius: number, z: number) => g.roundedRect(side, side, radius).toPolygons().flat().map(([x, y]) => [x, y, z] as Vec3);
   const zf = H - K.pocketD;
-  // the vertical run overlaps both chamfers by 0.01: butted exactly, float left a
-  // membrane between them that read as a flat ceiling
   const pocket = g.union([
     g.prismZ(g.roundedRect(P, P, r), 2, H),
     g.hull([...ring(P, r, H), ...ring(mid, r - hi, H - hi)]),
@@ -699,67 +723,96 @@ export function buildBaseplate(g: Geo, o: Options, d: Derived): M[] {
     ...(o.magnets ? [] : [g.prismZ(g.roundedRect(bottom, bottom, r - hi - lo), 1.01, -1)]),
   ]);
   const cuts: M[] = [];
-  for (const [cx0, cy0, cx1, cy1] of free) {
-    const cx = (cx0 + cx1) / 2, cy = (cy0 + cy1) / 2;
+  for (let i = 0; i < Math.round((x1 - x0) / P); i++) for (let j = 0; j < Math.round((y1 - y0) / P); j++) {
+    const cx = x0 + (i + 0.5) * P, cy = y0 + (j + 0.5) * P;
     cuts.push(pocket.translate([cx, cy, 0]));
     if (o.magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
       cuts.push(g.cyl(K.magnetR, K.magnetDepth + 1, cx + sx * K.magnetPitch / 2, cy + sy * K.magnetPitch / 2, zf - K.magnetDepth));
     }
   }
-  const adds = [g.prismZ(g.rect(x0, y0, x1, y1), H)];
-  for (let i = 0; i < o.lanesWide; i++) for (const sy of [1, -1]) {
-    for (const sx of [1, -1]) adds.push(tab(g, "x", K.pinH, sx * d.px, i * G + sy * d.piny, H));
-    cuts.push(g.box(5.4 + o.fit, 12.4 + o.fit, 2, -L / 2 + 8, i * G + sy * d.lipy, H)); // the lip's tabs stand 0.58 mm proud of the deck
+  // where a lane overhangs its cells its skirt reaches down to the feet's level; a
+  // floored baseplate is that much taller, so its floor runs out under the skirt
+  const slab = [g.prismZ(g.rect(x0, y0, x1, y1), H)];
+  if (o.magnets) for (let i = 0; i < o.lanesWide; i++) {
+    const [fx0, fy0, fx1, fy1] = d.foot;
+    slab.push(g.prismZ(g.rect(fx0, i * d.gangPitch + fy0, fx1, i * d.gangPitch + fy1), K.floorT));
   }
-  const plate = g.diff(g.union(adds), cuts);
-
-  // tiles: cut at cell lines so every tile and its tongue fit the bed
+  const plate = g.diff(g.union(slab), cuts);
+  // tiles: whole cells, as many per tile as the bed takes
   const cutsAlong = (lo: number, hi: number, usable: number) => {
     const at: number[] = [];
-    for (let start = lo; hi - start > usable - K.spliceDepth;) { start += Math.floor((usable - K.spliceDepth) / P) * P; at.push(start); }
+    for (let start = lo; hi - start > usable + 1e-6;) { start += Math.floor(usable / P) * P; at.push(start); }
     return at;
   };
-  const cutsX = cutsAlong(x0, x1, d.usableX), cutsY = cutsAlong(y0, y1, d.usableY);
-  // where a cut runs through solid: the plate's extent less every free cell it borders
-  // and less a band round each crossing cut, so no tongue is itself cut in two
-  const solidAlong = (axis: "x" | "y", c: number): [number, number][] => {
-    const [lo, hi] = axis === "x" ? [y0, y1] : [x0, x1];
-    const holes: [number, number][] = free
-      .filter((cell) => (axis === "x" ? cell[0] === c || cell[2] === c : cell[1] === c || cell[3] === c))
-      .map((cell) => (axis === "x" ? [cell[1], cell[3]] : [cell[0], cell[2]]));
-    for (const cc of axis === "x" ? cutsY : cutsX) holes.push([cc - 25, cc + 25]);
-    holes.sort((a, b) => a[0] - b[0]);
-    const out: [number, number][] = [];
-    let at = lo;
-    for (const [h0, h1] of holes) { if (h0 > at) out.push([at, h0]); at = Math.max(at, h1); }
-    if (hi > at) out.push([at, hi]);
-    return out.filter(([a, b]) => b - a >= K.spliceTip + 10);
-  };
-  const keys = (axis: "x" | "y", c: number, grow: number) => {
-    const shapes = solidAlong(axis, c).map(([a, b]) => {
-      const pts = trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, (a + b) / 2, grow);
-      return g.poly(axis === "x" ? pts.map(([u, v]) => [u + c, v] as Vec2) : pts.map(([u, v]) => [v, u + c] as Vec2));
-    });
-    return shapes.length ? g.prismZ(g.cs2d(...shapes), H + 4, -1) : null;
-  };
-  const cl = K.dtCl + o.fit;
   let tiles = [plate];
-  for (const axis of ["x", "y"] as const) {
-    for (const c of axis === "x" ? cutsX : cutsY) {
-      const tongue = keys(axis, c, 0), socket = keys(axis, c, cl);
+  for (const [axis, cutsAt] of [["x", cutsAlong(x0, x1, d.usableX)], ["y", cutsAlong(y0, y1, d.usableY)]] as const) {
+    for (const c of cutsAt) {
       tiles = tiles.flatMap((t) => {
         const bb = t.boundingBox();
         const [lo, hi] = axis === "x" ? [bb.min[0], bb.max[0]] : [bb.min[1], bb.max[1]];
         if (c <= lo + 1 || c >= hi - 1) return [t];
         const big = Math.max(x1 - x0, y1 - y0) * 2 + 20;
         const side = (sign: number) => (axis === "x" ? g.box(big, big, big, c + sign * big / 2, 0, 0) : g.box(big, big, big, 0, c + sign * big / 2, 0));
-        const rear = tongue ? g.union([g.isect(t, side(1)), g.isect(t, tongue)]) : g.isect(t, side(1));
-        const front = socket ? g.diff(g.isect(t, side(-1)), [socket]) : g.isect(t, side(-1));
-        return [front, rear];
+        return [g.isect(t, side(-1)), g.isect(t, side(1))];
       });
     }
   }
   return tiles;
+}
+
+/** One Gridfinity foot, centred, from z = 0 up: hulls of the profile's rounded
+ *  rectangles, so the 45° faces are exact and the corners concentric. An extrude with
+ *  a scale would square the top corner and bind in the baseplate's r4 pocket. The
+ *  upper chamfer runs on `over` mm past the profile: neighbouring feet then meet in
+ *  a 45° ridge and their rounded corners close in a 45° pit, and the floor over them
+ *  has no flat underside anywhere. */
+function buildFoot(g: Geo, over: number): M {
+  const { footFlat: flat, footChamferLo: lo, footWall: wall, footChamferHi: hi, footR: r } = K;
+  const mid = flat + 2 * lo, top = mid + 2 * hi; // 37.2, 41.5
+  const ring = (side: number, radius: number, z: number) => g.roundedRect(side, side, radius).toPolygons().flat().map(([x, y]) => [x, y, z] as Vec3);
+  return g.union([
+    g.hull([...ring(flat, r - hi - lo, 0), ...ring(mid, r - hi, lo)]),
+    g.prismZ(g.roundedRect(mid, mid, r - hi), wall, lo),
+    g.hull([...ring(mid, r - hi, lo + wall), ...ring(top + 2 * over, r + over, lo + wall + hi + over)]),
+  ]);
+}
+
+/** The bottom-tier deck as a Gridfinity bin: the ordinary deck on a 7 mm unit that
+ *  hangs below it, z −7 to 0 - a floor of whole cells round the lane (`d.floor`, where
+ *  the alignment put it), a foot under every cell, and the riser's boss at ±px for the
+ *  walls, which stand on the floor. The
+ *  deck's underside is one plane with the wall bottoms, so every cut it has stops at
+ *  z = 0; only the lip's 5 mm tab stood 0.58 mm proud of the pan, and its pocket goes on
+ *  1 mm into the floor. Prints as it sits, feet down, like every bin. */
+export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
+  const { floorCells: [nx, ny], floor: [fx0, fy0, fx1, fy1] } = d;
+  const footH = K.footChamferLo + K.footWall + K.footChamferHi;
+  const z0 = -K.unitH;
+  // the bin's r3.75 corners, except where the lane's own corner lands on one: flush in a
+  // corner, a deck ear would hang a square millimetre over the round. Where the lane
+  // runs past its floor (a shelf too narrow for the cells that would cover it), the
+  // outline is the lane's and a skirt stands under it, bed to floor, beside the
+  // baseplate: solid, so nothing overhangs, and the foot chamfers run into it
+  const lane = g.rect(-d.L / 2, -d.OW / 2, d.L / 2, d.OW / 2);
+  const outline = g.roundedRect(gridSpan(nx), gridSpan(ny), K.footR).translate([(fx0 + fx1) / 2, (fy0 + fy1) / 2]).add(lane);
+  const skirt = lane.subtract(g.rect(fx0 - 2 * K.gridGap, fy0 - 2 * K.gridGap, fx1 + 2 * K.gridGap, fy1 + 2 * K.gridGap));
+  // the corner pit between four feet is the last void to close, sqrt(2)·4 − 3.75 = 1.9 mm
+  // above the foot tops. The chamfers run on through the whole 2.25 mm and past it, and
+  // the outline prism clips them flat at the deck's underside: the merged run-ons are
+  // the floor, and no slab has to start above the last pit - a slab 0.1 mm over it left
+  // slivers where the 24-segment corner arcs fell short
+  const foot = buildFoot(g, K.unitH - footH + 0.5);
+  const cx = (i: number) => fx0 - K.gridGap + (i + 0.5) * K.gridPitch, cy = (j: number) => fy0 - K.gridGap + (j + 0.5) * K.gridPitch;
+  const feet: M[] = [], cuts: M[] = [];
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) feet.push(foot.translate([cx(i), cy(j), z0]));
+  const adds = [
+    deck,
+    g.isect(g.union(feet), g.prismZ(outline, K.unitH, z0)), // the run-on chamfers stop at the bin's edge
+  ];
+  if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
+  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(tab(g, "x", K.pinH, sx * d.px, sy * d.piny, 0));
+  for (const sy of [1, -1]) cuts.push(g.box(5.4 + o.fit, 12.4 + o.fit, 2, ln.lipx, sy * d.lipy, 0));
+  return g.diff(g.union(adds), cuts);
 }
 
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
@@ -849,7 +902,17 @@ export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
     riser08: buildRiser(g, o, 8), riser24: buildRiser(g, o, 24),
     cover: o.cover ? buildCover(g, o, d) : [],
     baseplate: o.base === "gridfinity" ? buildBaseplate(g, o, d) : [],
+    gridDeck: o.base === "gridfinity" ? buildGridDeckPlate(g, o, d, cascade ? "bottom" : "top") : undefined,
   };
+}
+
+/** The shelf lane's deck on its Gridfinity unit, split like any deck when the lane is long. */
+function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Plate {
+  const ln = laneOf(o, d, role);
+  const deck = buildGridDeck(g, o, d, ln, buildDeck(g, o, d, ln));
+  if (!d.split) return { name: "deck", whole: deck };
+  const [front, rear] = splitDeck(g, o, d, ln, deck, -K.unitH);
+  return { name: "deck", front, rear };
 }
 
 

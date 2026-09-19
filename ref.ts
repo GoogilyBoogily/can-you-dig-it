@@ -60,14 +60,21 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, set, "top");
   }
-  // the Gridfinity baseplate for a 400 × 460 shelf under the default two-lane gang: 10 × 9
-  // cells, the pad in the middle; with magnets; and the gang in a corner so the free cells
-  // gather on two sides. Every tile is its own part
-  const shelf: Options = { ...DEFAULTS, base: "gridfinity", baseCells: [10, 9] };
-  const baseVariants: Record<string, Partial<Options>> = { "baseplate": {}, "baseplate-magnets": { magnets: true }, "baseplate-corner": { across: "left", along: "front" } };
-  for (const [name, variant] of Object.entries(baseVariants)) {
+  // Gridfinity, on a 400 × 460 shelf (10 × 9 cells): the baseplate tiles and the shelf
+  // lane's deck on its feet, plain and with magnets in the baseplate; the gang in a
+  // corner; and a 150 × 304 shelf (7 × 3 cells), where the lane overhangs three cells on
+  // skirts and the baseplate is the lane's own cells
+  const shelf: Options = { ...DEFAULTS, base: "gridfinity", length: 410, baseCells: [10, 9] };
+  const gridVariants: Record<string, Partial<Options>> = {
+    "grid": {}, "grid-magnets": { magnets: true }, "grid-corner": { across: "left", along: "front" },
+    "grid-narrow": { length: 278, baseCells: [7, 3], lanesWide: 1, cascade: false },
+  };
+  for (const [name, variant] of Object.entries(gridVariants)) {
     const o: Options = { ...shelf, ...variant };
-    buildAll(geo, o, solve(o)).baseplate.forEach((tile, i) => { parts[`${name}-${i + 1}`] = tile; });
+    const set = buildAll(geo, o, solve(o));
+    set.baseplate.forEach((tile, i) => { parts[`${name}-baseplate-${i + 1}`] = tile; });
+    const deck = set.gridDeck!;
+    if (deck.whole) parts[`${name}-deck`] = deck.whole; else { parts[`${name}-deck-front`] = deck.front!; parts[`${name}-deck-rear`] = deck.rear!; }
   }
   return parts;
 }
