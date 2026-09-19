@@ -855,6 +855,43 @@ function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Pla
   return { name: "deck", front, rear };
 }
 
+// ---------------------------------------------------------------- the print list
+export type PartRole = "lane" | "lip" | "riser" | "cover";
+export interface Part { name: string; mesh: M; qty: number; role: PartRole }
+
+/** The name a lane plate prints under. A flat stack's tiers are all the same lane, so
+ *  the role is left out; the viewer and the snapshot look parts up by this name. */
+export const laneName = (o: Options, role: LaneRole, plate: PlateName) =>
+  o.cascade ? `lane-${role}-${plate}` : `lane-${plate}`;
+
+/** Every part to print, named and counted, in the order they are packed. A split plate
+ *  is two parts, -front and -rear. On a Gridfinity base the shelf lane's deck is
+ *  grid-deck and its plain deck is not printed; risers only come with feet. */
+export function partList(set: PartSet, o: Options): Part[] {
+  const parts: Part[] = [];
+  const add = (name: string, mesh: M | undefined, qty: number, role: PartRole) => {
+    if (mesh && qty > 0) parts.push({ name, mesh, qty, role });
+  };
+  const addPlate = (base: string, plate: Plate, qty: number) => {
+    add(base, plate.whole, qty, "lane");
+    add(`${base}-front`, plate.front, qty, "lane");
+    add(`${base}-rear`, plate.rear, qty, "lane");
+  };
+  const qtyOf: Record<LaneRole, number> = {
+    bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: o.cascade ? o.lanesWide : o.lanesWide * o.tiers,
+  };
+  const shelfRole: LaneRole = o.cascade ? "bottom" : "top";
+  for (const lane of set.lanes) for (const plate of lane.plates) {
+    const onGrid = set.gridDeck && lane.role === shelfRole && plate.name === "deck";
+    addPlate(laneName(o, lane.role, plate.name), plate, qtyOf[lane.role] - (onGrid ? o.lanesWide : 0));
+  }
+  if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
+  add("end-lip", set.lip, o.lanesWide * (o.cascade ? 1 : o.tiers), "lip");
+  if (o.base === "feet") add("riser-24", set.riser, o.lanesWide * 4, "riser");
+  set.cover.forEach((mesh, i) => add(set.cover.length > 1 ? (i === 0 ? "cover-front" : "cover-rear") : "cover", mesh, o.lanesWide, "cover"));
+  return parts;
+}
+
 
 /** Filament estimate: layer-sum of (shell + infill * core), like cansys.py, with skins:
  *  the core is what sits inside the perimeters with `skin` of material above and below.

@@ -1,6 +1,6 @@
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { DENSITY, Geo, solve, buildAll, filamentGrams, type Options, type PartSet, type Plate } from "./geometry";
+import { DENSITY, Geo, solve, buildAll, partList, filamentGrams, type Options, type PartRole } from "./geometry";
 import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./export";
 
 export type Req =
@@ -8,7 +8,7 @@ export type Req =
   | { type: "export"; id: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
 // solidGrams: the part printed 100 % dense, which the translucent settings do.
-export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: "lane" | "lip" | "riser" | "cover" }
+export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: PartRole }
 export type Res =
   | { type: "built"; id: number; parts: PartOut[]; placed: Placement[]; nplates: number; ms: number }
   | { type: "file"; id: number; name: string; bytes: Uint8Array }
@@ -34,30 +34,10 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const o = req.options;
       const d = solve(o);
       const g = new Geo(wasm);
-      const set: PartSet = buildAll(g, o, d);
-      const cascade = o.cascade;
-      const nLip = o.lanesWide * (cascade ? 1 : o.tiers);
-      const parts: PartOut[] = [];
-      const add = (name: string, m: Manifold | undefined, qty: number, role: PartOut["role"]) => {
-        if (!m || qty <= 0) return;
-        parts.push({ name, mesh: toMesh(name, m), qty, grams: filamentGrams(m), solidGrams: m.volume() / 1000 * DENSITY, role });
-      };
-      const qtyOf = { bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: cascade ? o.lanesWide : o.lanesWide * o.tiers };
-      const addPlate = (base: string, plate: Plate, qty: number) => {
-        add(base, plate.whole, qty, "lane");
-        add(`${base}-front`, plate.front, qty, "lane");
-        add(`${base}-rear`, plate.rear, qty, "lane");
-      };
-      // on a grid the shelf lane's deck is the grid deck instead, one per lane across
-      const shelfRole = cascade ? "bottom" : "top";
-      for (const ln of set.lanes) for (const plate of ln.plates) {
-        const onGrid = set.gridDeck && ln.role === shelfRole && plate.name === "deck";
-        addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role] - (onGrid ? o.lanesWide : 0));
-      }
-      if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
-      add("end-lip", set.lip, nLip, "lip");
-      if (o.base === "feet") add("riser-24", set.riser, o.lanesWide * 4, "riser");
-      set.cover.forEach((m, i) => add(set.cover.length > 1 ? (i === 0 ? "cover-front" : "cover-rear") : "cover", m, o.lanesWide, "cover"));
+      const parts: PartOut[] = partList(buildAll(g, o, d), o).map((p) => ({
+        name: p.name, mesh: toMesh(p.name, p.mesh), qty: p.qty, role: p.role,
+        grams: filamentGrams(p.mesh), solidGrams: p.mesh.volume() / 1000 * DENSITY,
+      }));
       const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin);
       const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
       last = { parts, placed, options: o };

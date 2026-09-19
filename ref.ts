@@ -11,7 +11,7 @@
 // than disagreement, and the tolerances in regress.test.ts are tight to match.
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { Geo, DEFAULTS, PATTERNS, solve, buildAll, type Derived, type Options, type PartSet, type LaneRole } from "./src/geometry";
+import { Geo, DEFAULTS, PATTERNS, solve, buildAll, partList, type Derived, type Options, type PartSet, type LaneRole } from "./src/geometry";
 
 /** The dimensions solve() derives from DEFAULTS, pinned so a change to the arithmetic shows up. */
 export function refSpec(derived: Derived): Record<string, number> {
@@ -27,10 +27,11 @@ export function refSpec(derived: Derived): Record<string, number> {
 export function refParts(geo: Geo): Record<string, Manifold> {
   const derived = solve(DEFAULTS);
   const minimal: Options = { ...DEFAULTS, design: "minimal" };
+  const three: Options = { ...DEFAULTS, tiers: 3 }, minimalTall: Options = { ...minimal, tiers: 3 };
   const twoTiers = buildAll(geo, DEFAULTS, derived);
-  const threeTiers = buildAll(geo, { ...DEFAULTS, tiers: 3 }, derived);
+  const threeTiers = buildAll(geo, three, derived);
   const minimalTwo = buildAll(geo, minimal, derived);
-  const minimalThree = buildAll(geo, { ...minimal, tiers: 3 }, derived);
+  const minimalThree = buildAll(geo, minimalTall, derived);
   const parts: Record<string, Manifold> = {
     "cover-front": twoTiers.cover[0],
     "cover-rear": twoTiers.cover[1],
@@ -39,17 +40,14 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     "minimal-cover-front": minimalTwo.cover[0],
     "minimal-cover-rear": minimalTwo.cover[1],
   };
-  // every plate of every lane role, split halves as their own parts, for both designs
-  const lanes = (prefix: string, set: PartSet, role: LaneRole) => {
-    for (const plate of set.lanes.find((l) => l.role === role)!.plates) {
-      const base = `${prefix}lane-${role}-${plate.name}`;
-      if (plate.whole) parts[base] = plate.whole;
-      if (plate.front) parts[`${base}-front`] = plate.front;
-      if (plate.rear) parts[`${base}-rear`] = plate.rear;
-    }
+  // every plate of every lane role, split halves as their own parts, for both designs,
+  // under the names partList() prints them as (every set here is a cascade, so the
+  // role is in the name)
+  const lanes = (prefix: string, o: Options, set: PartSet, role: LaneRole) => {
+    for (const part of partList(set, o)) if (part.name.startsWith(`lane-${role}-`)) parts[prefix + part.name] = part.mesh;
   };
-  lanes("", twoTiers, "top"); lanes("", threeTiers, "mid"); lanes("", twoTiers, "bottom");
-  lanes("minimal-", minimalTwo, "top"); lanes("minimal-", minimalThree, "mid"); lanes("minimal-", minimalTwo, "bottom");
+  lanes("", DEFAULTS, twoTiers, "top"); lanes("", three, threeTiers, "mid"); lanes("", DEFAULTS, twoTiers, "bottom");
+  lanes("minimal-", minimal, minimalTwo, "top"); lanes("minimal-", minimalTall, minimalThree, "mid"); lanes("minimal-", minimal, minimalTwo, "bottom");
   // every other pattern: the top lane and the cover, since a pattern changes nothing else.
   // solve() per pattern - the auto radius differs
   for (const pattern of PATTERNS.filter((p) => p !== "hex")) {
@@ -57,7 +55,7 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     const set = buildAll(geo, o, solve(o));
     parts[`${pattern}-cover-front`] = set.cover[0];
     parts[`${pattern}-cover-rear`] = set.cover[1];
-    lanes(`${pattern}-`, set, "top");
+    lanes(`${pattern}-`, o, set, "top");
   }
   // Gridfinity: the shelf lane's deck on its feet - a 410 lane (six cans, ten cells, the
   // longest a 256 bed prints in halves); with magnet pockets; in a corner of its floor;
@@ -70,8 +68,7 @@ export function refParts(geo: Geo): Record<string, Manifold> {
   };
   for (const [name, variant] of Object.entries(gridVariants)) {
     const o: Options = { ...grid, ...variant };
-    const deck = buildAll(geo, o, solve(o)).gridDeck!;
-    if (deck.whole) parts[name] = deck.whole; else { parts[`${name}-front`] = deck.front!; parts[`${name}-rear`] = deck.rear!; }
+    for (const part of partList(buildAll(geo, o, solve(o)), o)) if (part.name.startsWith("grid-deck")) parts[part.name.replace("grid-deck", name)] = part.mesh;
   }
   return parts;
 }
