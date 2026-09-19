@@ -58,6 +58,17 @@ test("every option survives the hash, including boxes turned off and the layout 
   await page.close(); await again.close();
 });
 
+// layouts[-1] is undefined. It used to become the chosen layout: no build, downloads
+// disabled, no message. A layout the list does not have falls back to the best one.
+test("a hash naming a layout that does not exist opens on the best layout", async () => {
+  const page = await browser.newPage();
+  await page.goto(`${URL_}#w=160&d=305&h=254&layout=-1`);
+  await page.waitForSelector(".layout");
+  expect(await page.locator(".layout").first().getAttribute("aria-pressed")).toBe("true");
+  await page.waitForSelector("#dl3mf:not([disabled])", { timeout: 90000 });
+  await page.close();
+});
+
 test("Share copies the full URL even before anything was typed", async () => {
   const context = await browser.newContext();
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://localhost:${PORT}` });

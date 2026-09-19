@@ -130,8 +130,11 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
  * what the slicer calls it. ASCII `x`, not `×`: Bambu Studio puts the plate name into
  * the gcode file it exports.
  */
+/** The part a placed copy came from: `lane-deck-02` → `lane-deck`. */
+export const stripCopy = (name: string) => name.replace(/-\d{2}$/, "");
+
 export function plateSummary(items: Placement[]): string {
-  const names = items.map((i) => i.name.replace(/-\d{2}$/, "")); // the copy suffix pack() adds
+  const names = items.map((i) => stripCopy(i.name));
   return [...new Set(names)].map((nm) => { const c = names.filter((x) => x === nm).length; return c > 1 ? `${c}x ${nm}` : nm; }).join(", ");
 }
 

@@ -74,7 +74,9 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const res: Res = { type: "file", id: req.id, name: req.format === "3mf" ? "can-system.3mf" : "can-system-stl.zip", bytes };
       (self as any).postMessage(res, [bytes.buffer]);
     }
-  } catch (err: any) {
-    (self as any).postMessage({ type: "error", id: req.id, message: String(err?.message ?? err) } satisfies Res);
+  } catch (err) {
+    console.error(err); // the message crosses to the page; the stack only lives here
+    const message = err instanceof Error ? err.message : String(err);
+    (self as any).postMessage({ type: "error", id: req.id, message } satisfies Res);
   }
 };

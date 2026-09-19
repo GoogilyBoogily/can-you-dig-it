@@ -2,14 +2,30 @@ import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pa
 import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
-import { extractProfile, plateSummary, type Placement } from "./export";
+import { extractProfile, plateSummary, stripCopy, type Placement } from "./export";
 import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { readNumbers, LIMITS } from "./validate";
 import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
-const viewer = new Viewer($("viewer"));
+
+function setStatus(text: string, busy = false) { const s = $("status"); s.textContent = text; s.classList.toggle("busy", busy); }
+/** Every failure goes on the status line and to the console: the line says what, the console keeps the stack. */
+function fail(text: string, err?: unknown) { setStatus(text); console.error(err ?? text); }
+const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
+// A throw inside a change handler (a bad preset, a broken index.json) otherwise dies unseen.
+window.addEventListener("error", (e) => fail(`Something went wrong: ${e.message}`, e.error));
+window.addEventListener("unhandledrejection", (e) => fail(`Something went wrong: ${reason(e.reason)}`, e.reason));
+
+let viewer: Viewer;
+try {
+  viewer = new Viewer($("viewer"));
+} catch (err) {
+  // Without WebGL nothing below can show a part; say so instead of a page that never responds.
+  fail(`The 3D view needs WebGL, which this browser does not offer: ${reason(err)}`, err);
+  throw err;
+}
 $("showCans").querySelector("input")!.addEventListener("change", (e) => viewer.showCans((e.target as HTMLInputElement).checked));
 $("showGrid").querySelector("input")!.addEventListener("change", (e) => viewer.showGrid((e.target as HTMLInputElement).checked));
 $("showBed").querySelector("input")!.addEventListener("change", (e) => viewer.showBed((e.target as HTMLInputElement).checked));
@@ -29,7 +45,7 @@ function readOptions(): { space: Space; base: Options; cascade: boolean } {
   const raw: Record<string, number> = {};
   for (const k of Object.keys(LIMITS)) raw[k] = parseFloat(String(f.get(k)));
   readNumbers(raw); // throws naming the offending field
-  const num = (k: string) => raw[k] ?? parseFloat(String(f.get(k)));
+  const num = (k: string) => raw[k];
   // A shared hash with an unknown design leaves the select blank; say so, as with numbers.
   const design = f.get("design") as Design;
   if (!DESIGNS.includes(design)) throw new Error("design: pick Standard or Minimal");
@@ -73,9 +89,9 @@ function refit(want = 0) {
   let space: Space, base: Options, cascade: boolean;
   try {
     ({ space, base, cascade } = readOptions());
-  } catch (err: any) {
+  } catch (err) {
     // Say which field is wrong rather than building nothing and staying quiet.
-    setStatus(`Check your numbers: ${err?.message ?? err}`);
+    fail(`Check your numbers: ${reason(err)}`, err);
     $("layouts").innerHTML = "";
     chosen = null; chosenIndex = 0;
     return;
@@ -89,7 +105,7 @@ function refit(want = 0) {
     chosen = null; chosenIndex = 0; return;
   }
   const h = document.createElement("h2"); h.textContent = "Layouts that fit"; box.appendChild(h);
-  const start = want < layouts.length ? want : 0;
+  const start = layouts[want] ? want : 0; // a hash can say layout=-1 or 1.5; both fall back to the best
   layouts.forEach((l, i) => {
     const b = document.createElement("button");
     b.type = "button"; b.className = "layout"; b.setAttribute("aria-pressed", String(i === start));
@@ -119,8 +135,6 @@ function setBuildPending(pending: boolean) {
 }
 
 // ------------------------------------------------------------- build
-function setStatus(text: string, busy = false) { const s = $("status"); s.textContent = text; s.classList.toggle("busy", busy); }
-
 function build() {
   if (!chosen) return;
   const id = ++buildId;
@@ -132,7 +146,13 @@ function build() {
 
 worker.onmessage = (e: MessageEvent<Res>) => {
   const r = e.data;
-  if (r.type === "error") { setBuildPending(false); setStatus(`Something went wrong: ${r.message}`); return; }
+  if (r.type === "error") {
+    // Only the build on screen may re-enable downloads: a superseded build's error must not
+    // unlock an export of whatever the worker built before it.
+    if (r.id === buildId) setBuildPending(false);
+    fail(`Something went wrong: ${r.message}`);
+    return;
+  }
   if (r.type === "file") { if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); } return; }
   if (r.id !== buildId || !chosen) return; // a newer build is already on its way
   setBuildPending(false);
@@ -145,9 +165,9 @@ worker.onmessage = (e: MessageEvent<Res>) => {
 
 worker.onerror = (e) => {
   setBuildPending(false);
-  setStatus(`The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`);
+  fail(`The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`, e);
 };
-worker.onmessageerror = () => setStatus("The geometry engine sent something unreadable - reload the page.");
+worker.onmessageerror = (e) => fail("The geometry engine sent something unreadable - reload the page.", e);
 
 // ------------------------------------------------------------- stage
 function renderTabs() {
@@ -202,7 +222,7 @@ function renderResults() {
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";
   const byPlate = new Map<number, Placement[]>();
   for (const p of placed) { if (!byPlate.has(p.plate)) byPlate.set(p.plate, []); byPlate.get(p.plate)!.push(p); }
-  const gramsOf = (name: string) => { const p = parts.find((p) => name === p.name || name.startsWith(p.name + "-")); return p ? partGrams(p) : 0; };
+  const gramsOf = (name: string) => { const p = parts.find((p) => p.name === stripCopy(name)); return p ? partGrams(p) : 0; };
   for (const [n, items] of [...byPlate.entries()].sort((a, b) => a[0] - b[0])) {
     const b = document.createElement("button"); b.type = "button"; b.className = "plate"; b.setAttribute("data-key", `plate:${n}`);
     const summary = plateSummary(items);
@@ -319,7 +339,7 @@ pick.translucent.addEventListener("change", () => { if (built) renderResults(); 
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
   .then((loaded: ProfileIndex) => { index = loaded; showProfile(); })
-  .catch((err) => setStatus(`Couldn't load the printer list, so only a 3MF can supply print settings: ${err?.message ?? err}`));
+  .catch((err) => fail(`Couldn't load the printer list, so only a 3MF can supply print settings: ${reason(err)}`, err));
 
 $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   const input = e.target as HTMLInputElement;
@@ -328,9 +348,9 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   let loaded: StoredProfile;
   try {
     loaded = { name: file.name, config: extractProfile(new Uint8Array(await file.arrayBuffer())) };
-  } catch (err: any) {
+  } catch (err) {
     // A bad drop keeps whatever profile was already working.
-    setStatus(`Couldn't read that 3MF: ${err?.message ?? err}`);
+    fail(`Couldn't read that 3MF: ${reason(err)}`, err);
     input.value = "";
     return;
   }
@@ -372,8 +392,8 @@ $("share").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(location.href);
     setStatus("Link copied.");
-  } catch (err: any) {
-    setStatus(`Couldn't copy the link: ${err?.message ?? err}`);
+  } catch (err) {
+    fail(`Couldn't copy the link: ${reason(err)}`, err);
   }
 });
 
