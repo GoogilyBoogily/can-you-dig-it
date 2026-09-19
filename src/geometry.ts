@@ -545,58 +545,83 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
  *  over the deck's ears with a tab down through each. */
 export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number): M {
   const { L, IW, OW } = d;
-  const H = ln.H, b = K.border;
+  const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const c = K.dtCl + o.fit;
   const gang = o.lanesWide > 1 && o.base !== "gridfinity"; // on a grid the baseplate joins lanes
-  const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   const piny = sy * d.piny;
   const notchH = K.deckLo + c;
+  const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const tx of ln.tabs) adds.push(tab(g, "x", notchH + 1, tx, piny, 0));
   for (const sx of [1, -1]) adds.push(tab(g, "x", K.pinH + 1, sx * d.px, piny, H - 1));
-  const dtx = dtxOf(d);
-  const ribZ = 8;
-  if (gang && sy > 0) for (const dx of [-dtx, dtx]) adds.push(g.prismZ(dovetailCS(g, dx, OW / 2, K.dtBase, K.dtTip), H - 12 - ribZ, ribZ));
-  let body = g.union(adds);
-
+  if (gang && sy > 0) adds.push(...wallDovetailRibs(g, d, H));
   const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
-  // the notch over each deck ear; the tab stands inside it, leaving the ear's slot
-  const notch = (w: number, h: number, x: number) => g.box(w + 2 * c, o.wall + 2, h + 1, x, sy * d.py, (h - 1) / 2);
-  for (const tx of ln.tabs) cuts.push(g.diff(notch(K.earW, notchH, tx), [tab(g, "x", notchH + 2, tx, piny, -1)]));
-  // the end wall's side tab drops into this as the wall drops on
-  cuts.push(notch(K.tabT, ln.te + K.sideTabH + c, ln.xe + K.tabT / 2));
-  // the tier below's pins, or the risers' bosses
-  for (const sx of [1, -1]) cuts.push(notch(K.tabW, K.pinH + c, sx * d.px));
-  if (gang && sy < 0) for (const dx of [-dtx, dtx]) cuts.push(g.prismZ(dovetailCS(g, dx, -OW / 2, K.dtBase + 2 * c, K.dtTip + 2 * c), H + 2, ribZ - 1));
-  if (!o.solid) {
-    const minimal = o.design === "minimal";
-    const keep: CS[] = [];
-    if (gang) for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
-    if (d.split) keep.push(g.rect(-K.spliceDepth - 2.5, 0, 2.5, H));
-    const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + K.padRise);
-    keep.push(endNotch);
-    const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
-    const wcells = g.cellsOf(o.pattern, d.hexR, d.lig, panel, keep);
-    if (wcells) cuts.push(g.prismY(wcells, o.wall + 2, y0 - 1));
+  cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH));
+  if (gang && sy < 0) cuts.push(...wallDovetailGrooves(g, d, H, c));
+  if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH, gang));
+  return g.diff(g.union(adds), cuts);
+}
 
-    // recess the outer face over the lattice field and down through the bottom border to
-    // a web. Pads stay over every tab root and the end notch, so a tab is rooted in a
-    // full-thickness wall. A pad is exactly the notch's width: with the ear flush in the
-    // notch below it, the two read as one post from the bottom edge up. The minimal web
-    // is four 0.42 mm lines, the same floor as the ligament width: two perimeters a
-    // side, no infill
-    const rd = o.wall - (minimal ? K.ligMin : K.web);
-    if (rd > 0.2) {
-      const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
-      const field = panel.subtract(g.cs2d(...keep));
-      for (const comp of field.decompose()) {
-        const { min: [gx0], max: [gx1] } = comp.bounds();
-        const face = g.rect(gx0, -1, gx1, H - b).subtract(g.cs2d(...pads));
-        cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
-      }
+const RIB_Z = 8; // the gang dovetail starts this far up the wall, clear of the ear notches
+
+/** The dovetail ribs on the +Y face, one each side of the seam, stopping 12 mm short of the top. */
+function wallDovetailRibs(g: Geo, d: Derived, H: number): M[] {
+  const dtx = dtxOf(d);
+  return [-dtx, dtx].map((dx) => g.prismZ(dovetailCS(g, dx, d.OW / 2, K.dtBase, K.dtTip), H - 12 - RIB_Z, RIB_Z));
+}
+
+/** The grooves in the -Y face the neighbour's ribs slide into, the rib plus clearance, open at the top. */
+function wallDovetailGrooves(g: Geo, d: Derived, H: number, c: number): M[] {
+  const dtx = dtxOf(d);
+  return [-dtx, dtx].map((dx) => g.prismZ(dovetailCS(g, dx, -d.OW / 2, K.dtBase + 2 * c, K.dtTip + 2 * c), H + 2, RIB_Z - 1));
+}
+
+/** What keys the wall: a notch over each deck ear with the wall's own tab left standing in
+ *  it (so the ear's slot stays), the slot the end wall's side tab drops into, and the
+ *  notches for the tier below's pins or the risers' bosses. */
+function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number): M[] {
+  const piny = sy * d.piny;
+  const notch = (w: number, h: number, x: number) => g.box(w + 2 * c, o.wall + 2, h + 1, x, sy * d.py, (h - 1) / 2);
+  const cuts = ln.tabs.map((tx) => g.diff(notch(K.earW, notchH, tx), [tab(g, "x", notchH + 2, tx, piny, -1)]));
+  cuts.push(notch(K.tabT, ln.te + K.sideTabH + c, ln.xe + K.tabT / 2));
+  for (const sx of [1, -1]) cuts.push(notch(K.tabW, K.pinH + c, sx * d.px));
+  return cuts;
+}
+
+/** The lattice through the wall and the recess of its outer face down to a web, both
+ *  clear of the dovetail bands, the splice band and the end notch. */
+function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, gang: boolean): M[] {
+  const { L, IW, OW } = d;
+  const H = ln.H, b = K.border;
+  const y0 = sy > 0 ? IW / 2 : -OW / 2;
+  const dtx = dtxOf(d);
+  const keep: CS[] = [];
+  if (gang) for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
+  if (d.split) keep.push(g.rect(-K.spliceDepth - 2.5, 0, 2.5, H));
+  const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + K.padRise);
+  keep.push(endNotch);
+  const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
+  const cuts: M[] = [];
+  const wcells = g.cellsOf(o.pattern, d.hexR, d.lig, panel, keep);
+  if (wcells) cuts.push(g.prismY(wcells, o.wall + 2, y0 - 1));
+
+  // recess the outer face over the lattice field and down through the bottom border to
+  // a web. Pads stay over every tab root and the end notch, so a tab is rooted in a
+  // full-thickness wall. A pad is exactly the notch's width: with the ear flush in the
+  // notch below it, the two read as one post from the bottom edge up. The minimal web
+  // is four 0.42 mm lines, the same floor as the ligament width: two perimeters a
+  // side, no infill
+  const rd = o.wall - (o.design === "minimal" ? K.ligMin : K.web);
+  if (rd > 0.2) {
+    const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
+    const field = panel.subtract(g.cs2d(...keep));
+    for (const comp of field.decompose()) {
+      const { min: [gx0], max: [gx1] } = comp.bounds();
+      const face = g.rect(gx0, -1, gx1, H - b).subtract(g.cs2d(...pads));
+      cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
     }
   }
-  return g.diff(body, cuts);
+  return cuts;
 }
 
 /** The high-end wall in the lane frame: closes the chute of the tier above, or is a
