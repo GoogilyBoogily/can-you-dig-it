@@ -21,10 +21,10 @@
     <fieldset>
       <legend>Shelf space</legend>
       <div class="dims">
-        <label>Width <input name="w" type="number" min="100" step="1" value="300"><span>mm</span></label>
-        <label>Depth <input name="d" type="number" min="100" step="1" value="520"><span>mm</span></label>
-        <label>Height <input name="h" type="number" min="60" step="1" value="240"><span>mm</span></label>
-        <label>Front gap <input name="front" type="number" min="0" step="1" value="0"><span>mm</span></label>
+        <label>Width <input name="w" type="number" min="50" max="5000" step="1" value="300"><span>mm</span></label>
+        <label>Depth <input name="d" type="number" min="50" max="5000" step="1" value="520"><span>mm</span></label>
+        <label>Height <input name="h" type="number" min="50" max="5000" step="1" value="240"><span>mm</span></label>
+        <label>Front gap <input name="front" type="number" min="0" max="500" step="1" value="0"><span>mm</span></label>
       </div>
       <p class="hint">Inside clearances. Depth is front to back and the lane may use all of it; the front gap is what stays free for your hand.</p>
     </fieldset>
@@ -44,17 +44,17 @@
         </label>
       </div>
       <div class="dims">
-        <label>Diameter <input name="canD" type="number" min="40" max="120" step="0.1" value="66"><span>mm</span></label>
-        <label>Length <input name="canL" type="number" min="60" max="220" step="0.1" value="122.5"><span>mm</span></label>
+        <label>Diameter <input name="canD" type="number" min="20" max="200" step="0.1" value="66"><span>mm</span></label>
+        <label>Length <input name="canL" type="number" min="40" max="400" step="0.1" value="122.5"><span>mm</span></label>
       </div>
     </fieldset>
 
     <fieldset>
       <legend>Printer</legend>
       <div class="dims">
-        <label>Bed X <input name="bedX" type="number" min="100" step="1" value="256"><span>mm</span></label>
-        <label>Bed Y <input name="bedY" type="number" min="100" step="1" value="256"><span>mm</span></label>
-        <label>Z <input name="bedZ" type="number" min="100" step="1" value="256"><span>mm</span></label>
+        <label>Bed X <input name="bedX" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
+        <label>Bed Y <input name="bedY" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
+        <label>Z <input name="bedZ" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
       </div>
     </fieldset>
 
@@ -114,6 +114,9 @@
         </select></label>
       </div>
       <label class="fit">Fit
+        <!-- The two sliders span the useful range, not the LIMITS the gate allows: a value
+             past a slider's end is clamped on load and the next edit writes the clamped
+             one back to the hash. The number inputs above carry LIMITS exactly. -->
         <input name="fit" type="range" min="-0.2" max="0.3" step="0.05" value="0">
         <output name="fitOut">0.00</output>
         <span class="hint">Added to every clearance. Nudge + if joints bind, − if they rattle.</span>

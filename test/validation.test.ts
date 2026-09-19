@@ -103,3 +103,17 @@ test("the shipped defaults pass validation", () => {
 test("the fit slider's full range is accepted", () => {
   for (const fit of [-0.2, 0, 0.3]) expect(() => readNumbers({ fit })).not.toThrow();
 });
+
+// The browser's own min/max on a number input and LIMITS are the same numbers, or a
+// shared link loads a value the gate accepts into a field the browser marks invalid.
+test("every number input in index.html carries its LIMITS bounds", async () => {
+  const html = await Bun.file(new URL("../index.html", import.meta.url)).text();
+  const inputs = [...html.matchAll(/<input name="(\w+)" type="number"([^>]*)>/g)];
+  expect(inputs.length).toBeGreaterThan(0);
+  for (const [, name, attrs] of inputs) {
+    const limit = LIMITS[name];
+    expect(limit, name).toBeDefined();
+    expect(Number(/min="([^"]*)"/.exec(attrs)?.[1]), `${name} min`).toBe(limit.min);
+    expect(Number(/max="([^"]*)"/.exec(attrs)?.[1]), `${name} max`).toBe(limit.max);
+  }
+});
