@@ -121,6 +121,8 @@ function choose(i: number) {
 function dropBuild() {
   chosen = null; chosenIndex = 0; built = null;
   $("results").hidden = true;
+  $("tabs").innerHTML = "";
+  for (const id of ["showCans", "explode", "showGrid", "showBed"]) $(id).hidden = true;
   viewer.reset();
 }
 

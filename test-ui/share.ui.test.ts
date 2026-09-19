@@ -78,10 +78,27 @@ test("an invalid form or a shelf nothing fits takes the old build and its downlo
   await page.fill("#form [name=w]", "10");
   await page.waitForFunction(() => document.getElementById("status")!.textContent!.startsWith("Check your numbers"));
   expect(await page.isHidden("#results")).toBe(true);
+  expect(await page.locator("#tabs button").count()).toBe(0);
+  expect(await page.isVisible("#showCans")).toBe(false);
   await page.fill("#form [name=w]", "60");
   await page.fill("#form [name=h]", "60");
   await page.waitForFunction(() => document.getElementById("status")!.textContent!.startsWith("Nothing fits"));
   expect(await page.isHidden("#results")).toBe(true);
+  await page.close();
+});
+
+// The viewer toggles are hidden by setting `hidden`, and `.check { display: flex }` used
+// to beat the browser's [hidden]: every toggle stayed on screen in the part and plate views.
+test("the viewer toggles the view has no use for are off the screen", async () => {
+  const page = await browser.newPage();
+  await page.goto(`${URL_}#w=160&d=305&h=254`);
+  await page.waitForSelector("#dl3mf:not([disabled])", { timeout: 90000 });
+  const visible = async () => Promise.all(["#showCans", "#explode", "#showGrid", "#showBed"].map((id) => page.isVisible(id)));
+  expect(await visible()).toEqual([true, true, true, true]);
+  await page.locator("#tabs button").nth(1).click(); // a part: cans and explode go, floor stays
+  expect(await visible()).toEqual([false, false, true, true]);
+  await page.locator("#plates button").first().click(); // a plate is the bed itself
+  expect(await visible()).toEqual([false, false, false, false]);
   await page.close();
 });
 
