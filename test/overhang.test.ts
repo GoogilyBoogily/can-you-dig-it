@@ -8,11 +8,14 @@ const parts = refParts(new Geo(wasm));
 
 // Every plate prints as modelled, so a face that points down and is not on the bed is
 // an overhang the slicer will want to support. The flat-pack rule in one number: none
-// flatter than 45°. The dovetail rib and groove lean 56°, and a Gridfinity pocket's
-// lower chamfer sits on the line at 45° as the spec draws it; those are the only
-// downward faces meant to exist. A bridge or a flat underside is a joint on the wrong face.
+// flatter than 45°. The dovetail rib and groove lean 56°, and the Gridfinity foot's
+// chamfers sit on the line at 45° as the spec draws them; those are the only downward
+// faces meant to exist. A bridge or a flat underside is a joint on the wrong face - bar
+// one: a magnet pocket's ceiling is a 6.5 mm bridge, the way every bin prints it, so a
+// magnet part may have flat faces at the pocket depth and nowhere else.
 const STEEPEST_OVERHANG = Math.cos(Math.PI / 4) + 1e-4; // |n.z| of a 45° face, 0.01° of noise allowed
-function overhangArea(mesh: (typeof parts)[string]): number {
+const MAGNET_CEILING = -7 + 2.4; // K.unitH below the deck, K.magnetDepth up
+function overhangArea(mesh: (typeof parts)[string], magnets = false): number {
   const { vertProperties: v, triVerts: t, numProp } = mesh.getMesh();
   const zMin = mesh.boundingBox().min[2];
   let area = 0;
@@ -27,6 +30,7 @@ function overhangArea(mesh: (typeof parts)[string]): number {
     const len = Math.hypot(nx, ny, nz);
     if (len < 1e-9 || nz / len > -STEEPEST_OVERHANG) continue; // up, vertical, or steeper than 45°
     if (p.every(([, , z]) => Math.abs(z - zMin) < 1e-3)) continue; // on the bed
+    if (magnets && p.every(([, , z]) => Math.abs(z - MAGNET_CEILING) < 1e-3)) continue;
     area += len / 2;
   }
   return area;
@@ -34,6 +38,6 @@ function overhangArea(mesh: (typeof parts)[string]): number {
 
 for (const [name, mesh] of Object.entries(parts)) {
   test(`${name} has no downward face off the bed`, () => {
-    expect(overhangArea(mesh)).toBe(0);
+    expect(overhangArea(mesh, name.includes("magnets"))).toBe(0);
   });
 }

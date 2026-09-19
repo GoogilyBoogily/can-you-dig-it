@@ -33,9 +33,9 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
 - Lanes longer than the bed split into **-front** / **-rear** halves joined by a deck
   dovetail tongue and wall half-laps; slide together vertically, no glue.
 - **riser-08 / -24**: peg-and-socket feet; stack for height.
-- **grid-deck** + **baseplate-N**: with Base = Gridfinity, the bottom deck grows Gridfinity
-  feet and a baseplate for the shelf (standard 42 mm pockets, optional magnet pockets) comes
-  in bed-sized tiles. The lane drops into it like a bin; other bins go in the free cells.
+- **grid-deck**: with Base = Gridfinity, the bottom deck on a 7 mm unit of Gridfinity feet
+  (optional magnet pockets); drops into any baseplate, walls on skirts where the shelf has
+  fewer cells than the lane covers.
 - **cover**: grille top in the same pattern so the stack is a shelf, with a can-sized window over the
   top tier's high end. That is where cans go in: drop one through, it rolls to the chute.
 

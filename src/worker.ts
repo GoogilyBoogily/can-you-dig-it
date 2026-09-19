@@ -8,7 +8,7 @@ export type Req =
   | { type: "export"; id: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
 // solidGrams: the part printed 100 % dense, which the translucent settings do.
-export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: "lane" | "lip" | "riser" | "cover" | "base" }
+export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: "lane" | "lip" | "riser" | "cover" }
 export type Res =
   | { type: "built"; id: number; parts: PartOut[]; placed: Placement[]; nplates: number; ms: number }
   | { type: "file"; id: number; name: string; bytes: Uint8Array }
@@ -55,7 +55,6 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role] - (onGrid ? o.lanesWide : 0));
       }
       if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
-      set.baseplate.forEach((tile, i) => add(set.baseplate.length > 1 ? `baseplate-${i + 1}` : "baseplate", tile, 1, "base"));
       add("end-lip", set.lip, nLip, "lip");
       if (o.base === "feet") {
         add("riser-24", set.riser24, o.lanesWide * 4, "riser");

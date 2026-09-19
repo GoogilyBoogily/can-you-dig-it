@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { baseHeight, type Derived, type Options } from "./geometry";
+import type { Derived, Options } from "./geometry";
 import type { PartOut } from "./worker";
 
-const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, base: 0x6b7f6a, can: 0xc8372d, bed: 0x2a2e35 };
+const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
 
 export class Viewer {
   private scene = new THREE.Scene();
@@ -190,9 +190,6 @@ export class Viewer {
       if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
       if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
     }
-    // the baseplate lies under the gang as built; the feet reach its bottom, so it sits
-    // where they do
-    for (const p of parts) if (p.role === "base") put(this.group, p.name, 0, 0, -baseHeight(o), false, [0, 0, -STEP]);
     this.addFloor();
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
     this.explode(this.explodeT);

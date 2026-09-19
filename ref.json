@@ -1288,66 +1288,6 @@
    ]
   ]
  },
- "grid-baseplate-1": {
-  "vol": 32310.7,
-  "bbox": [
-   [
-    -210,
-    -84,
-    0
-   ],
-   [
-    0,
-    126,
-    4.65
-   ]
-  ]
- },
- "grid-baseplate-2": {
-  "vol": 25848.5,
-  "bbox": [
-   [
-    -210,
-    126,
-    0
-   ],
-   [
-    0,
-    294,
-    4.65
-   ]
-  ]
- },
- "grid-baseplate-3": {
-  "vol": 32310.7,
-  "bbox": [
-   [
-    0,
-    -84,
-    0
-   ],
-   [
-    210,
-    126,
-    4.65
-   ]
-  ]
- },
- "grid-baseplate-4": {
-  "vol": 25848.5,
-  "bbox": [
-   [
-    0,
-    126,
-    0
-   ],
-   [
-    210,
-    294,
-    4.65
-   ]
-  ]
- },
  "grid-deck-front": {
   "vol": 325958.4,
   "bbox": [
@@ -1378,67 +1318,67 @@
    ]
   ]
  },
- "grid-magnets-baseplate-1": {
-  "vol": 165489.4,
+ "grid-deck-magnets-front": {
+  "vol": 319692.6,
   "bbox": [
    [
-    -210,
-    -84,
-    0
+    -209.75,
+    -83.75,
+    -7
    ],
    [
     0,
-    126,
-    7.85
+    83.75,
+    14.744
    ]
   ]
  },
- "grid-magnets-baseplate-2": {
-  "vol": 132391.5,
+ "grid-deck-magnets-rear": {
+  "vol": 439639.1,
   "bbox": [
    [
-    -210,
-    126,
-    0
+    -8,
+    -83.75,
+    -7
+   ],
+   [
+    209.75,
+    83.75,
+    25.173
+   ]
+  ]
+ },
+ "grid-deck-corner-front": {
+  "vol": 321930.4,
+  "bbox": [
+   [
+    -205,
+    -98.5,
+    -7
    ],
    [
     0,
-    294,
-    7.85
+    69,
+    14.744
    ]
   ]
  },
- "grid-magnets-baseplate-3": {
-  "vol": 165489.4,
+ "grid-deck-corner-rear": {
+  "vol": 450103.2,
   "bbox": [
    [
-    0,
-    -84,
-    0
+    -8,
+    -98.5,
+    -7
    ],
    [
-    210,
-    126,
-    7.85
+    214.5,
+    69,
+    25.173
    ]
   ]
  },
- "grid-magnets-baseplate-4": {
-  "vol": 132391.5,
-  "bbox": [
-   [
-    0,
-    126,
-    0
-   ],
-   [
-    210,
-    294,
-    7.85
-   ]
-  ]
- },
- "grid-magnets-deck-front": {
+ "flat-grid-deck-front": {
   "vol": 325958.4,
   "bbox": [
    [
@@ -1453,7 +1393,7 @@
    ]
   ]
  },
- "grid-magnets-deck-rear": {
+ "flat-grid-deck-rear": {
   "vol": 446071.5,
   "bbox": [
    [
@@ -1468,127 +1408,7 @@
    ]
   ]
  },
- "grid-corner-baseplate-1": {
-  "vol": 32310.7,
-  "bbox": [
-   [
-    -210,
-    -126,
-    0
-   ],
-   [
-    0,
-    84,
-    4.65
-   ]
-  ]
- },
- "grid-corner-baseplate-2": {
-  "vol": 25848.5,
-  "bbox": [
-   [
-    -210,
-    84,
-    0
-   ],
-   [
-    0,
-    252,
-    4.65
-   ]
-  ]
- },
- "grid-corner-baseplate-3": {
-  "vol": 32310.7,
-  "bbox": [
-   [
-    0,
-    -126,
-    0
-   ],
-   [
-    210,
-    84,
-    4.65
-   ]
-  ]
- },
- "grid-corner-baseplate-4": {
-  "vol": 25848.5,
-  "bbox": [
-   [
-    0,
-    84,
-    0
-   ],
-   [
-    210,
-    252,
-    4.65
-   ]
-  ]
- },
- "grid-corner-deck-front": {
-  "vol": 325958.4,
-  "bbox": [
-   [
-    -209.75,
-    -83.75,
-    -7
-   ],
-   [
-    0,
-    83.75,
-    14.744
-   ]
-  ]
- },
- "grid-corner-deck-rear": {
-  "vol": 446071.5,
-  "bbox": [
-   [
-    -8,
-    -83.75,
-    -7
-   ],
-   [
-    209.75,
-    83.75,
-    25.173
-   ]
-  ]
- },
- "grid-narrow-baseplate-1": {
-  "vol": 19386.4,
-  "bbox": [
-   [
-    -147,
-    -63,
-    0
-   ],
-   [
-    63,
-    63,
-    4.65
-   ]
-  ]
- },
- "grid-narrow-baseplate-2": {
-  "vol": 7754.6,
-  "bbox": [
-   [
-    63,
-    -63,
-    0
-   ],
-   [
-    147,
-    63,
-    4.65
-   ]
-  ]
- },
- "grid-narrow-deck-front": {
+ "narrow-grid-deck-front": {
   "vol": 188190.8,
   "bbox": [
    [
@@ -1603,7 +1423,7 @@
    ]
   ]
  },
- "grid-narrow-deck-rear": {
+ "narrow-grid-deck-rear": {
   "vol": 246882.4,
   "bbox": [
    [
