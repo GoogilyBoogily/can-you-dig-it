@@ -97,12 +97,11 @@ test("magnet pockets take four 6.5 × 2.4 cylinders a cell, none where the seam 
   expect(cutAt({ ...front, magnets: false }) - cutAt(front)).toBeCloseTo((40 * 4 - 8) * cylinder, -2);
 });
 
-test("the solver reports the floor, keeps it inside the shelf, and charges the unit's height", () => {
+test("the solver reports lane and floor together, inside the shelf, and charges the unit's height", () => {
   const shelf = { w: 200, d: 460, h: 254, front: 0 };
   const layouts = fitSpace(shelf, grid, { cascade: true });
   expect(layouts.length).toBeGreaterThan(0);
   for (const l of layouts) {
-    expect((l.footprint[1] + 0.5) % 42).toBeCloseTo(0, 6);
     expect(l.footprint[1]).toBeLessThanOrEqual(shelf.d);
     expect(l.footprint[1]).toBeGreaterThanOrEqual(l.derived.L);
     expect(l.footprint[0]).toBe(168 * l.options.lanesWide);
@@ -111,11 +110,41 @@ test("the solver reports the floor, keeps it inside the shelf, and charges the u
   }
 });
 
-test("a 12 in shelf is too narrow for a 4-cell floor, and the empty state says so in cells", () => {
-  expect(fitSpace({ w: 160, d: 305, h: 254, front: 0 }, grid, { cascade: true })).toEqual([]);
-  expect(laneNeeds(grid)).toEqual({ w: 168, h: 7 + solve({ ...grid, cascade: false, length: 200 }).H, cells: 4 });
-  expect(laneNeeds(DEFAULTS).w).toBe(141 + 8);
-  // no side gap on a grid: a 168 mm shelf takes the 4-cell baseplate exactly
-  expect(fitSpace({ w: 168, d: 460, h: 254, front: 0 }, grid, { cascade: true }).length).toBeGreaterThan(0);
-  expect(fitSpace({ w: 167, d: 460, h: 254, front: 0 }, grid, { cascade: true })).toEqual([]);
+// A 150 × 304 × 150 shelf: four cells (167.5) do not fit across, so the floor keeps to
+// three (125.5) and the 138 mm lane overhangs it 6 mm a side on a skirt down to the
+// shelf, beside the baseplate. The lane always lands on the grid.
+test("a shelf narrower than the covering cells gets a narrower floor and a skirt", () => {
+  const layouts = fitSpace({ w: 150, d: 304, h: 150, front: 0 }, grid, { cascade: true });
+  expect(layouts.length).toBeGreaterThan(0);
+  const [best] = layouts;
+  expect(best.options.floorCells).toEqual([0, 3]);
+  expect(best.derived.gridY).toBe(3);
+  expect(best.derived.floor[1]).toBeCloseTo(-125.5 / 2, 6);
+  expect(best.derived.foot[1]).toBeCloseTo(-69, 6); // the lane is what stands on the shelf
+  expect(best.footprint[0]).toBeCloseTo(138.5, 6);
+  expect(best.cans).toBe(4);
+  // the part: the lane's outline, feet on three cells, solid to the bed outside them
+  const set = buildAll(geo, best.options, best.derived).gridDeck!;
+  const m = geo.union([set.front!, set.rear!]);
+  const box = m.boundingBox();
+  expect(box.max[1] - box.min[1]).toBeCloseTo(138, 3);
+  const skirtSlice = geo.isect(m, geo.box(20, 20, 0.01, 0, 66, -7 + 0.005)); // under the wall, 3 mm past the cells
+  expect(skirtSlice.volume()).toBeGreaterThan(0);
+  const flat = geo.isect(m, geo.box(42, 42, 0.01, 0, 0, -7 + 0.005)).boundingBox(); // the middle cell's foot
+  expect(flat.max[1] - flat.min[1]).toBeCloseTo(35.6, 1);
+  expect(laneNeeds(grid).w).toBe(168); // what the empty state would say when even one cell is too many
+});
+
+test("a lane longer than the cells its shelf has room for keeps its length on a shorter floor", () => {
+  const layouts = fitSpace({ w: 200, d: 300, h: 254, front: 0 }, grid, { cascade: true });
+  const long = layouts.find((l) => l.derived.L === 300)!; // the longest that fits: eight cells would be 335.5
+  expect(long.options.floorCells).toEqual([7, 0]);
+  expect(long.derived.floor[2] - long.derived.floor[0]).toBe(293.5);
+  expect(long.footprint[1]).toBe(300);
+  for (const l of layouts) expect(l.footprint[1]).toBeLessThanOrEqual(300);
+});
+
+test("a shelf too narrow for even the lane offers nothing", () => {
+  expect(fitSpace({ w: 130, d: 460, h: 254, front: 0 }, grid, { cascade: true })).toEqual([]);
+  expect(fitSpace({ w: 168, d: 460, h: 254, front: 0 }, grid, { cascade: true })[0].derived.gridY).toBe(4);
 });

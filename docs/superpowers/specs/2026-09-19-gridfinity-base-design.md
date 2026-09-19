@@ -39,7 +39,16 @@ the lip end). Flush with an edge, the spare goes to the other side, so a lane ca
 stand in the corner of a drawer's baseplate; centred keeps it symmetric. Nine
 positions, defaults centre/centre.
 
-It is the floor that has to fit the bed. It splits at x = 0 with the deck, and the
+The lane always lands on the grid. When the shelf has no room for the cells that
+would cover the lane - a 150 mm shelf under a 138 mm lane, which wants four cells,
+167.5 - the solver keeps the floor to the cells that fit (`floorCells`, three here)
+and the lane overhangs it: the walls stand on a skirt, the lane's outline minus the
+cell region, solid from the floor down to the shelf beside the baseplate. Nothing
+overhangs, the feet's run-on chamfers merge into it, and the baseplate must end at the
+lane's cells on that side. The same rule shortens the floor along the lane when the
+shelf is shorter than the cells that would cover it.
+
+Lane and floor together are what has to fit the bed. It splits at x = 0 with the deck, and the
 seam runs through a foot as often as not: a foot cut square by the dovetail seam
 prints as it is (the cut face is vertical), the tongue carries floor and foot chunk
 with it, and the baseplate pocket locks the two halves. Magnet pockets the seam would
@@ -57,9 +66,12 @@ Every existing cut stops at z = 0 because the deck's underside is one plane ther
 with the wall bottoms. Feet are hulls of the profile's rounded rectangles, so the 45°
 faces are exact and the corners concentric; `extrude` with a scale would square the
 top corner and bind in a r4 pocket. The upper chamfer runs on 2 mm past the profile:
-neighbouring feet then meet in a 45° ridge across the 0.5 mm gap, the pit between four
-rounded corners closes 1.9 mm up, and the floor slab starts above that. Stopped at the
-profile, every gap and pit would have had a flat ceiling of floor over it. The run-on
+neighbouring feet then meet in a 45° ridge across the 0.5 mm gap and the pit between
+four rounded corners closes 1.9 mm up. The chamfers run through the whole 2.25 mm and
+past it, and the outline prism clips them flat at the deck's underside, so the merged
+run-ons are the floor: no slab, and nowhere a flat underside. Stopped at the profile,
+every gap and pit would have had a flat ceiling of floor over it; a slab starting 0.1 mm
+above the last pit left slivers where the 24-segment arcs fell short. The run-on
 is clipped at the bin's edge, so the outline stays `n·42 − 0.5`. The outline's r3.75
 corners are squared only where the lane's own corner lands on one: flush in a corner,
 a deck ear would otherwise hang a square millimetre over the round.

@@ -64,7 +64,13 @@ export function refParts(geo: Geo): Record<string, Manifold> {
   // flat stack's (a top lane's deck on the unit). 410 mm: six cans on the bottom deck,
   // ten cells, which a 256 bed prints in two halves where the default 480 would not
   const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410 };
-  const gridVariants: Record<string, Partial<Options>> = { "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "grid-deck-corner": { across: "left", along: "front" }, "flat-grid-deck": { cascade: false } };
+  const gridVariants: Record<string, Partial<Options>> = {
+    "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "grid-deck-corner": { across: "left", along: "front" },
+    "flat-grid-deck": { cascade: false },
+    // a 150 mm shelf: three cells under a 138 mm lane, the walls on skirts; and a lane
+    // longer than its floor, skirts at both ends
+    "narrow-grid-deck": { floorCells: [0, 3] }, "short-grid-deck": { floorCells: [9, 0] },
+  };
   for (const [name, variant] of Object.entries(gridVariants)) {
     const o: Options = { ...grid, ...variant };
     const plate = buildAll(geo, o, solve(o)).gridDeck!;

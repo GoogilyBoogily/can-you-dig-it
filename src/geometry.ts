@@ -58,6 +58,7 @@ export interface Options {
   base: Base; // what the bottom tier stands on
   magnets: boolean; // 6 × 2 mm magnet pockets in every Gridfinity foot
   across: Across; along: Along; // the lane on its Gridfinity floor
+  floorCells: [number, number]; // cells along and across the floor; 0 = as many as cover the lane
   bed: [number, number, number];
   bedMargin: number;
 }
@@ -65,7 +66,7 @@ export interface Options {
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
   cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
-  solid: false, design: "standard", pattern: "hex", cover: true, base: "flat", magnets: false, across: "centre", along: "centre", bed: [256, 256, 256], bedMargin: 3,
+  solid: false, design: "standard", pattern: "hex", cover: true, base: "flat", magnets: false, across: "centre", along: "centre", floorCells: [0, 0], bed: [256, 256, 256], bedMargin: 3,
 };
 
 // fixed design constants (same names as cansys.py)
@@ -101,6 +102,7 @@ export interface Derived {
   gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
   gridX: number; gridY: number; // Gridfinity cells along and across the lane; 0 on another base
   floor: [number, number, number, number]; // the floor's x0, y0, x1, y1 in the lane frame
+  foot: [number, number, number, number]; // lane and floor together: what stands on the shelf
 }
 
 /** Ligament grows with the cell so the bars stay in proportion; never under four 0.42 mm lines. */
@@ -153,22 +155,25 @@ export function solve(o: Options): Derived {
   const Hb = Math.ceil(dhiB + o.canD + K.topgap);
   const hexR = o.hexAuto ? autoR(H - K.border - fieldBottom(o), ROWS[o.pattern]) : o.hexR;
   // on a grid the floor is whole cells round the lane, wherever the alignment puts it,
-  // and lanes sit a cell apart: the baseplate joins them, not a dovetail. The floor is
-  // what has to fit the bed, so it is what splits at x = 0 - through a foot as often
-  // as not; a foot cut square by the seam prints as it is and the pocket locks it
+  // or as many as the shelf allows (the solver's floorCells), with the lane overhanging
+  // on a skirt. Lanes sit a cell apart: the baseplate joins them, not a dovetail. Lane
+  // and floor together are what has to fit the bed, so that is what splits at x = 0 -
+  // through a foot as often as not; a foot cut square by the seam prints as it is and
+  // the pocket locks it
   const grid = o.base === "gridfinity";
-  const gridX = grid ? gridCells(L) : 0, gridY = grid ? gridCells(OW) : 0;
+  const gridX = grid ? o.floorCells[0] || gridCells(L) : 0, gridY = grid ? o.floorCells[1] || gridCells(OW) : 0;
   const [fx0, fx1] = grid ? alignSpan(L, gridX, o.along === "front" ? "lo" : o.along === "back" ? "hi" : "centre") : [-L / 2, L / 2];
   const [fy0, fy1] = grid ? alignSpan(OW, gridY, o.across === "right" ? "lo" : o.across === "left" ? "hi" : "centre") : [-OW / 2, OW / 2];
-  const split = fx1 - fx0 > usableX;
-  const gangPitch = grid ? gridY * K.gridPitch : OW + K.dovetail;
+  const foot: Derived["foot"] = [Math.min(fx0, -L / 2), Math.min(fy0, -OW / 2), Math.max(fx1, L / 2), Math.max(fy1, OW / 2)];
+  const split = foot[2] - foot[0] > usableX;
+  const gangPitch = grid ? Math.max(gridY * K.gridPitch, OW + 2 * K.gridGap) : OW + K.dovetail;
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
     lipy: IW / 2 - 14, lipx: -L / 2 + inset + 8, railHy: IW / 2 - 20,
     gangPitch,
-    plateX: split ? Math.max(-fx0, fx1) + K.spliceDepth : fx1 - fx0, plateY: grid ? gridSpan(gridY) : OW + K.dovetail,
-    usableX, usableY, usableZ, gridX, gridY, floor: [fx0, fy0, fx1, fy1],
+    plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0], plateY: grid ? foot[3] - foot[1] : OW + K.dovetail,
+    usableX, usableY, usableZ, gridX, gridY, floor: [fx0, fy0, fx1, fy1], foot,
   };
 }
 
@@ -703,14 +708,19 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   const footH = K.footChamferLo + K.footWall + K.footChamferHi;
   const z0 = -K.unitH;
   // the bin's r3.75 corners, except where the lane's own corner lands on one: flush in a
-  // corner, a deck ear would hang a square millimetre over the round
-  const outline = g.roundedRect(gridSpan(nx), gridSpan(ny), K.footR).translate([(fx0 + fx1) / 2, (fy0 + fy1) / 2])
-    .add(g.rect(-d.L / 2, -d.OW / 2, d.L / 2, d.OW / 2));
+  // corner, a deck ear would hang a square millimetre over the round. Where the lane
+  // runs past its floor (a shelf too narrow for the cells that would cover it), the
+  // outline is the lane's and a skirt stands under it, bed to floor, beside the
+  // baseplate: solid, so nothing overhangs, and the foot chamfers run into it
+  const lane = g.rect(-d.L / 2, -d.OW / 2, d.L / 2, d.OW / 2);
+  const outline = g.roundedRect(gridSpan(nx), gridSpan(ny), K.footR).translate([(fx0 + fx1) / 2, (fy0 + fy1) / 2]).add(lane);
+  const skirt = lane.subtract(g.rect(fx0 - 2 * K.gridGap, fy0 - 2 * K.gridGap, fx1 + 2 * K.gridGap, fy1 + 2 * K.gridGap));
   // the corner pit between four feet is the last void to close, sqrt(2)·4 − 3.75 = 1.9 mm
-  // above the foot tops; 2 keeps it inside the 2.25 mm floor. The floor slab starts
-  // where the feet have merged - lower, it would put a flat ceiling over every pit
-  const over = 2;
-  const foot = buildFoot(g, over);
+  // above the foot tops. The chamfers run on through the whole 2.25 mm and past it, and
+  // the outline prism clips them flat at the deck's underside: the merged run-ons are
+  // the floor, and no slab has to start above the last pit - a slab 0.1 mm over it left
+  // slivers where the 24-segment corner arcs fell short
+  const foot = buildFoot(g, K.unitH - footH + 0.5);
   const cx = (i: number) => fx0 - K.gridGap + (i + 0.5) * K.gridPitch, cy = (j: number) => fy0 - K.gridGap + (j + 0.5) * K.gridPitch;
   const feet: M[] = [], cuts: M[] = [];
   for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
@@ -723,9 +733,9 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   }
   const adds = [
     deck,
-    g.prismZ(outline, K.unitH - footH - over, z0 + footH + over),
     g.isect(g.union(feet), g.prismZ(outline, K.unitH, z0)), // the run-on chamfers stop at the bin's edge
   ];
+  if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
   for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(tab(g, "x", K.pinH, sx * d.px, sy * d.piny, 0));
   for (const sy of [1, -1]) cuts.push(g.box(5.4 + o.fit, 12.4 + o.fit, 2, ln.lipx, sy * d.lipy, 0));
   return g.diff(g.union(adds), cuts);

@@ -15,6 +15,7 @@ export interface Layout {
 }
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
+const GRID = 42;       // Gridfinity cell pitch
 
 /** Shelf width kept beside a gang. On a grid the floor already sits 0.25 mm inside its
  *  cells and the baseplate is what touches the shelf, so a 4-cell floor fits a 168 mm shelf. */
@@ -32,8 +33,15 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   for (const style of styles) {
     const usableD = space.d - space.front;
     const seed: Options = { ...base, cascade: style === "cascade", length: 480 };
-    const seedD = solve(seed);
-    const lanesMax = Math.floor((space.w - sideRoom(base)) / seedD.gangPitch);
+    let seedD = solve(seed);
+    let lanesMax = Math.floor((space.w - sideRoom(base)) / seedD.gangPitch);
+    // a grid floor shrinks to the cells the shelf has room for and the lane overhangs it
+    // on a skirt: a 138 mm lane on three cells in a 150 mm shelf
+    if (lanesMax < 1 && base.base === "gridfinity") {
+      seed.floorCells = [0, Math.floor(space.w / GRID)];
+      seedD = solve(seed);
+      lanesMax = Math.floor(space.w / seedD.gangPitch);
+    }
     if (lanesMax < 1) continue; // not even one lane fits across; say so by offering nothing
     // candidate lengths: as long as fits, the single-plate size, and the shortest lane for
     // every whole-can count under that - deck that holds no can is filament and shelf
@@ -49,12 +57,18 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
     const seen = new Set<number>(); // on a grid several candidates snap to one lane
     for (const length of lengths) {
       if (length < 120) continue;
-      const o: Options = { ...base, length, cascade: style === "cascade", lanesWide: lanesMax, tiers: 1 };
-      const d = solve(o);
+      const o: Options = { ...seed, length, lanesWide: lanesMax, tiers: 1 };
+      let d = solve(o);
       if (seen.has(d.L)) continue;
       seen.add(d.L);
-      const floorL = d.floor[2] - d.floor[0]; // on a grid the floor runs past the lane
-      if (floorL > usableD) continue;
+      // on a grid the floor runs past the lane; when the shelf has no room for that, the
+      // floor keeps to the cells that fit and the lane overhangs it at the ends
+      if (d.foot[2] - d.foot[0] > usableD) {
+        o.floorCells = [Math.floor(usableD / GRID), o.floorCells[1]];
+        d = solve(o);
+        if (d.foot[2] - d.foot[0] > usableD) continue;
+      }
+      const footL = d.foot[2] - d.foot[0];
       const cascade = d.inset > 0;
       const riser = baseHeight(base.base);
       const tierH = space.h - riser;
@@ -75,7 +89,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
       const coverGrams = base.cover ? (base.design === "minimal" ? 90 : 130) : 0;
       out.push({
         options: o, derived: d, cans,
-        footprint: [lanesMax * d.gangPitch, floorL, height],
+        footprint: [lanesMax * d.gangPitch, footL, height],
         gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 9,
         warnings: w, style,
       });
