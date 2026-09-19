@@ -1,5 +1,5 @@
 // Geometry for the can-storage system, on the manifold-3d kernel. Units: mm, Z up.
-// Started as a line-for-line port of cansys.py; test/regress.test.ts pins the snapshot.
+// test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
 
@@ -52,13 +52,13 @@ export interface Options {
   clearance: number;
   fit: number;
   hexR: number; // cell radius when hexAuto is off
-  hexAuto: boolean; // size cells so two whole rows fill the wall
+  hexAuto: boolean; // size cells so three whole rows fill the wall
   solid: boolean; // no lattice at all; overrides design and pattern
   design: Design;
   pattern: Pattern;
   cover: boolean;
   base: Base; // what the bottom tier stands on
-  magnets: boolean; // 6 × 2 mm magnet pockets in every Gridfinity foot
+  magnets: boolean; // pockets for 6 × 2 mm magnets (cut 6.5 × 2.4) in every Gridfinity foot
   across: Across; along: Along; // the lane on its Gridfinity floor
   shelfCells: [number, number]; // Gridfinity cells the shelf has room for, along and across the lane
   bed: [number, number, number];
@@ -71,7 +71,7 @@ export const DEFAULTS: Options = {
   solid: false, design: "standard", pattern: "hex", cover: true, base: "flat", magnets: false, across: "centre", along: "centre", shelfCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
 };
 
-// fixed design constants (same names as cansys.py)
+// fixed design constants
 const K = {
   deckLo: 4, topgap: 2, slack: 8, lipH: 20, edgeR: 3,
   hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
