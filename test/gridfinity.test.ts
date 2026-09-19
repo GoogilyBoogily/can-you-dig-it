@@ -2,12 +2,10 @@
 // foot under each, for the baseplate you have. Spec in
 // docs/superpowers/specs/2026-09-19-gridfinity-base-design.md.
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, check, buildAll, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
+import { DEFAULTS, solve, check, buildAll, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
 
-const wasm = await Module(); wasm.setup();
-const geo = new Geo(wasm);
+import { geo } from "./geo";
 
 // a 400 × 460 shelf, 10 × 9 cells; a 410 lane (six cans) covers 10 × 4 of them
 const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410, shelfCells: [10, 9] };

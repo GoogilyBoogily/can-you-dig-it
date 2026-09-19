@@ -1,9 +1,7 @@
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo, DEFAULTS, PATTERNS, solve, buildCover, type Options } from "../src/geometry";
+import { DEFAULTS, PATTERNS, solve, buildCover, type Options } from "../src/geometry";
 
-const wasm = await Module(); wasm.setup();
-const geo = new Geo(wasm);
+import { geo } from "./geo";
 
 /** Cover material a can meets when dropped straight down at the lane's loading end. */
 function coverHitByDroppedCan(options: Options): number {

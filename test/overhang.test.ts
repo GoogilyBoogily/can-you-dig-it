@@ -1,10 +1,7 @@
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo } from "../src/geometry";
-import { refParts } from "../ref";
+import { snapshotParts } from "./geo";
 
-const wasm = await Module(); wasm.setup();
-const parts = refParts(new Geo(wasm));
+const parts = snapshotParts();
 
 // Every plate prints as modelled, so a face that points down and is not on the bed is
 // an overhang the slicer will want to support. The flat-pack rule in one number: none

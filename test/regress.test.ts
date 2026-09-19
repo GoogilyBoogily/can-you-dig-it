@@ -1,11 +1,9 @@
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, filamentGrams } from "../src/geometry";
-import { refParts, refSpec } from "../ref";
+import { DEFAULTS, solve, filamentGrams } from "../src/geometry";
+import { refSpec } from "../ref";
+import { snapshotParts } from "./geo";
 import ref from "../ref.json";
 
-const wasm = await Module(); wasm.setup();
-const geo = new Geo(wasm);
 const derived = solve(DEFAULTS);
 
 // ref.json is generated from this codebase by `bun run ref`, so a part that has not
@@ -23,7 +21,7 @@ test("derived dimensions match the snapshot", () => {
     expect(Math.abs(value - expected[key]), key).toBeLessThanOrEqual(BOUND_TOLERANCE);
 });
 
-const parts = refParts(geo);
+const parts = snapshotParts();
 for (const [name, mesh] of Object.entries(parts)) {
   test(`${name} matches the snapshot volume and bounds`, () => {
     const expected = (ref as any)[name];

@@ -1,9 +1,7 @@
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, buildLanePlates, type LaneRole } from "../src/geometry";
+import { DEFAULTS, solve, buildLanePlates, type LaneRole } from "../src/geometry";
 
-const wasm = await Module(); wasm.setup();
-const geo = new Geo(wasm);
+import { geo } from "./geo";
 
 /** How much of a probe box behind the seam, in the rear deck half, is solid. */
 function rearDeckBehindSeam(role: LaneRole): number {

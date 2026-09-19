@@ -1,9 +1,7 @@
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo, DEFAULTS, PATTERNS, ROWS, solve, laneOf, buildWall, buildEndWall, buildCover, type Options } from "../src/geometry";
+import { DEFAULTS, PATTERNS, ROWS, solve, laneOf, buildWall, buildEndWall, buildCover, type Options } from "../src/geometry";
 
-const wasm = await Module(); wasm.setup();
-const geo = new Geo(wasm);
+import { geo } from "./geo";
 
 const BORDER = 5, EAR_W = 12, DECK_LO = 4, DT_CL = 0.25;
 const shortLane: Options = { ...DEFAULTS, length: 240 }; // unsplit, fast

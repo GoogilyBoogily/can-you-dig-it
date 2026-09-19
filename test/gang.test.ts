@@ -1,9 +1,7 @@
 import { test, expect } from "bun:test";
-import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, buildLanePlates, type Options } from "../src/geometry";
+import { DEFAULTS, solve, buildLanePlates, type Options } from "../src/geometry";
 
-const wasm = await Module(); wasm.setup();
-const geo = new Geo(wasm);
+import { geo } from "./geo";
 
 /** Laid flat, a wall's Z extent is its thickness plus whatever stands off the outer face. */
 function wallThickness(o: Options, name: "wall-tongue" | "wall-socket"): number {
