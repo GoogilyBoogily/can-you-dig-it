@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve, buildLanePlates, type Options } from "../src/geometry";
+import { K, DEFAULTS, solve, buildLanePlates, type Options } from "../src/geometry";
 
 import { geo } from "./geo";
 
@@ -16,7 +16,7 @@ function wallThickness(o: Options, name: "wall-tongue" | "wall-socket"): number 
 test("a single lane's walls have no dovetail rib", () => {
   const single: Options = { ...DEFAULTS, lanesWide: 1 };
   expect(wallThickness(single, "wall-tongue")).toBeCloseTo(DEFAULTS.wall, 3);
-  expect(wallThickness({ ...DEFAULTS, lanesWide: 2 }, "wall-tongue")).toBeCloseTo(DEFAULTS.wall + 3, 3);
+  expect(wallThickness({ ...DEFAULTS, lanesWide: 2 }, "wall-tongue")).toBeCloseTo(DEFAULTS.wall + K.dovetail, 3);
 });
 
 test("a single lane's socket wall is the tongue wall's mirror", () => {

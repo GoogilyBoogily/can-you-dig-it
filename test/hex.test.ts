@@ -1,12 +1,12 @@
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve, type Options } from "../src/geometry";
+import { K, DEFAULTS, solve, type Options } from "../src/geometry";
 
 // Three full rows of regular cells span 2R + 2 * 1.5P with P = R + lig / sqrt(3).
 const threeRows = (R: number, lig: number) => 5 * R + Math.sqrt(3) * lig;
 
 test("auto hex fills the wall panel with three whole rows", () => {
   const derived = solve({ ...DEFAULTS, hexAuto: true });
-  const panel = derived.H - 10; // K.border each side
+  const panel = derived.H - 2 * K.border;
   expect(derived.hexR).toBeGreaterThanOrEqual(8);
   expect(derived.hexR).toBeLessThanOrEqual(16);
   expect(threeRows(derived.hexR, derived.lig)).toBeLessThanOrEqual(panel);

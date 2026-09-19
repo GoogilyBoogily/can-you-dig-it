@@ -2,13 +2,13 @@
 // used to be sized from the high end alone, so a short or level lane held cans that
 // could not get out: 18 mm short at 0°, 2.4 mm short on a 300 mm lane at 3°.
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve } from "../src/geometry";
+import { K, DEFAULTS, solve } from "../src/geometry";
 
 test("the front can clears the ceiling as it crosses the lip", () => {
   for (const cascade of [false, true]) for (const slope of [0, 1.5, 3, 5]) for (const length of [200, 300, 480]) {
     const o = { ...DEFAULTS, cascade, slope, length };
     const d = solve(o);
-    const crest = 4 + 8 * d.tan + 20;
+    const crest = K.deckLo + K.lipInset * d.tan + K.lipH;
     const ceiling = cascade ? d.Hb : d.H;
     expect(ceiling - crest - o.canD).toBeGreaterThanOrEqual(o.lipGap);
   }

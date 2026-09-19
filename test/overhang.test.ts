@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { K } from "../src/geometry";
 import { snapshotParts } from "./geo";
 
 const parts = snapshotParts();
@@ -11,7 +12,7 @@ const parts = snapshotParts();
 // one: a magnet pocket's ceiling is a 6.5 mm bridge, the way every bin prints it, so a
 // magnet part may have flat faces at the pocket depth and nowhere else.
 const STEEPEST_OVERHANG = Math.cos(Math.PI / 4) + 1e-4; // |n.z| of a 45° face, 0.01° of noise allowed
-const MAGNET_CEILING = -7 + 2.4; // K.unitH below the deck, K.magnetDepth up
+const MAGNET_CEILING = -K.unitH + K.magnetDepth; // the unit hangs below the deck, the pocket rises into it
 function overhangArea(mesh: (typeof parts)[string], magnets = false): number {
   const { vertProperties: v, triVerts: t, numProp } = mesh.getMesh();
   const zMin = mesh.boundingBox().min[2];
