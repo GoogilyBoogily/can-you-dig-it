@@ -1,10 +1,10 @@
-import { K, DENSITY, DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
+import { K, DENSITY, type Options } from "./geometry";
 import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, stripCopy, type Placement } from "./export";
 import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
-import { readNumbers, LIMITS } from "./validate";
+import { optionsFrom, type FormValues } from "./validate";
 import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -40,29 +40,10 @@ let buildId = 0, exportId = 0, buildTimer = 0;
 let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
 
 // ------------------------------------------------------------- inputs
-function readOptions(): { space: Space; base: Options; cascade: boolean } {
+/** The form as the solver takes it; throws naming a bad field. */
+function readOptions(): FormValues {
   const f = new FormData(form);
-  const raw: Record<string, number> = {};
-  for (const k of Object.keys(LIMITS)) raw[k] = parseFloat(String(f.get(k)));
-  readNumbers(raw); // throws naming the offending field
-  const num = (k: string) => raw[k];
-  // A shared hash with an unknown design leaves the select blank; say so, as with numbers.
-  const design = f.get("design") as Design;
-  if (!DESIGNS.includes(design)) throw new Error("design: pick Standard or Minimal");
-  const pattern = f.get("pattern") as Pattern;
-  if (!PATTERNS.includes(pattern)) throw new Error("pattern: pick Hex, Circles, Kumiko, Slats or Breeze block");
-  const standsOn = f.get("base") as Base;
-  if (!BASES.includes(standsOn)) throw new Error("base: pick Flat, Feet or Gridfinity");
-  const across = f.get("across") as Across, along = f.get("along") as Along;
-  if (!ACROSS.includes(across) || !ALONG.includes(along)) throw new Error("grid position: pick left, centre or right, and front, centre or back");
-  const base: Options = {
-    ...DEFAULTS,
-    canD: num("canD"), canL: num("canL"),
-    bed: [num("bedX"), num("bedY"), num("bedZ")],
-    cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, pattern, base: standsOn, magnets: f.get("magnets") === "on", across, along, fit: num("fit"),
-    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"), lipGap: num("lipGap"),
-  };
-  return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: f.get("cascade") === "on" };
+  return optionsFrom((name) => { const v = f.get(name); return v === null ? null : String(v); });
 }
 
 form.addEventListener("input", (e) => {

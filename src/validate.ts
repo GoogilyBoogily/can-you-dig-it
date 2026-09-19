@@ -1,6 +1,9 @@
-// One gate for every number the user types or arrives with in a shared link.
+// One gate for every value the user types or arrives with in a shared link.
 // Nothing downstream re-checks, so a value that gets past here reaches the
 // solver, the WASM kernel and the exported file unexamined.
+
+import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
+import type { Space } from "./solver";
 
 export interface Limit { min: number; max: number; label: string }
 
@@ -31,4 +34,34 @@ export function readNumbers(values: Record<string, number>): Record<string, numb
       throw new Error(`${limit.label} must be between ${limit.min} and ${limit.max} mm`);
   }
   return values;
+}
+
+export interface FormValues { space: Space; base: Options; cascade: boolean }
+
+/** The form's fields, as strings the way FormData hands them over (a checkbox is "on" or
+ *  absent), turned into what the solver takes. Throws naming the field that is wrong:
+ *  a shared hash with an unknown design leaves the select blank, and that is said the
+ *  same way as a number out of range. */
+export function optionsFrom(field: (name: string) => string | null): FormValues {
+  const raw: Record<string, number> = {};
+  for (const k of Object.keys(LIMITS)) raw[k] = parseFloat(String(field(k)));
+  readNumbers(raw);
+  const num = (k: string) => raw[k];
+  const on = (k: string) => field(k) === "on";
+  const design = field("design") as Design;
+  if (!DESIGNS.includes(design)) throw new Error("design: pick Standard or Minimal");
+  const pattern = field("pattern") as Pattern;
+  if (!PATTERNS.includes(pattern)) throw new Error("pattern: pick Hex, Circles, Kumiko, Slats or Breeze block");
+  const standsOn = field("base") as Base;
+  if (!BASES.includes(standsOn)) throw new Error("base: pick Flat, Feet or Gridfinity");
+  const across = field("across") as Across, along = field("along") as Along;
+  if (!ACROSS.includes(across) || !ALONG.includes(along)) throw new Error("grid position: pick left, centre or right, and front, centre or back");
+  const base: Options = {
+    ...DEFAULTS,
+    canD: num("canD"), canL: num("canL"),
+    bed: [num("bedX"), num("bedY"), num("bedZ")],
+    cover: on("cover"), solid: on("solid"), design, pattern, base: standsOn, magnets: on("magnets"), across, along, fit: num("fit"),
+    hexR: num("hexR"), hexAuto: on("hexAuto"), slope: num("slope"), lipGap: num("lipGap"),
+  };
+  return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: on("cascade") };
 }
