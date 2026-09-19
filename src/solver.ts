@@ -54,7 +54,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
       const d = solve(o);
       if (seen.has(d.L)) continue;
       seen.add(d.L);
-      const cascade = d.inset > 0;
+      const cascade = o.cascade;
       const riser = baseHeight(o);
       const tierH = space.h - riser;
       let tiers = cascade

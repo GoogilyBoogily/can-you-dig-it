@@ -107,7 +107,7 @@ export interface Derived {
   L: number; IW: number; OW: number; H: number; Hb: number;
   run: number; dhi: number; dhiB: number; tan: number; inset: number;
   hexR: number; lig: number;
-  xd: number; px: number; py: number; piny: number; lipy: number; lipx: number; railHy: number;
+  xd: number; px: number; py: number; piny: number; lipy: number; railHy: number;
   gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
   floorCells: [number, number]; // the lane's cells along and across: what covers it, or what the shelf has
   floor: [number, number, number, number]; // the floor of feet, x0 y0 x1 y1 in the lane frame
@@ -184,7 +184,7 @@ export function solve(o: Options): Derived {
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
-    lipy: IW / 2 - 14, lipx: -L / 2 + inset + 8, railHy: IW / 2 - 20,
+    lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
     plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0], plateY: grid ? foot[3] - foot[1] : OW + K.dovetail,
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
@@ -766,7 +766,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   // opens there, one can wide and the full inner width (only the wall strips remain).
   // A flat top tier loads from the front over its lip and keeps a whole cover.
   const keep: CS[] = [];
-  if (d.inset > 0) {
+  if (o.cascade) {
     const windowL = o.canD + 8;
     const window = g.roundedRect(windowL, d.IW, 6).translate([L / 2 - o.wall - windowL / 2, 0]);
     cuts.push(g.prismZ(window, t + 2, -1));
@@ -835,7 +835,7 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole):
 }
 
 export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
-  const cascade = d.inset > 0;
+  const cascade = o.cascade;
   const roles: LaneRole[] = cascade ? (o.tiers >= 3 ? ["bottom", "mid", "top"] : ["bottom", "top"]) : ["top"];
   return {
     lanes: roles.map((role) => ({ role, plates: buildLanePlates(g, o, d, role) })),

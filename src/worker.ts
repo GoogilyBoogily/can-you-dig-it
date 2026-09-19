@@ -35,7 +35,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const d = solve(o);
       const g = new Geo(wasm);
       const set: PartSet = buildAll(g, o, d);
-      const cascade = d.inset > 0;
+      const cascade = o.cascade;
       const nLip = o.lanesWide * (cascade ? 1 : o.tiers);
       const parts: PartOut[] = [];
       const add = (name: string, m: Manifold | undefined, qty: number, role: PartOut["role"]) => {

@@ -130,7 +130,7 @@ export class Viewer {
   showAssembly(parts: PartOut[], o: Options, d: Derived) {
     this.clear();
     const by = new Map(parts.map((p) => [p.name, p]));
-    const cascade = d.inset > 0;
+    const cascade = o.cascade;
     const G = d.gangPitch;
     this.exploded = [];
     const STEP = 40; // mm of travel per joint at full explode
