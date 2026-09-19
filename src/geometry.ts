@@ -47,6 +47,7 @@ export interface Options {
   lanesWide: number;
   cascade: boolean; // true: drop chute at the low end, tiers alternate 180°. false: flat decks
   slope: number; // degrees
+  lipGap: number; // headroom over the lip crest for the can leaving over it; the tier grows to give it
   wall: number;
   clearance: number;
   fit: number;
@@ -66,7 +67,7 @@ export interface Options {
 
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
-  cascade: true, slope: 3, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
+  cascade: true, slope: 3, lipGap: 5, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
   solid: false, design: "standard", pattern: "hex", cover: true, base: "flat", magnets: false, across: "centre", along: "centre", baseCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
 };
 
@@ -161,9 +162,14 @@ export function solve(o: Options): Derived {
   const OW = IW + 2 * o.wall;
   const run = L - inset;
   const dhi = K.deckLo + run * tan;
-  const H = Math.ceil(dhi + o.canD + K.topgap);
+  // the front can leaves over the lip, and at the crest its top is crest + canD: the
+  // tier is as tall as that plus the lip gap needs too, or a short or level lane held
+  // cans it could not give up. Upper cascade decks have no lip (their front is the
+  // chute); the bottom deck always does
+  const front = K.deckLo + 8 * tan + K.lipH + o.canD + o.lipGap;
+  const H = Math.ceil(Math.max(dhi + o.canD + K.topgap, o.cascade ? 0 : front));
   const dhiB = K.deckLo + L * tan;
-  const Hb = Math.ceil(dhiB + o.canD + K.topgap);
+  const Hb = Math.ceil(Math.max(dhiB + o.canD + K.topgap, front));
   const hexR = o.hexAuto ? autoR(H - K.border - fieldBottom(o), ROWS[o.pattern]) : o.hexR;
   // on a grid the lane's floor is the whole cells that cover it, or as many as the shelf
   // has (baseCells) with the lane overhanging on a skirt, centred under the lane. Lanes

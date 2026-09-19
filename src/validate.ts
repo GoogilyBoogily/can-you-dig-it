@@ -16,6 +16,7 @@ export const LIMITS: Record<string, Limit> = {
   bedZ: { min: 50, max: 1000, label: "bed Z" },
   hexR: { min: 6, max: 20, label: "cell size" },
   slope: { min: 0, max: 10, label: "deck slope" },
+  lipGap: { min: 0, max: 30, label: "lip headroom" },
   // fit is a tolerance offset, not a dimension: 0 is the default and negative is valid.
   fit: { min: -2, max: 2, label: "fit" },
 };

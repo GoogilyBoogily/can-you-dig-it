@@ -42,7 +42,7 @@ function readOptions(): { space: Space; base: Options; cascade: boolean } {
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
     cover: f.get("cover") === "on", solid: f.get("solid") === "on", design, pattern, base: standsOn, magnets: f.get("magnets") === "on", across, along, fit: num("fit"),
-    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"),
+    hexR: num("hexR"), hexAuto: f.get("hexAuto") === "on", slope: num("slope"), lipGap: num("lipGap"),
   };
   return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: f.get("cascade") === "on" };
 }
@@ -59,6 +59,7 @@ form.addEventListener("input", (e) => {
     (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   }
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
+  if (t.name === "lipGap") (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = t.value;
   refit(); // first: it resets the chosen layout, which the hash carries
   syncHash();
 });
@@ -189,7 +190,7 @@ function renderResults() {
     <dt>Lane</dt><dd>${d.L.toFixed(0)} × ${d.OW.toFixed(0)} × ${d.H} mm${d.split ? ", two keyed halves" : ""}</dd>
     ${o.base === "gridfinity" ? `<dt>Base</dt><dd>Gridfinity baseplate, ${o.baseCells[0]} × ${o.baseCells[1]} cells; each lane on ${d.floorCells[0]} × ${d.floorCells[1]}, ${o.along === "centre" && o.across === "centre" ? "centred" : `at the ${[o.along, o.across].filter((p) => p !== "centre").join(" ")}`}${o.magnets ? "; 6 × 2 mm magnet pockets" : ""}</dd>` : ""}
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
-    <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
+    <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}; ${(d.Hb - 24 - 8 * d.tan - o.canD).toFixed(0)} mm over the can as it clears the lip</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
     <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
@@ -339,7 +340,7 @@ loadProfile();
 // Every field readOptions() consumes, plus the layout the user clicked. Checkboxes are
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
-const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "fit"];
+const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
 function syncHash() {
   const q = new URLSearchParams();
   for (const k of KEYS) {
@@ -358,6 +359,7 @@ function loadHash() {
   }
   (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number((form.elements.namedItem("fit") as HTMLInputElement).value).toFixed(2);
+  (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = (form.elements.namedItem("lipGap") as HTMLInputElement).value;
   return Number(q.get("layout") ?? 0);
 }
 

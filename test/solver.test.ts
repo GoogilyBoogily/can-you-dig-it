@@ -21,11 +21,14 @@ test("the lane is the shortest that holds its cans, not the longest that fits", 
   expect(layout.derived.L).toBe(278);
 });
 
-test("three short tiers of three out-count two of four, and rank first", () => {
+// Three tiers of three used to out-count two of four. They fitted only because a tier
+// was sized from its high end: at 3° a short lane's front can could not get over the
+// lip, and the tier that can let it out is 96 mm, three of which do not fit 254.
+test("two tiers of four rank first: three short tiers cannot dispense", () => {
   const [best] = fitSpace(SHELF, DEFAULTS, { cascade: false });
-  expect(best.options.tiers).toBe(3);
-  expect(best.derived.n).toBe(3);
-  expect(best.cans).toBe(9);
+  expect(best.options.tiers).toBe(2);
+  expect(best.derived.n).toBe(4);
+  expect(best.cans).toBe(8);
 });
 
 test("the front gap comes off the depth", () => {
@@ -34,11 +37,12 @@ test("the front gap comes off the depth", () => {
   for (const layout of layouts) expect(layout.footprint[1]).toBeLessThanOrEqual(SHELF.d - 40);
 });
 
-test("a lower slope stacks a third tier", () => {
+test("a lower slope buys no tier: the lip sets the floor of a short lane's height", () => {
   const [best] = fitSpace(SHELF, { ...DEFAULTS, slope: 2 }, { cascade: false });
   expect(best.options.slope).toBe(2);
-  expect(best.options.tiers).toBe(3);
-  expect(best.cans).toBe(12);
+  expect(best.derived.H).toBe(96);
+  expect(best.options.tiers).toBe(2);
+  expect(best.cans).toBe(8);
 });
 
 test("laneLengthFor is the inverse of solve()'s deck count", () => {
