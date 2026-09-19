@@ -486,14 +486,28 @@ function tabHole(g: Geo, o: Options, along: "x" | "y", len: number, cx: number, 
 
 const dtxOf = (d: Derived) => d.L / 2 - 25; // clear of the end tab band and the pin at px
 
+/** The gang dovetail in plan: `base` wide on the wall face at y, `tip` wide K.dovetail out.
+ *  The rib on the +Y wall and the groove in the -Y wall are the same trapezoid. */
+const dovetailCS = (g: Geo, dx: number, y: number, base: number, tip: number): CS =>
+  g.poly([[dx - base / 2, y], [dx + base / 2, y], [dx + tip / 2, y + K.dovetail], [dx - tip / 2, y + K.dovetail]]);
+
+/** The deck's (x, z) profile: a wedge from the deck start to the end wall, flat past it,
+ *  down to `zb` (below zero when a Gridfinity unit hangs under the pan). */
+const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
+  g.poly([[ln.xd, zb], [d.L / 2, zb], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]);
+
+/** The pocket the lip's 5 × 12 tab drops into: 12.4 × 5.4 since the first cut, turned 90°
+ *  from the tab it was for, plus fit. */
+const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: number): M =>
+  g.box(5.4 + o.fit, 12.4 + o.fit, h, x, y, z0);
+
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
   const minimal = o.design === "minimal";
-  const fit = o.fit;
   // the wedge sits between the walls. Under each wall it puts out an ear as tall as the
   // deck's low end, with the slot the wall's tab drops through: that is what holds the
   // deck up on the tier below, and the wall to the deck
-  const adds = [g.prismY(g.poly([[ln.xd, 0], [L / 2, 0], [L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]), IW, -IW / 2)];
+  const adds = [g.prismY(deckProfile(g, d, ln), IW, -IW / 2)];
   for (const sy of [1, -1]) for (const tx of ln.tabs) adds.push(g.box(K.earW, o.wall + 1, K.deckLo, tx, sy * (IW / 2 + o.wall / 2 - 0.5), K.deckLo / 2));
   const cuts: M[] = [];
   if (!o.solid) {
@@ -519,9 +533,7 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   }
   for (const sy of [1, -1]) {
     for (const tx of ln.tabs) cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, sy * d.piny, -1));
-    // the lip's 5 × 12 tabs (blade thickness along X); the pocket was 12.4 × 5.4 since
-    // cansys.py, turned 90° from the tab it was for
-    cuts.push(g.box(5.4 + fit, 12.4 + fit, 40, ln.lipx, sy * d.lipy, 10));
+    cuts.push(lipPocket(g, o, ln.lipx, sy * d.lipy, 40, 10));
   }
   cuts.push(tabHole(g, o, "y", ln.te + 4, ln.xe + K.tabT / 2, 0, -1));
   return g.diff(g.union(adds), cuts);
@@ -544,12 +556,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   for (const sx of [1, -1]) adds.push(tab(g, "x", K.pinH + 1, sx * d.px, piny, H - 1));
   const dtx = dtxOf(d);
   const ribZ = 8;
-  if (gang && sy > 0) for (const dx of [-dtx, dtx]) {
-    adds.push(g.prismZ(g.poly([
-      [dx - K.dtBase / 2, OW / 2], [dx + K.dtBase / 2, OW / 2],
-      [dx + K.dtTip / 2, OW / 2 + K.dovetail], [dx - K.dtTip / 2, OW / 2 + K.dovetail],
-    ]), H - 12 - ribZ, ribZ));
-  }
+  if (gang && sy > 0) for (const dx of [-dtx, dtx]) adds.push(g.prismZ(dovetailCS(g, dx, OW / 2, K.dtBase, K.dtTip), H - 12 - ribZ, ribZ));
   let body = g.union(adds);
 
   const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
@@ -560,15 +567,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   cuts.push(notch(K.tabT, ln.te + K.sideTabH + c, ln.xe + K.tabT / 2));
   // the tier below's pins, or the risers' bosses
   for (const sx of [1, -1]) cuts.push(notch(K.tabW, K.pinH + c, sx * d.px));
-  if (gang && sy < 0) {
-    const bw = K.dtBase + 2 * c, tw = K.dtTip + 2 * c;
-    for (const dx of [-dtx, dtx]) {
-      cuts.push(g.prismZ(g.poly([
-        [dx - bw / 2, -OW / 2], [dx + bw / 2, -OW / 2],
-        [dx + tw / 2, -OW / 2 + K.dovetail], [dx - tw / 2, -OW / 2 + K.dovetail],
-      ]), H + 2, ribZ - 1));
-    }
-  }
+  if (gang && sy < 0) for (const dx of [-dtx, dtx]) cuts.push(g.prismZ(dovetailCS(g, dx, -OW / 2, K.dtBase + 2 * c, K.dtTip + 2 * c), H + 2, ribZ - 1));
   if (!o.solid) {
     const minimal = o.design === "minimal";
     const keep: CS[] = [];
@@ -659,7 +658,7 @@ const trapezoid = (base: number, tip: number, depth: number, vc: number, grow = 
 export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): [M, M] {
   const cl = K.dtCl + o.fit;
   const w = d.plateY; // wider than any tongue; the floor of a grid deck is this wide
-  const wedge = g.prismY(g.poly([[ln.xd, zb], [d.L / 2, zb], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]), w, -w / 2);
+  const wedge = g.prismY(deckProfile(g, d, ln, zb), w, -w / 2);
   const tongue = g.isect(wedge, g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0)), ln.H - zb, zb - 1));
   const socket = g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0, cl)), ln.H + 2 - zb, zb - 1);
   return splitPlate(g, deck, tongue, socket);
@@ -752,7 +751,7 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   ];
   if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
   for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(tab(g, "x", K.pinH, sx * d.px, sy * d.piny, 0));
-  for (const sy of [1, -1]) cuts.push(g.box(5.4 + o.fit, 12.4 + o.fit, 2, ln.lipx, sy * d.lipy, 0));
+  for (const sy of [1, -1]) cuts.push(lipPocket(g, o, ln.lipx, sy * d.lipy, 2, 0));
   return g.diff(g.union(adds), cuts);
 }
 
