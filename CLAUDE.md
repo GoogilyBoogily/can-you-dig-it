@@ -167,35 +167,25 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
 - `o.base`: flat (default, the lane sits on the shelf), feet, or gridfinity. A riser is a
   wall-thick foot under ±px with a boss into the wall's bottom notch. Gridfinity
-  (2026-09-19): the shelf lane's deck grows a 7 mm unit below z = 0 - a floor of whole
-  42 mm cells (`n·42 − 0.5`, past the walls) with the spec foot under every cell, hulled
-  so the 45° chamfers are exact, and the riser's boss at ±px; walls stand on the floor.
-  Feet only on the deck's bed face: that is the one face of the lane that prints the
-  way a bin does. The upper chamfer runs 2 mm past the profile so neighbouring feet
-  meet in a ridge and the corner pits close at 45°: the floor has no flat underside.
-  The lane keeps its can-driven size; the floor is whole cells round it (`d.floor`),
-  and `o.across` / `o.along` (left, centre, right / front, centre, back) say which
-  edge the lane is flush with - the spare goes to the other side, so a lane can sit in
-  a drawer's corner. The lane always lands on the grid: when the shelf has no room for
-  the cells that would cover it, the solver sets `o.floorCells` to the cells that fit
-  (0 = cover the lane) and the lane overhangs its floor on a skirt, solid from the
-  floor down to the shelf beside the baseplate - a 138 mm lane on three cells in a
-  150 mm shelf. The baseplate must end at the lane's cells on that side. `d.foot` is
-  lane and floor together: what stands on the shelf, what has to fit the bed, what
-  splits at x = 0 (through a foot as often as not - a foot cut square prints as it is
-  and the pocket locks it; only magnet pockets the seam crosses are skipped), and the
-  footprint the solver reports. `gangPitch` is `ny·42` (the lane's width when the
-  floor is narrower) and the gang dovetails are off (the baseplate is the joint). The
-  feet's upper chamfers run on through the whole 2.25 mm floor and are clipped flat at
-  z = 0: the merged run-ons are the floor, no slab, so no flat underside anywhere - a
-  slab that started 0.1 mm above the last corner pit left slivers where the 24-segment
-  arcs fell short. A default can pays 141 → 168 across, and 480 needs 12 cells
-  (503.5), too long for a 256 bed in halves: 410 (six cans) is the longest that
-  prints. That is why it is a select, not the default. `PartSet.gridDeck` replaces
-  that role's deck in the worker; `o.magnets` cuts 6.5 × 2.4 pockets on the 26 mm
-  square, the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()` is
-  what the solver charges.
-  Spec in `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
+  (2026-09-19): a **baseplate** part for the shelf, not feet on the lane - standard 42 mm
+  pockets (2.15 / 1.8 / 0.7, 4.65 deep, r4 rim, hulled so the 45° chamfer is exact) in
+  every cell clear of the lanes, and under the gang a solid pad flush with the rim
+  carrying the riser boss at every lane's ±px and a 1 mm pocket for the lip's tabs.
+  Lane parts are the flat lane's, untouched; gang dovetails stay. `o.baseCells` is the
+  cells the shelf takes (the solver sets it: `floor(depth / 42)`, `floor(width / 42)`);
+  `d.plate` is that grown to the pad when a lane is bigger than the cells (a 150 mm
+  shelf under a 138 mm lane is all pad), placed round the pad by `o.across` / `o.along`
+  (left, centre, right / front, centre, back: which edge the pad is flush with, so the
+  free cells gather on the other side). `o.magnets` puts a 3.2 mm floor under the
+  pockets with 6.5 × 2.4 pockets on the 26 mm square in every free cell; `baseHeight(o)`
+  is 4.65 or 7.85 and is what the solver charges. Tiles at cell lines to fit the bed,
+  keyed with the deck's dovetail wherever a cut runs through solid - at a cell line the
+  rim is a knife edge, so through pockets tiles just butt and the lane across the seam
+  holds them; a band round each crossing cut keeps a tongue from being cut in two. The
+  first cut of this feature grew feet on the bottom deck (a bin); it needed a shelf at
+  least as wide as the cells covering the lane, and a lane overhanging a narrower
+  floor blocked the cells beside it. Spec in
+  `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
 
 ## Conventions
 - Units mm, Z up, front of a lane = −X (lip end), high end = +X.

@@ -1,91 +1,67 @@
 # Gridfinity base
 
-A third base under the lane, next to flat and 24 mm feet: the lane drops into a
-Gridfinity baseplate like any bin. Picked from a Base select; a Magnet pockets checkbox
-rides on it.
+A third base under the lane, next to flat and 24 mm feet: a Gridfinity baseplate for the
+shelf, with the lanes standing on it. Picked from a Base select; a Magnet pockets
+checkbox and two alignment selects ride on it.
 
 ## What Gridfinity is, in numbers
 
-42 mm pitch, 7 mm height unit. A bin is `n·42 − 0.5` across (0.25 mm to the cell each
-side) and carries one foot per cell. A foot, bottom up: a 35.6 mm square flat, a 0.8 mm
-45° chamfer, 1.8 mm vertical, a 2.15 mm 45° chamfer, 41.5 mm at the top, 4.75 mm in
-all. The corners are concentric: 3.75 mm at the top, 1.6 after the lower chamfer, 0.8
-at the flat. Magnets are 6 × 2 mm on a 26 mm square in every cell.
+42 mm pitch, 7 mm height unit. A baseplate pocket, rim down: 42 wide at the rim, a
+2.15 mm 45° chamfer, 1.8 mm vertical, a 0.7 mm 45° chamfer to 36.3 at the bottom,
+4.65 mm deep, corners r4 at the rim and concentric below. Magnets are 6 × 2 mm on a
+26 mm square in every cell.
 
 The official page pins only the magnets; the profile is from the community spec on
 Printables and the generators that implement it (gridfinity-layout-tool PRs #4251 and
 #4291, the Fusion generator, the 1fifoto CNC gadget).
 
-## Where the feet go
+## Why a baseplate, not feet
 
-Walls print flat, so feet can only grow from the bottom deck's bed face - the one face
-of the lane that already prints the way a bin does, underside down. The bottom-tier
-deck becomes the base: the ordinary deck on top, a 7 mm unit under it (2.25 mm floor,
-4.75 mm feet), as wide as whole cells. Walls stand on the floor, inside its edge, on
-the same bosses a riser offers into the wall's bottom notch at ±px. No separate tray:
-one part fewer to print and nothing to lose.
+The first cut grew feet on the bottom deck and made the lane a bin. That needed a shelf
+at least as wide as the whole cells covering the lane - a 138 mm lane wants four,
+167.5 - so a 150 mm shelf got nothing, and a lane overhanging a narrower floor on a
+skirt blocked the cells beside it on any wider baseplate. The lane is not a bin: it is
+the thing the shelf is for, and the grid is for what goes beside it.
 
-Whole cells, not the lane's outline: a floor that overhangs its last foot is a flat
-ceiling off the bed, and the baseplate's frame sits under it anyway. So a 138 mm lane
-gets a 4-cell floor (167.5) and gang pitch snaps to `ny·42` (141 → 168). Gang
-dovetails go away in this mode: the walls are 30 mm apart and the baseplate is the
-gang joint. A 305 mm shelf holds one such lane where it held two plain ones; that is
-the price of the grid, and the reason this is a select and not the default.
+So the grid is its own part. The baseplate is the whole cells the shelf has room for,
+`floor(depth / 42) × floor(width / 42)`, grown to the lanes' pad where a lane is bigger
+than they are. Under the gang the pad is solid and flush with the rim, with the riser's
+boss at every lane's ±px (the wall's bottom notch takes it, as it takes a riser) and a
+1 mm pocket for the lip's tabs. Every cell clear of the pad is a standard pocket, so
+bins go there. The lane parts are the flat lane's, unchanged; gang dovetails stay.
 
-The lane keeps the length its cans need; the floor is whole cells round it, in both
-axes, and two selects say where the lane sits on that floor: across (left, centre,
-right - left is +Y, seen from the front) and along (front, centre, back - front is
-the lip end). Flush with an edge, the spare goes to the other side, so a lane can
-stand in the corner of a drawer's baseplate; centred keeps it symmetric. Nine
-positions, defaults centre/centre.
+Alignment: across (left, centre, right - left is +Y, seen from the front) and along
+(front, centre, back - front is the lip end) say which edge of the baseplate the pad is
+flush with, so the free cells gather on the other side, or in a corner. Centred keeps
+it symmetric. On a 150 × 304 shelf three cells are narrower than the lane and seven
+along leave 16 mm: the baseplate is 138 × 294 and all pad. On 400 × 460 the default
+two-lane gang sits on 10 × 9 cells with two free columns.
 
-The lane always lands on the grid. When the shelf has no room for the cells that
-would cover the lane - a 150 mm shelf under a 138 mm lane, which wants four cells,
-167.5 - the solver keeps the floor to the cells that fit (`floorCells`, three here)
-and the lane overhangs it: the walls stand on a skirt, the lane's outline minus the
-cell region, solid from the floor down to the shelf beside the baseplate. Nothing
-overhangs, the feet's run-on chamfers merge into it, and the baseplate must end at the
-lane's cells on that side. The same rule shortens the floor along the lane when the
-shelf is shorter than the cells that would cover it.
-
-Lane and floor together are what has to fit the bed. It splits at x = 0 with the deck, and the
-seam runs through a foot as often as not: a foot cut square by the dovetail seam
-prints as it is (the cut face is vertical), the tongue carries floor and foot chunk
-with it, and the baseplate pocket locks the two halves. Magnet pockets the seam would
-halve are skipped. On a 256 mm bed a default can's 480 mm lane needs twelve cells,
-503.5 mm, and no alignment gets a half under 250: six cans, 410 mm on ten cells, is
-the longest that prints. The solver drops any lane whose floor outruns the shelf and
-reports the floor as the footprint.
+Magnets put a 3.2 mm floor under the pockets, with 6.5 × 2.4 pockets on the 26 mm
+square in every free cell and 0.8 mm of skin below. The solver charges the baseplate's
+height: 4.65, or 7.85 with the floor.
 
 ## Geometry
 
-`buildGridDeck` is `buildDeck` plus a floor slab from z = −7 to 0, a foot at every
-cell centre, four bosses at (±px, ±piny), and the lip pocket carried 1 mm into the
-floor (the lip's 5 mm tab stood 0.58 mm proud of the pan; on a shelf nobody noticed).
-Every existing cut stops at z = 0 because the deck's underside is one plane there
-with the wall bottoms. Feet are hulls of the profile's rounded rectangles, so the 45°
-faces are exact and the corners concentric; `extrude` with a scale would square the
-top corner and bind in a r4 pocket. The upper chamfer runs on 2 mm past the profile:
-neighbouring feet then meet in a 45° ridge across the 0.5 mm gap and the pit between
-four rounded corners closes 1.9 mm up. The chamfers run through the whole 2.25 mm and
-past it, and the outline prism clips them flat at the deck's underside, so the merged
-run-ons are the floor: no slab, and nowhere a flat underside. Stopped at the profile,
-every gap and pit would have had a flat ceiling of floor over it; a slab starting 0.1 mm
-above the last pit left slivers where the 24-segment arcs fell short. The run-on
-is clipped at the bin's edge, so the outline stays `n·42 − 0.5`. The outline's r3.75
-corners are squared only where the lane's own corner lands on one: flush in a corner,
-a deck ear would otherwise hang a square millimetre over the round.
+`buildBaseplate` cuts one pocket solid - hulls of the profile's rounded rectangles, so
+the chamfers are exact and the corners concentric; the vertical run overlaps both
+chamfers by 0.01 mm, since butted exactly float left a membrane that read as a flat
+ceiling - from a slab, per free cell, then adds the bosses and cuts the lip pockets.
+Printed as it lies, rim up: the lower chamfer is the one downward face, at 45°.
 
-The split keeps the tongue: `splitDeck` takes the deck's bottom z so the dovetail runs
-through floor and pan and the rear half's tongue stands on the bed.
+A baseplate bigger than the bed is cut into tiles at cell lines, greedily, so every
+tile and its tongue fit. Each cut is keyed with the deck's dovetail wherever it runs
+through solid: the plate's extent less every free cell the cut borders (at a cell line
+the rim is a knife edge and has nothing to key) and less a 50 mm band round each
+crossing cut, so no tongue is itself cut in two. Through pockets the tiles just butt,
+and the lane standing across the seam holds them.
 
-`PartSet.gridDeck` is the deck of the lane on the shelf - `bottom` in a cascade, `top`
-in a flat stack. Walls, end wall and lip are the role's own; nothing is duplicated.
+`PartSet.baseplate` is the tiles; the worker names them `baseplate-N`, the viewer lays
+them under the gang at `−baseHeight`.
 
 ## Tests
 
-`test/overhang.test.ts` holds the rule at "flatter than 45°": the foot chamfers sit on
-the line and the test now says so (`<` with an epsilon). Magnet pocket ceilings are
-6.5 mm bridges, the second intended exception after the dovetail flanks, skipped only
-at their own z on the magnet part. `test/gridfinity.test.ts` pins the foot, the outline,
-the boss in the notch, the magnet volume and the solver's snapping.
+`test/overhang.test.ts` holds the rule at "flatter than 45°" (`<` with 0.01° of noise
+allowed): the pocket's lower chamfer sits on the line. `test/gridfinity.test.ts` pins
+the plate's extent and alignment, the pad and its bosses, the pocket profile, the
+magnet floor, the tiles against the bed, and the solver's height and footprint.

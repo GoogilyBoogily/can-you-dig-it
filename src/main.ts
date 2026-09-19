@@ -82,8 +82,7 @@ function refit(want = 0) {
   box.innerHTML = "";
   if (!layouts.length) {
     const need = laneNeeds(base);
-    const width = need.cells ? `${need.w} mm of width (${need.cells} Gridfinity cells)` : `${need.w.toFixed(0)} mm of width`;
-    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs ${width} and ${need.h.toFixed(0)} mm of height${need.cells ? "; a narrower base is Flat or Feet" : ""}.</p>`;
+    box.innerHTML = `<p class="empty">Nothing fits. A single lane needs ${need.w.toFixed(0)} mm of width and ${need.h.toFixed(0)} mm of height.</p>`;
     chosen = null; chosenIndex = 0; return;
   }
   const h = document.createElement("h2"); h.textContent = "Layouts that fit"; box.appendChild(h);
@@ -188,7 +187,7 @@ function renderResults() {
     <dt>Capacity</dt><dd>${layout.cans} cans</dd>
     <dt>Footprint</dt><dd>${layout.footprint.map((v) => v.toFixed(0)).join(" × ")} mm</dd>
     <dt>Lane</dt><dd>${d.L.toFixed(0)} × ${d.OW.toFixed(0)} × ${d.H} mm${d.split ? ", two keyed halves" : ""}</dd>
-    ${o.base === "gridfinity" ? `<dt>Base</dt><dd>Gridfinity, ${d.gridX} × ${d.gridY} cells per lane, lane ${o.along === "centre" && o.across === "centre" ? "centred" : `at the ${[o.along, o.across].filter((p) => p !== "centre").join(" ")}`}${o.magnets ? ", 6 × 2 mm magnet pockets" : ""}</dd>` : ""}
+    ${o.base === "gridfinity" ? `<dt>Base</dt><dd>Gridfinity baseplate, ${o.baseCells[0]} × ${o.baseCells[1]} cells, lanes ${o.along === "centre" && o.across === "centre" ? "centred" : `at the ${[o.along, o.across].filter((p) => p !== "centre").join(" ")}`}${o.magnets ? ", 6 × 2 mm magnet pockets in the free cells" : ""}</dd>` : ""}
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${20} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>

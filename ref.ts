@@ -60,22 +60,14 @@ export function refParts(geo: Geo): Record<string, Manifold> {
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, set, "top");
   }
-  // the Gridfinity deck: centred, with magnet pockets, in a corner of its floor, and the
-  // flat stack's (a top lane's deck on the unit). 410 mm: six cans on the bottom deck,
-  // ten cells, which a 256 bed prints in two halves where the default 480 would not
-  const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410 };
-  const gridVariants: Record<string, Partial<Options>> = {
-    "grid-deck": {}, "grid-deck-magnets": { magnets: true }, "grid-deck-corner": { across: "left", along: "front" },
-    "flat-grid-deck": { cascade: false },
-    // a 150 mm shelf: three cells under a 138 mm lane, the walls on skirts; and a lane
-    // longer than its floor, skirts at both ends
-    "narrow-grid-deck": { floorCells: [0, 3] }, "short-grid-deck": { floorCells: [9, 0] },
-  };
-  for (const [name, variant] of Object.entries(gridVariants)) {
-    const o: Options = { ...grid, ...variant };
-    const plate = buildAll(geo, o, solve(o)).gridDeck!;
-    parts[`${name}-front`] = plate.front!;
-    parts[`${name}-rear`] = plate.rear!;
+  // the Gridfinity baseplate for a 400 × 460 shelf under the default two-lane gang: 10 × 9
+  // cells, the pad in the middle; with magnets; and the gang in a corner so the free cells
+  // gather on two sides. Every tile is its own part
+  const shelf: Options = { ...DEFAULTS, base: "gridfinity", baseCells: [10, 9] };
+  const baseVariants: Record<string, Partial<Options>> = { "baseplate": {}, "baseplate-magnets": { magnets: true }, "baseplate-corner": { across: "left", along: "front" } };
+  for (const [name, variant] of Object.entries(baseVariants)) {
+    const o: Options = { ...shelf, ...variant };
+    buildAll(geo, o, solve(o)).baseplate.forEach((tile, i) => { parts[`${name}-${i + 1}`] = tile; });
   }
   return parts;
 }

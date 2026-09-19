@@ -8,7 +8,7 @@ export type Req =
   | { type: "export"; id: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
 // solidGrams: the part printed 100 % dense, which the translucent settings do.
-export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: "lane" | "lip" | "riser" | "cover" }
+export interface PartOut { name: string; mesh: MeshData; qty: number; grams: number; solidGrams: number; role: "lane" | "lip" | "riser" | "cover" | "base" }
 export type Res =
   | { type: "built"; id: number; parts: PartOut[]; placed: Placement[]; nplates: number; ms: number }
   | { type: "file"; id: number; name: string; bytes: Uint8Array }
@@ -48,13 +48,8 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         add(`${base}-front`, plate.front, qty, "lane");
         add(`${base}-rear`, plate.rear, qty, "lane");
       };
-      // the shelf lane's deck is the grid deck instead, one per lane across
-      const shelfRole = cascade ? "bottom" : "top";
-      for (const ln of set.lanes) for (const plate of ln.plates) {
-        const onGrid = set.gridDeck && ln.role === shelfRole && plate.name === "deck";
-        addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role] - (onGrid ? o.lanesWide : 0));
-      }
-      if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
+      for (const ln of set.lanes) for (const plate of ln.plates) addPlate(cascade ? `lane-${ln.role}-${plate.name}` : `lane-${plate.name}`, plate, qtyOf[ln.role]);
+      set.baseplate.forEach((tile, i) => add(set.baseplate.length > 1 ? `baseplate-${i + 1}` : "baseplate", tile, 1, "base"));
       add("end-lip", set.lip, nLip, "lip");
       if (o.base === "feet") {
         add("riser-24", set.riser24, o.lanesWide * 4, "riser");

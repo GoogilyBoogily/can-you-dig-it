@@ -1,150 +1,96 @@
-// The Gridfinity base: the bottom deck on a 7 mm unit of whole 42 mm cells with a foot
-// under each. Spec in docs/superpowers/specs/2026-09-19-gridfinity-base-design.md.
+// The Gridfinity base: a baseplate for the shelf with a solid pad under the lanes, which
+// stand on it as they stand on the shelf. Spec in
+// docs/superpowers/specs/2026-09-19-gridfinity-base-design.md.
 import { test, expect } from "bun:test";
 import Module from "manifold-3d";
-import { Geo, DEFAULTS, solve, check, buildAll, buildLanePlates, baseHeight, type Options } from "../src/geometry";
+import { Geo, DEFAULTS, solve, buildAll, baseHeight, type Options } from "../src/geometry";
 import { fitSpace, laneNeeds } from "../src/solver";
 
 const wasm = await Module(); wasm.setup();
 const geo = new Geo(wasm);
 
-const grid: Options = { ...DEFAULTS, base: "gridfinity", length: 410 }; // six cans on the bottom deck
+// a 400 × 460 shelf: 10 cells deep, 9 across, the default two-lane gang in the middle
+const grid: Options = { ...DEFAULTS, base: "gridfinity", baseCells: [10, 9] };
 const d = solve(grid);
-const deck = buildAll(geo, grid, d).gridDeck!;
-const whole = geo.union([deck.front!, deck.rear!]);
+const tiles = buildAll(geo, grid, d).baseplate;
+const whole = geo.union(tiles);
 
-test("the lane keeps its length; the floor is whole cells round it: 410 × 138 on 10 × 4, a cell apart", () => {
-  expect(d.L).toBe(410);
-  expect([d.gridX, d.gridY]).toEqual([10, 4]);
-  expect(d.gangPitch).toBe(168);
-  expect(d.plateY).toBe(167.5);
-  expect(d.floor).toEqual([-209.75, -83.75, 209.75, 83.75]);
-  expect(solve(DEFAULTS).floor).toEqual([-240, -69, 240, 69]); // no grid: the lane itself
+test("the lane is the flat lane: nothing in solve() moves but the baseplate", () => {
+  const flat = solve(DEFAULTS);
+  for (const k of ["L", "OW", "gangPitch", "H", "Hb", "split", "plateX", "plateY"] as const) expect(d[k]).toBe(flat[k]);
+  expect(buildAll(geo, DEFAULTS, flat).baseplate).toEqual([]);
 });
 
-test("the alignment moves the floor, not the lane: the spare goes to the other side", () => {
-  const at = (v: Partial<Options>) => solve({ ...grid, ...v }).floor;
-  expect(at({ along: "front" })).toEqual([-205, -83.75, 214.5, 83.75]); // lip end flush
-  expect(at({ along: "back" })).toEqual([-214.5, -83.75, 205, 83.75]);
-  expect(at({ across: "left" })).toEqual([-209.75, -98.5, 209.75, 69]); // +Y wall flush
-  expect(at({ across: "right" })).toEqual([-209.75, -69, 209.75, 98.5]);
-  expect(at({ along: "front", across: "left", length: 480 })).toEqual([-240, -98.5, 263.5, 69]);
-});
-
-test("it is the floor that has to fit the bed, and it splits at x = 0 wherever the seam lands", () => {
-  // 480: twelve cells, 503.5 - a half is over 250 however it is aligned
-  expect(check({ ...grid, length: 480 }, solve({ ...grid, length: 480 })).some((w) => w.startsWith("FAIL"))).toBe(true);
-  // 240 fits one plate but its floor (251.5) does not: the lane splits
-  const short = solve({ ...grid, length: 240 });
-  expect(short.split).toBe(true);
-  expect(short.plateX).toBeCloseTo(251.5 / 2 + 8, 6);
-  // flush front on a 410 lane: the rear half carries the spare, 214.5 + 8
-  expect(solve({ ...grid, along: "front" }).plateX).toBeCloseTo(222.5, 6);
-});
-
-test("the unit hangs 7 mm below the deck, the bin's edge wide, and the solver charges it", () => {
+test("the baseplate is the cells the shelf takes, centred round the gang's pad", () => {
+  // 10 cells are 420 and the 480 lane is longer, so the plate grows to the pad along; 9
+  // cells are 378 round a 279 pad across, centred: y −118.5 .. 259.5 about the pad's −69 .. 210
+  expect(d.plate).toEqual([-240, -118.5, 240, 259.5]);
   const box = whole.boundingBox();
-  expect(box.min[2]).toBeCloseTo(-7, 3);
-  expect(box.max[1] - box.min[1]).toBeCloseTo(167.5, 3);
-  expect(box.max[0] - box.min[0]).toBeCloseTo(419.5, 3);
-  expect(baseHeight("gridfinity")).toBe(7);
-  expect(baseHeight("feet")).toBe(24);
+  expect([box.min[0], box.min[1], box.max[0], box.max[1]].map((v) => Math.round(v * 100) / 100)).toEqual([-240, -118.5, 240, 259.5]);
+  expect(box.max[2]).toBeCloseTo(4.65 + 2.4, 3); // rim plus the bosses
+  expect(baseHeight(grid)).toBe(4.65);
+  expect(baseHeight({ ...grid, magnets: true })).toBeCloseTo(7.85, 6);
 });
 
-test("a corner-aligned deck's feet sit on the cells of its own floor", () => {
-  const corner: Options = { ...grid, across: "left", along: "front" };
-  const dc = solve(corner);
-  const plate = buildAll(geo, corner, dc).gridDeck!;
-  const m = geo.union([plate.front!, plate.rear!]);
-  const box = m.boundingBox();
-  expect([box.min[0], box.min[1], box.max[0], box.max[1]]).toEqual(dc.floor.map((v) => expect.closeTo(v, 3)) as any);
-  // the first cell's flat at the bed, 3 mm in from the floor's corner: (x0 + 21 − 0.25 − 17.8)
-  const flat = geo.isect(m, geo.box(42, 42, 0.01, dc.floor[0] + 20.75, dc.floor[1] + 20.75, -7 + 0.005)).boundingBox();
-  expect(flat.min[0]).toBeCloseTo(dc.floor[0] + 20.75 - 17.8, 1);
-  expect(flat.min[1]).toBeCloseTo(dc.floor[1] + 20.75 - 17.8, 1);
+test("alignment puts the pad flush with an edge and the free cells on the other side", () => {
+  expect(solve({ ...grid, across: "left" }).plate[3]).toBe(210); // pad top = plate top
+  expect(solve({ ...grid, across: "right" }).plate[1]).toBe(-69);
+  expect(solve({ ...grid, along: "front" }).plate[0]).toBe(-240);
+  expect(solve({ ...grid, along: "back" }).plate[2]).toBe(240);
 });
 
-test("a foot is the profile: 35.6 flat, 41.5 at 4.75 up", () => {
-  // slice the corner cell at the bed and just under the floor
-  const cell = (z: number) => geo.isect(whole, geo.box(42, 42, 0.01, 4.5 * 42, 1.5 * 42, z)).boundingBox();
-  const at = (z: number) => { const b = cell(z); return b.max[0] - b.min[0]; };
-  expect(at(-7 + 0.005)).toBeCloseTo(35.6, 1);
-  expect(at(-7 + 0.8 + 0.9)).toBeCloseTo(37.2, 1); // the vertical wall
-  expect(at(-7 + 4.75 - 0.005)).toBeCloseTo(41.5, 1);
+test("a shelf narrower or shorter than its cells grows the plate to the pad: 150 × 304 is all pad", () => {
+  const [best] = fitSpace({ w: 150, d: 304, h: 150, front: 0 }, { ...DEFAULTS, base: "gridfinity" }, { cascade: true });
+  expect(best.options.baseCells).toEqual([7, 3]);
+  expect(best.derived.plate[3] - best.derived.plate[1]).toBe(138); // 3 cells are 126, the lane is 138
+  expect(best.footprint.slice(0, 2)).toEqual([138, 294]);
+  expect(best.cans).toBe(4);
+  const plate = geo.union(buildAll(geo, best.options, best.derived).baseplate);
+  // no pocket anywhere: a flat slab with bosses, 138 × 294 × 4.65, less a key's clearance
+  expect(plate.volume()).toBeCloseTo(138 * 294 * 4.65 + 4 * 8 * 3 * 2.4 - 2 * 5.4 * 12.4 * 1, -3);
 });
 
-test("the wall stands on the floor and its notch at ±px takes the boss", () => {
-  const wall = buildLanePlates(geo, grid, d, "bottom").find((p) => p.name === "wall-tongue")!;
-  // the boss: 8 × 3 × 2.4 above z = 0 at (px, piny), inside the wall's footprint where
-  // the deck has no ear (px is kept clear of the tabs)
-  const boss = geo.isect(whole, geo.box(20, 3, 2.4, d.px, d.piny, 1.2));
-  expect(boss.volume()).toBeCloseTo(8 * 3 * 2.4, 0);
-  // no dovetail rib on a grid, even two lanes wide: laid flat the wall is its own thickness
-  const laid = wall.rear!.boundingBox();
-  expect(laid.max[2] - laid.min[2]).toBeCloseTo(DEFAULTS.wall, 3);
-});
-
-test("magnet pockets take four 6.5 × 2.4 cylinders a cell, none where the seam would halve one", () => {
-  const withMagnets = buildAll(geo, { ...grid, magnets: true }, d).gridDeck!;
-  const pockets = whole.volume() - geo.union([withMagnets.front!, withMagnets.rear!]).volume();
-  const cylinder = Math.PI * 3.25 ** 2 * 2.4 * (48 / (2 * Math.PI)) * Math.sin(2 * Math.PI / 48); // 48-gon
-  expect(pockets).toBeCloseTo(40 * 4 * cylinder, -2); // centred, ten cells: the seam is a cell line
-  // flush front the cells sit at x = −184.25 + 42i, so one cell's pockets land at
-  // x = −3.25: on the seam, and skipped - four rows, two pockets each
-  const front: Options = { ...grid, along: "front", magnets: true };
-  const df = solve(front);
-  const cutAt = (o: Options) => { const p = buildAll(geo, o, df).gridDeck!; return geo.union([p.front!, p.rear!]).volume(); };
-  expect(cutAt({ ...front, magnets: false }) - cutAt(front)).toBeCloseTo((40 * 4 - 8) * cylinder, -2);
-});
-
-test("the solver reports lane and floor together, inside the shelf, and charges the unit's height", () => {
-  const shelf = { w: 200, d: 460, h: 254, front: 0 };
-  const layouts = fitSpace(shelf, grid, { cascade: true });
-  expect(layouts.length).toBeGreaterThan(0);
-  for (const l of layouts) {
-    expect(l.footprint[1]).toBeLessThanOrEqual(shelf.d);
-    expect(l.footprint[1]).toBeGreaterThanOrEqual(l.derived.L);
-    expect(l.footprint[0]).toBe(168 * l.options.lanesWide);
-    const stack = l.style === "cascade" ? l.derived.Hb + (l.options.tiers - 1) * l.derived.H : l.options.tiers * l.derived.H;
-    expect(l.footprint[2]).toBe(7 + stack);
+test("pockets only in cells clear of the pad; the pad carries a boss at every lane's ±px", () => {
+  // free cells: 9 across × 10 deep = 90, less those the pad (−241 .. 241 × −70 .. 209) touches
+  const pocketVol = 42 * 42 * 4.65 - geo.isect(whole, geo.box(42, 42, 4.65, -189, -97.5, 4.65 / 2)).volume(); // the corner cell, free
+  expect(pocketVol).toBeGreaterThan(36 * 36 * 4.65 * 0.9);
+  const padCell = geo.isect(whole, geo.box(42, 42, 4.65, 0, 0, 4.65 / 2)).volume();
+  expect(padCell).toBeCloseTo(42 * 42 * 4.65, -1); // solid under the lane
+  for (const i of [0, 1]) for (const sx of [1, -1]) for (const sy of [1, -1]) {
+    const boss = geo.isect(whole, geo.box(20, 20, 2.4, sx * d.px, i * d.gangPitch + sy * d.piny, 4.65 + 1.2));
+    expect(boss.volume()).toBeCloseTo(8 * 3 * 2.4, 0);
   }
 });
 
-// A 150 × 304 × 150 shelf: four cells (167.5) do not fit across, so the floor keeps to
-// three (125.5) and the 138 mm lane overhangs it 6 mm a side on a skirt down to the
-// shelf, beside the baseplate. The lane always lands on the grid.
-test("a shelf narrower than the covering cells gets a narrower floor and a skirt", () => {
-  const layouts = fitSpace({ w: 150, d: 304, h: 150, front: 0 }, grid, { cascade: true });
+test("magnets: a 3.2 mm floor under the pockets with four 6.5 × 2.4 pockets per free cell", () => {
+  const withMagnets = buildAll(geo, { ...grid, magnets: true }, d).baseplate;
+  const m = geo.union(withMagnets);
+  expect(m.boundingBox().max[2]).toBeCloseTo(7.85 + 2.4, 3);
+  const floor = geo.isect(m, geo.box(42, 42, 3.2, -189, -97.5, 1.6)).volume(); // the corner cell's floor
+  const cylinder = Math.PI * 3.25 ** 2 * 2.4 * (48 / (2 * Math.PI)) * Math.sin(2 * Math.PI / 48);
+  expect(floor).toBeCloseTo(42 * 42 * 3.2 - 4 * cylinder, -2);
+});
+
+test("tiles fit the bed and key through the pad, not through pockets", () => {
+  expect(tiles.length).toBeGreaterThan(1);
+  for (const t of tiles) {
+    const b = t.boundingBox();
+    expect(b.max[0] - b.min[0]).toBeLessThanOrEqual(d.usableX + 1e-6);
+    expect(b.max[1] - b.min[1]).toBeLessThanOrEqual(d.usableY + 1e-6);
+    expect(t.status()).toBe("NoError");
+  }
+  expect(whole.volume()).toBeCloseTo(tiles.reduce((a, t) => a + t.volume(), 0), 0); // no overlap, nothing lost
+});
+
+test("the solver charges the baseplate's height and reports its size", () => {
+  const layouts = fitSpace({ w: 400, d: 460, h: 254, front: 0 }, { ...DEFAULTS, base: "gridfinity" }, { cascade: true });
   expect(layouts.length).toBeGreaterThan(0);
-  const [best] = layouts;
-  expect(best.options.floorCells).toEqual([0, 3]);
-  expect(best.derived.gridY).toBe(3);
-  expect(best.derived.floor[1]).toBeCloseTo(-125.5 / 2, 6);
-  expect(best.derived.foot[1]).toBeCloseTo(-69, 6); // the lane is what stands on the shelf
-  expect(best.footprint[0]).toBeCloseTo(138.5, 6);
-  expect(best.cans).toBe(4);
-  // the part: the lane's outline, feet on three cells, solid to the bed outside them
-  const set = buildAll(geo, best.options, best.derived).gridDeck!;
-  const m = geo.union([set.front!, set.rear!]);
-  const box = m.boundingBox();
-  expect(box.max[1] - box.min[1]).toBeCloseTo(138, 3);
-  const skirtSlice = geo.isect(m, geo.box(20, 20, 0.01, 0, 66, -7 + 0.005)); // under the wall, 3 mm past the cells
-  expect(skirtSlice.volume()).toBeGreaterThan(0);
-  const flat = geo.isect(m, geo.box(42, 42, 0.01, 0, 0, -7 + 0.005)).boundingBox(); // the middle cell's foot
-  expect(flat.max[1] - flat.min[1]).toBeCloseTo(35.6, 1);
-  expect(laneNeeds(grid).w).toBe(168); // what the empty state would say when even one cell is too many
-});
-
-test("a lane longer than the cells its shelf has room for keeps its length on a shorter floor", () => {
-  const layouts = fitSpace({ w: 200, d: 300, h: 254, front: 0 }, grid, { cascade: true });
-  const long = layouts.find((l) => l.derived.L === 300)!; // the longest that fits: eight cells would be 335.5
-  expect(long.options.floorCells).toEqual([7, 0]);
-  expect(long.derived.floor[2] - long.derived.floor[0]).toBe(293.5);
-  expect(long.footprint[1]).toBe(300);
-  for (const l of layouts) expect(l.footprint[1]).toBeLessThanOrEqual(300);
-});
-
-test("a shelf too narrow for even the lane offers nothing", () => {
-  expect(fitSpace({ w: 130, d: 460, h: 254, front: 0 }, grid, { cascade: true })).toEqual([]);
-  expect(fitSpace({ w: 168, d: 460, h: 254, front: 0 }, grid, { cascade: true })[0].derived.gridY).toBe(4);
+  for (const l of layouts) {
+    expect(l.options.baseCells).toEqual([10, 9]);
+    expect(l.footprint[0]).toBe(378);
+    expect(l.footprint[1]).toBeGreaterThanOrEqual(l.derived.L);
+    const stack = l.style === "cascade" ? l.derived.Hb + (l.options.tiers - 1) * l.derived.H : l.options.tiers * l.derived.H;
+    expect(l.footprint[2]).toBe(4.65 + stack);
+  }
+  expect(laneNeeds({ ...DEFAULTS, base: "gridfinity" }).w).toBe(149);
 });
