@@ -48,6 +48,14 @@ export function refParts(geo: Geo): Record<string, Manifold> {
   };
   lanes("", DEFAULTS, twoTiers, "top"); lanes("", three, threeTiers, "mid"); lanes("", DEFAULTS, twoTiers, "bottom");
   lanes("minimal-", minimal, minimalTwo, "top"); lanes("minimal-", minimalTall, minimalThree, "mid"); lanes("minimal-", minimal, minimalTwo, "bottom");
+  // solid: no lattice and no recess, the plates as bare slabs; and a 240 mm lane, short
+  // enough to print whole, so the unsplit branch of buildLanePlates has a pin too
+  for (const [prefix, variant] of [["solid-", { solid: true }], ["short-", { length: 240 }]] as const) {
+    const o: Options = { ...DEFAULTS, ...variant };
+    const set = buildAll(geo, o, solve(o));
+    for (const part of partList(set, o)) if (part.role === "cover") parts[prefix + part.name] = part.mesh;
+    lanes(prefix, o, set, "top");
+  }
   // every other pattern: the top lane and the cover, since a pattern changes nothing else.
   // solve() per pattern - the auto radius differs
   for (const pattern of PATTERNS.filter((p) => p !== "hex")) {
