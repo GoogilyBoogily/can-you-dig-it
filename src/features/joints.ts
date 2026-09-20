@@ -59,6 +59,16 @@ export const lipTab = (g: Geo, len: number): M =>
 export const lipPocket = (g: Geo, clearance: number, h: number, zc: number): M =>
   g.box(K.lipTabT + 2 * clearance, K.lipTabW + 2 * clearance, h, 0, 0, zc);
 
+/** The corner: the end wall keeps a wall-square post from the lap line to the tier top,
+ *  and the side wall is slotted from its top edge down to that line to take it. The
+ *  origin is the end wall's inner face on the side wall's centreline. */
+export function crossLap(g: Geo, spec: { wall: number; lapZ: number; H: number; clearance: number }): Pair {
+  const { wall, lapZ, H, clearance } = spec;
+  const male = g.box(wall, wall, H - lapZ, wall / 2, 0, (H + lapZ) / 2);
+  const female = g.box(wall + 2 * clearance, wall + 2 * OVER, H - lapZ + OVER, wall / 2, 0, (H + lapZ + OVER) / 2);
+  return { male, female };
+}
+
 /** The gang joint the deck carries: an ear-wide run back to the ear root, then a T
  *  (ear-wide neck, gangHead head, the splice depths) pointing +Y from the origin. The
  *  socket is the grown T cut through the neighbour's rail from below the deck. */

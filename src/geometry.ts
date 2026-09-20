@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket } from "./features/joints";
+import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -659,8 +659,8 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
   const piny = sy * d.piny;
   const notch = (w: number, h: number, x: number) => g.box(w + 2 * c, o.wall + 2, h + 1, x, sy * d.py, (h - 1) / 2);
   const cuts = ln.tabs.map((tx) => g.diff(notch(K.earW, notchH, tx), [tab(g, "x", notchH + 2, tx, piny, -1)]));
-  const lapZ = ln.te + K.lap;
-  cuts.push(g.box(o.wall + 2 * c, o.wall + 2, ln.H - lapZ + 1, ln.xe + o.wall / 2, sy * d.py, (ln.H + lapZ + 1) / 2));
+  const lap = crossLap(g, { wall: o.wall, lapZ: ln.te + K.lap, H: ln.H, clearance: c });
+  cuts.push(lap.female.translate([ln.xe, sy * d.py, 0])); lap.male.delete(); lap.female.delete();
   for (const sx of [1, -1]) cuts.push(notch(K.tabW, K.pinH + c, sx * d.px));
   return cuts;
 }
@@ -711,9 +711,10 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { IW, OW } = d;
   const { xe, te, ewh, H } = ln;
   const b = K.border, xo = xe + o.wall;
-  const lapZ = te + K.lap;
+  const lap = crossLap(g, { wall: o.wall, lapZ: te + K.lap, H, clearance: clearanceOf(o) });
   const adds = [g.box(o.wall, IW, ewh - te, xe + o.wall / 2, 0, (ewh + te) / 2)];
-  for (const sy of [1, -1]) adds.push(g.box(o.wall, o.wall, H - lapZ, xe + o.wall / 2, sy * d.py, (H + lapZ) / 2));
+  for (const sy of [1, -1]) adds.push(lap.male.translate([xe, sy * d.py, 0]));
+  lap.male.delete(); lap.female.delete();
   const body = g.union(adds);
   // the outer top edge rounds, like the side walls'. A loading lip's inner edge stays
   // square: printed outer face up it would be a round on the bed edge, and a can loaded

@@ -4,7 +4,7 @@
 import { test, expect } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket } from "../src/features/joints";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap } from "../src/features/joints";
 import { stand, lipPose } from "../src/features/pose";
 import { geo } from "./geo";
 
@@ -61,6 +61,17 @@ test("the gang T: tongue inside socket at every clearance", () => {
 test("the gang anchors agree across the pitch", () => {
   const d = solve(DEFAULTS);
   expect(gangInner(DEFAULTS, d) - d.gangPitch).toBeCloseTo(-d.IW / 2, 9);
+});
+
+test("the corner cross-lap: post inside slot, slot open at the wall top", () => {
+  for (const clearance of [K.cl, K.cl + 0.3]) {
+    const j = crossLap(geo, { wall: 6, lapZ: 20, H: 80, clearance });
+    fits(j);
+    expect(j.male.boundingBox().min[2]).toBeCloseTo(20, 6);
+    expect(j.male.boundingBox().max[2]).toBeCloseTo(80, 6);
+    expect(j.female.boundingBox().max[2]).toBeCloseTo(81, 6);
+    expect(j.female.boundingBox().max[0] - j.male.boundingBox().max[0]).toBeCloseTo(clearance, 6);
+  }
 });
 
 test("the lip tab, stood up, sits inside its pocket", () => {
