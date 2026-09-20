@@ -108,7 +108,7 @@ export interface Derived {
   run: number; dhi: number; dhiB: number; tan: number; inset: number;
   hexR: number; lig: number;
   xd: number; px: number; py: number; piny: number; lipy: number; railHy: number;
-  gangPitch: number; plateX: number; plateY: number; usableX: number; usableY: number; usableZ: number;
+  gangPitch: number; plateX: number; plateY: number; plateZ: number; usableX: number; usableY: number; usableZ: number;
   floorCells: [number, number]; // the lane's cells along and across: what covers it, or what the shelf has
   floor: [number, number, number, number]; // the floor of feet, x0 y0 x1 y1 in the lane frame
   foot: [number, number, number, number]; // lane and floor together: what stands on the shelf and fits the bed
@@ -181,12 +181,21 @@ export function solve(o: Options): Derived {
   const foot: Derived["foot"] = [Math.min(fx0, -L / 2), Math.min(fy0, -OW / 2), Math.max(fx1, L / 2), Math.max(fy1, OW / 2)];
   const split = foot[2] - foot[0] > usableX;
   const gangPitch = grid ? Math.max(floorCells[1] * K.gridPitch, OW + 2 * K.gridGap) : OW + K.dovetail;
+  // What a plate needs on the bed, not what the assembly measures. layWall lays a wall
+  // down, so its height becomes the bed's Y and its thickness the bed's Z; the deck is
+  // the tall one, since it carries the whole slope. Getting this wrong either offers a
+  // lane that cannot be packed or refuses one that prints flat.
+  const wallPlateY = Math.max(H, Hb) + K.pinH;
+  const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
+  const wallPlateZ = o.wall + (o.lanesWide > 1 && !grid ? K.dovetail : 0);
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
-    plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0], plateY: grid ? foot[3] - foot[1] : OW + K.dovetail,
+    plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
+    plateY: Math.max(grid ? foot[3] - foot[1] : OW + K.dovetail, wallPlateY),
+    plateZ: Math.max(deckPlateZ, wallPlateZ, o.base === "feet" ? 24 + K.pinH : 0),
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
 }
@@ -206,7 +215,7 @@ export function check(o: Options, d: Derived): string[] {
   const fitsSquare = d.plateX <= d.usableX && d.plateY <= d.usableY;
   const fitsTurned = d.plateY <= d.usableX && d.plateX <= d.usableY;
   if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
-  if (d.Hb > d.usableZ) w.push(`FAIL lane ${d.Hb.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
+  if (d.plateZ > d.usableZ) w.push(`FAIL plate ${d.plateZ.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
   if (d.inset && d.inset - o.wall < o.canD + 4) w.push(`FAIL chute ${(d.inset - o.wall).toFixed(0)} mm is narrower than a can - cans would jam at the drop`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");

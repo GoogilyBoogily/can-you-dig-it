@@ -1,7 +1,7 @@
 // The app's whole job is answering "does this fit?". These tests pin the cases
 // where it used to answer yes when the honest answer is no.
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve, check, type Options } from "../src/geometry";
+import { DEFAULTS, K, solve, check, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
 import { pack, bboxOf, type MeshData } from "../src/export";
 
@@ -34,10 +34,33 @@ test("check() rejects a lane that fits neither bed orientation", () => {
   expect(check(options, derived).some((warning) => warning.startsWith("FAIL"))).toBe(true);
 });
 
-test("check() rejects a lane taller than the printer", () => {
-  const options: Options = { ...DEFAULTS, length: 1000, slope: 4, bed: [256, 256, 100] };
+// Z is a plate's own thickness, not the assembly's height: every plate prints lying down.
+// The deck is the tall one because it carries the whole slope as a wedge.
+test("check() rejects a plate taller than the printer", () => {
+  const options: Options = { ...DEFAULTS, length: 1000, slope: 10, bed: [256, 256, 50] };
   const derived = solve(options);
+  expect(derived.plateZ).toBeGreaterThan(derived.usableZ);
   expect(check(options, derived).some((w) => w.startsWith("FAIL") && w.includes("taller"))).toBe(true);
+});
+
+// The guard used to compare the assembled tier height against Z, which no part has printed
+// at since the flat-pack. It cost a short-Z printer every layout it could actually make.
+test("check() passes a tall lane whose plates all print flat", () => {
+  const options: Options = { ...DEFAULTS, bed: [256, 256, 80] };
+  const derived = solve(options);
+  expect(derived.Hb).toBeGreaterThan(derived.usableZ);
+  expect(derived.plateZ).toBeLessThan(derived.usableZ);
+  expect(check(options, derived)).toEqual([]);
+});
+
+// A wall lies down to print, so its height becomes the bed's Y. Nothing else derives that,
+// and a lane whose walls overhang the bed used to be offered and then fail in the packer.
+test("plateY covers the laid wall, not just the deck", () => {
+  const options: Options = { ...DEFAULTS, canD: 150, canL: 100, slope: 10, length: 464, bed: [250, 210, 400] };
+  const derived = solve(options);
+  expect(derived.plateY).toBe(Math.max(derived.H, derived.Hb) + K.pinH);
+  expect(derived.plateY).toBeGreaterThan(derived.OW + K.dovetail);
+  expect(check(options, derived).some((w) => w.startsWith("FAIL"))).toBe(true);
 });
 
 // Z used to be measured against the raw bed height while X and Y both got their margin,
@@ -50,11 +73,11 @@ test("the Z limit leaves the same headroom X and Y get at each edge", () => {
 });
 
 test("check() rejects a lane that fits the bed height but not the margin", () => {
-  // Hb is the tallest part; put the bed exactly at it so only the margin can reject it.
-  const tallest = solve({ ...DEFAULTS, bedMargin: 4 }).Hb;
+  // plateZ is the tallest part; put the bed exactly at it so only the margin can reject it.
+  const tallest = solve({ ...DEFAULTS, bedMargin: 4 }).plateZ;
   const options: Options = { ...DEFAULTS, bed: [256, 256, tallest], bedMargin: 4 };
   const derived = solve(options);
-  expect(derived.Hb).toBeGreaterThan(derived.usableZ);
+  expect(derived.plateZ).toBeGreaterThan(derived.usableZ);
   expect(check(options, derived).some((w) => w.startsWith("FAIL") && w.includes("taller"))).toBe(true);
 });
 
