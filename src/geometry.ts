@@ -713,9 +713,14 @@ export function splitWall(g: Geo, o: Options, d: Derived, ln: Lane, wall: M): [M
  *  that face goes toward the cans. */
 export function buildLip(g: Geo, o: Options, d: Derived): M {
   const t = 5;
+  // The tab is as long as the deck is thick where it drops through, so it ends flush with
+  // the underside at every slope. The viewer stands the lip up with ry = 90 degrees, which
+  // maps (x, y, z) to (z, y, -x): this x is the insertion depth, and the t is what has to
+  // fit the 5.4 mm pocket. A fixed 6 protruded by 2 - 8*tan - up to a 2 mm stud at slope 0.
+  const tabLen = K.deckLo + K.lipInset * d.tan;
   const outline = g.roundedRect(K.lipH, d.IW - 1, 2.4).translate([-K.lipH / 2, 0]);
   const parts = [g.roundTop(g.prismZ(outline, t), outline, t, 2)];
-  for (const sy of [1, -1]) parts.push(g.box(6, 12, t, 3, sy * d.lipy, t / 2));
+  for (const sy of [1, -1]) parts.push(g.box(tabLen, 12, t, tabLen / 2, sy * d.lipy, t / 2));
   const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
   return g.diff(g.union(parts), [scoop]);
 }
@@ -749,8 +754,8 @@ function buildFoot(g: Geo, over: number): M {
  *  the alignment put it), a foot under every cell, and the riser's boss at ±px for the
  *  walls, which stand on the floor. The
  *  deck's underside is one plane with the wall bottoms, so every cut it has stops at
- *  z = 0; only the lip's 5 mm tab stood 0.58 mm proud of the pan, and its pocket goes on
- *  1 mm into the floor. Prints as it sits, feet down, like every bin. */
+ *  z = 0; the lip's tab now ends flush with the pan, and its pocket keeps 1 mm of
+ *  clearance under it for the fit. Prints as it sits, feet down, like every bin. */
 export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
   const { floorCells: [nx, ny], floor: [fx0, fy0, fx1, fy1] } = d;
   const footH = K.footChamferLo + K.footWall + K.footChamferHi;
