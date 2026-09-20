@@ -77,13 +77,13 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 ## Design rules that are not obvious from the code
 - Flat-pack (2026-09-18): a lane is four plates — deck, two side walls, end wall — each
   modelled in the orientation it prints in, outer face up, and stood up only in the
-  viewer. The rule every feature has to pass: it is in-plane (tab, notch, slot, dovetail,
+  viewer. The rule every feature has to pass: it is in-plane (tab, notch, slot, T-slot,
   hex cell), grows up from the print face (rib, pin, boss), or is a pocket in the print
   face (recess, groove). Nothing on the bed face, nothing under an edge. A hole a tab
   passes through has to be in a plate it crosses face to face (the deck's ears, the
   cover); a notch in a plate's edge is through its thickness and locates X only.
   `test/overhang.test.ts` holds every snapshot part to it (no downward face flatter than
-  45° off the bed; the dovetail flanks lean 56° and are the one exception). This exists
+  45° off the bed; no exceptions since 2026-09-20, when the 56° gang dovetail went). This exists
   because regular hexes cannot be self-supporting in a standing wall — every orientation
   of a 120° hexagon has a ceiling edge at ≤ 30° — and Bambu at its 30° threshold supported
   all of them. Spec in `docs/superpowers/specs/2026-09-18-flat-pack-design.md`.
@@ -104,12 +104,14 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   It stands on the deck end, flattened for the last `wall` mm, with a tab down through
   the deck and one each side into a bottom-edge notch of the side walls, so a tier
   assembles top down.
-- Long lanes split at x=0 with in-plane dovetails on the deck and on each wall (the wall
-  halves slide together in Y before they go on the deck). Half-laps are gone: a lap
-  printed face-up is a 10 mm cantilever.
+- Long lanes split at x=0 with in-plane T-slots on the deck and on each wall (`tSlot`:
+  a 30-wide neck 3 deep, a 40-wide head to 8; the wall's is 0.4H / 0.55H). The deck
+  halves drop together in Z, the wall halves slide together in Y before they go on the
+  deck; the head locks X. They were dovetails until 2026-09-20. Half-laps are gone: a
+  lap printed face-up is a 10 mm cantilever.
 - Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
   the whole point of the flat-pack. Only whole cells are cut, centred in the panel; a
-  cell touching a keep-out (dovetail, splice, end notch) is dropped, not clipped, so
+  cell touching a keep-out (rib band, splice, end notch) is dropped, not clipped, so
   every hole is the same shape and the solid bands read as intended. `hexAuto` sizes the radius so three rows fill the
   upper-deck wall; the ligament follows the radius (`ligFor`). The high-end wall gets the
   same lattice and recess. The standard cover is a grille with its own radius (three
@@ -124,22 +126,30 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   (`fieldBottom`): a square edge or a chord would bridge a notch where a hexagon only
   lands a tip; hex stays at the border so its snapshot did not move. Slats cannot be
   dropped whole, so they are cut per component of `panel − keep` and skip anything under
-  4R wide — that is what keeps the splice and dovetail bands solid. Slat cover takes the
+  4R wide — that is what keeps the splice and rib bands solid. Slat cover takes the
   whole-row path on both designs. Spec in
   `docs/superpowers/specs/2026-09-18-pattern-axis-design.md`.
   Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
   through the bottom border, with pads left over every ear notch (the notch's own width,
   so ear and pad read as one post) and the end-wall notch. The
-  dovetail bands stay full: the −Y face needs 3 mm behind its groove, and the +Y recess
-  cut runs 1 mm past the face and would sever the rib. Gang dovetails, their bands and
-  grooves exist only when `lanesWide > 1`; a lone lane's outer faces are flat
-  (`test/gang.test.ts`). In the minimal deck the fin-to-wall strip keeps an ear-high
+  rib bands stay full: the −Y face needs 3 mm behind its groove, and the +Y recess
+  cut runs 1 mm past the face and would sever the rib.
+  In the minimal deck the fin-to-wall strip keeps an ear-high
   plinth under each ear: rooted by 1 mm inside a 2.5 mm tie, the tab hole took all of
   it and the ears printed loose (`test/islands.test.ts`). Deck centre band is open with
   cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
   tongue's whole root (`test/splice.test.ts`).
+- Gang joint (2026-09-20, was a 56° dovetail): the +Y wall grows a tab-wide, 3 mm rib at
+  ±dtx (`dtxOf`, L/2 − 25), the −Y wall of the next lane takes it in a groove open at the
+  top, and the lanes slide together in Z. That locates X only — nothing on a wall face
+  can lock Y without an undercut — so a `gang-clip` (dogbone, 2.4 thick, 14 × 4 feet,
+  printed flat) drops into a pocket in each wall's top border at ±dtx and holds the joint
+  in Y; the tier above or the cover holds the clip down. Two clips per joint per tier.
+  Rib, groove, pockets and clip exist only when `gangs(o)`: `lanesWide > 1` and not on a
+  grid; a lone lane's outer faces are flat (`test/gang.test.ts`). Spec in
+  `docs/superpowers/specs/2026-09-20-sliding-slot-joints-design.md`.
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
   `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
   only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
@@ -182,7 +192,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   `o.across` / `o.along` (left, centre, right / front, centre, back) say which edge of
   its floor the lane is flush with, the spare going opposite. Lanes go a floor apart
   (`gangPitch = max(floorCells·42, OW + 0.5)`: a skirted lane on fewer cells than cover
-  it falls back to its own width), gang dovetails off. `d.foot` (lane ∪ floor) is what
+  it falls back to its own width), gang joint off. `d.foot` (lane ∪ floor) is what
   stands on the shelf, fits the bed and splits at x = 0 - through a foot as often as
   not; a foot cut square prints as it is and the pocket locks it. `o.magnets` cuts
   6.5 × 2.4 pockets on the 26 mm square in every foot, skipping any the seam would

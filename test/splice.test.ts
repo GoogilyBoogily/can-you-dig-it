@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve, laneOf, buildLanePlates, type LaneRole } from "../src/geometry";
+import { DEFAULTS, solve, laneOf, buildLanePlates, buildDeck, buildWall, splitDeck, splitWall, type LaneRole } from "../src/geometry";
 
 import { geo } from "./geo";
 
@@ -27,10 +27,23 @@ function rearDeckBehindSeam(role: LaneRole): number {
   return geo.isect(rear, probe).volume() / probe.volume();
 }
 
-// The deck dovetail tongue hangs off the rear half at x = 0. An interior cross-tie lands
+// The deck splice tongue hangs off the rear half at x = 0. An interior cross-tie lands
 // inside the splice band and, unmerged, its far edge started the next open cut at
 // x = 1.6 mm (bottom lane: 1.0 mm) - the tongue's whole root.
 test("the splice tongue is rooted in solid rear deck", () => {
   expect(rearDeckBehindSeam("top")).toBeCloseTo(1, 2);
   expect(rearDeckBehindSeam("bottom")).toBeCloseTo(1, 2);
+});
+
+// The T-slot at the seam: assembled, tongue and socket do not touch; pulled 1 mm apart in
+// X the head lands on the socket's shoulders. Deck and wall both.
+test("the splice T-slot locks the halves in X", () => {
+  const d = solve(DEFAULTS);
+  const ln = laneOf(DEFAULTS, d, "top");
+  const [deckFront, deckRear] = splitDeck(geo, DEFAULTS, d, ln, buildDeck(geo, DEFAULTS, d, ln));
+  const [wallFront, wallRear] = splitWall(geo, DEFAULTS, d, ln, buildWall(geo, DEFAULTS, d, ln, 1));
+  for (const [front, rear] of [[deckFront, deckRear], [wallFront, wallRear]]) {
+    expect(geo.isect(front, rear).volume()).toBeCloseTo(0, 6);
+    expect(geo.isect(front, rear.translate([1, 0, 0])).volume()).toBeGreaterThan(10);
+  }
 });

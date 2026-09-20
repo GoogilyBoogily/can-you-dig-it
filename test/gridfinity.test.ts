@@ -51,7 +51,7 @@ test("the unit hangs 7 mm below the deck; a foot protrudes with the profile, 35.
   expect(geo.isect(whole, geo.box(0.3, 30, 4, 4 * 42, 1.5 * 42, -5)).volume()).toBeCloseTo(0, 6);
 });
 
-test("the wall stands on the floor and its notch at ±px takes the boss; no gang dovetail on a grid", () => {
+test("the wall stands on the floor and its notch at ±px takes the boss; no gang rib on a grid", () => {
   const wall = buildLanePlates(geo, grid, d, "bottom").find((p) => p.name === "wall-tongue")!;
   const boss = geo.isect(whole, geo.box(20, 3, 2.4, d.px, d.piny, 1.2));
   expect(boss.volume()).toBeCloseTo(8 * 3 * 2.4, 0);

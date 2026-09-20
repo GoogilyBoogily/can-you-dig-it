@@ -35,9 +35,9 @@ test.each(PATTERNS.filter((p) => p !== "hex"))("%s leaves the wall solid over ev
   const d = solve(o);
   const ln = laneOf(o, d, "top");
   const wall = buildWall(geo, o, d, ln, 1);
-  const notchH = K.deckLo + K.dtCl + o.fit;
+  const notchH = K.deckLo + K.cl + o.fit;
   for (const tx of ln.tabs) {
-    const probe = geo.box(K.earW + 2 * K.dtCl, o.wall, 4, tx, d.IW / 2 + o.wall / 2, notchH + 2);
+    const probe = geo.box(K.earW + 2 * K.cl, o.wall, 4, tx, d.IW / 2 + o.wall / 2, notchH + 2);
     expect(geo.isect(wall, probe).volume()).toBeCloseTo(probe.volume(), 3);
   }
 });
@@ -65,7 +65,7 @@ test.each([...PATTERNS])("%s keeps the splice band of a long wall full thickness
 test.each([...PATTERNS])("%s auto radius puts three rows in the panel", (pattern) => {
   const o: Options = { ...DEFAULTS, pattern, hexAuto: true };
   const d = solve(o);
-  const lift = pattern === "hex" ? 0 : K.deckLo + K.dtCl + K.padRise - K.border;
+  const lift = pattern === "hex" ? 0 : K.deckLo + K.cl + K.padRise - K.border;
   const panel = geo.rect(-100, -d.H / 2 + K.border + lift, 100, d.H / 2 - K.border);
   expect(d.hexR).toBeGreaterThanOrEqual(8);
   expect(d.hexR).toBeLessThanOrEqual(16);

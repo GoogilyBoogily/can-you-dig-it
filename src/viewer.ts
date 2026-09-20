@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, laneName, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
+import { K, dtxOf, laneName, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
 import type { PartOut } from "./worker";
 
-const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
+const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, clip: 0xd8a04a, can: 0xc8372d, bed: 0x2a2e35 };
 
 export class Viewer {
   private scene = new THREE.Scene();
@@ -214,6 +214,10 @@ export class Viewer {
           const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : laneName(o, role, plate);
           if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }
           else putPlate(lane, name, plate, "");
+        }
+        // the gang clips on this tier's wall tops, over the gap to the next lane, flush
+        if (gI + 1 < o.lanesWide) for (const sx of [1, -1]) {
+          put(this.group, "gang-clip", sx * dtxOf(d), y + d.OW / 2 + K.gangGap / 2, z + (isBottom ? d.Hb : d.H) - K.pinH, false, [0, (gI + 0.5) * STEP, (t + 0.5) * STEP]);
         }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
         if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, K.deckLo + K.lipInset * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);

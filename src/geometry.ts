@@ -79,11 +79,17 @@ export const K = {
   padRise: 4, // a recess pad stands this far above the notch it guards
   hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
   border: 5, web: 3.5,
-  dovetail: 3, dtBase: 10, dtTip: 14, dtCl: 0.25,
+  cl: 0.25, // every joint's clearance a side, before `fit`
   // one tab for every joint: 8 wide, 3 thick, flush with the plate's inner face. A pin
   // is a tab as tall as the cover is thick, so it sits flush through the cover's hole
   tabW: 8, tabT: 3, pinH: 2.4, coverT: 2.4, sideTabH: 12, earW: 12,
-  spliceBase: 30, spliceTip: 40, spliceDepth: 8,
+  // ganged lanes sit gangGap apart, the +Y wall's tab-wide rib in the -Y wall's groove,
+  // and a dogbone clip pinH thick with clipFoot-wide feet in pockets on the wall tops
+  // holds them together in Y
+  gangGap: 3, clipFoot: 14, clipFootD: 4,
+  // the splice T-slot at x = 0: a spliceBase-wide neck spliceNeck deep, a spliceTip-wide
+  // head the rest of spliceDepth
+  spliceBase: 30, spliceTip: 40, spliceNeck: 3, spliceDepth: 8,
   // Gridfinity: 42 mm cells, a 7 mm unit; a bin is n·42 − 0.5 across. A foot, bottom
   // up: a 35.6 flat, 0.8 chamfer, 1.8 wall, 2.15 chamfer, 41.5 at the top, corners
   // concentric with r 3.75 at the top. Magnets 6 × 2 on a 26 mm square in every cell
@@ -131,7 +137,7 @@ function autoR(panelH: number, [a, b]: readonly [number, number]): number {
  *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
  *  across 12.5 mm, so every other pattern starts above the recess pads that guard the
  *  tab roots (notchH + padRise). Hex keeps the border so its snapshot does not move. */
-const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + K.dtCl + o.fit + K.padRise);
+const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + K.cl + o.fit + K.padRise);
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
@@ -171,7 +177,7 @@ export function solve(o: Options): Derived {
   // on a grid the lane's floor is the whole cells that cover it, or as many as the shelf
   // has (shelfCells) with the lane overhanging on a skirt, placed round the lane where
   // the alignment says. Lanes sit a floor apart: the baseplate joins them, not a
-  // dovetail. Lane and floor together have to fit the bed, so that is what splits at
+  // rib and clip. Lane and floor together have to fit the bed, so that is what splits at
   // x = 0 - through a foot as often as not; a foot cut square by the seam prints as it
   // is and the pocket locks it
   const grid = o.base === "gridfinity";
@@ -180,17 +186,17 @@ export function solve(o: Options): Derived {
   const [fy0, fy1] = grid ? alignSpan(OW, floorCells[1], o.across === "right" ? "lo" : o.across === "left" ? "hi" : "centre") : [-OW / 2, OW / 2];
   const foot: Derived["foot"] = [Math.min(fx0, -L / 2), Math.min(fy0, -OW / 2), Math.max(fx1, L / 2), Math.max(fy1, OW / 2)];
   const split = foot[2] - foot[0] > usableX;
-  const gangPitch = grid ? Math.max(floorCells[1] * K.gridPitch, OW + 2 * K.gridGap) : OW + K.dovetail;
+  const gangPitch = grid ? Math.max(floorCells[1] * K.gridPitch, OW + 2 * K.gridGap) : OW + K.gangGap;
   // What a plate needs on the bed, not what the assembly measures. layWall lays a wall
   // down, so its height becomes the bed's Y and its thickness the bed's Z; the deck is
   // the tall one, since it carries the whole slope. Getting this wrong either offers a
   // lane that cannot be packed or refuses one that prints flat.
-  // No K.dovetail here. The gang rib is on the wall's outer face, and layWall lays that
-  // face into Z - wallPlateZ below is where it is charged. gangPitch keeps its dovetail:
+  // No K.gangGap here. The gang rib is on the wall's outer face, and layWall lays that
+  // face into Z - wallPlateZ below is where it is charged. gangPitch keeps its gap:
   // that is the spacing between lanes on the shelf, not a plate's own footprint.
   const wallPlateY = Math.max(H, Hb) + K.pinH;
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
-  const wallPlateZ = o.wall + (o.lanesWide > 1 && !grid ? K.dovetail : 0);
+  const wallPlateZ = o.wall + (o.lanesWide > 1 && !grid ? K.gangGap : 0);
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - 40, py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
@@ -387,7 +393,7 @@ export class Geo {
    * Stadium openings 2R tall between 2t rails, one per row, each running the width of
    * its field component. One opening spans the field, so a keep-out cannot drop it whole:
    * the field is split at the keep-outs first and a component narrower than 4R is left
-   * solid, which keeps the strips beside the dovetail bands and the end notch blank.
+   * solid, which keeps the strips beside the rib bands and the end notch blank.
    */
   slats(R: number, t: number, panel: CS, keep: CS[]): CS | null {
     const rows: CS[] = [];
@@ -441,7 +447,7 @@ export class Geo {
 // ---------------------------------------------------------------- parts
 // Every plate is modelled in the orientation it prints in, outer face up, so the packer
 // only has to drop it on the bed. The rule each feature has to pass: it is in-plane (tab,
-// notch, slot, dovetail, hex cell), it grows up from the print face (rib, pin, boss), or it
+// notch, slot, T-slot, hex cell), it grows up from the print face (rib, pin, boss), or it
 // is a pocket in the print face (recess, groove). Nothing on the bed face, nothing under
 // an edge. test/overhang.test.ts holds every snapshot part to it.
 export type LaneRole = "top" | "mid" | "bottom";
@@ -450,6 +456,7 @@ export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
 export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
   lip: M; riser: M; cover: M[];
+  clip?: M; // the gang clip, when lanes gang
   gridDeck?: Plate; // the deck of the lane on the shelf, on its Gridfinity unit
 }
 
@@ -517,17 +524,16 @@ function tab(g: Geo, along: "x" | "y", len: number, cx: number, cy: number, z0: 
 }
 /** The hole a tab enters, through the full height given. */
 function tabHole(g: Geo, o: Options, along: "x" | "y", len: number, cx: number, cy: number, z0: number): M {
-  const c = 2 * (K.dtCl + o.fit);
+  const c = 2 * (K.cl + o.fit);
   const [sx, sy] = along === "x" ? [K.tabW + c, K.tabT + c] : [K.tabT + c, K.tabW + c];
   return g.box(sx, sy, len, cx, cy, z0 + len / 2);
 }
 
-const dtxOf = (d: Derived) => d.L / 2 - 25; // clear of the end tab band and the pin at px
+/** Whether the outer walls carry the gang joint: more than one lane, and not on a grid,
+ *  where the baseplate joins them. */
+const gangs = (o: Options) => o.lanesWide > 1 && o.base !== "gridfinity";
 
-/** The gang dovetail in plan: `base` wide on the wall face at y, `tip` wide K.dovetail out.
- *  The rib on the +Y wall and the groove in the -Y wall are the same trapezoid. */
-const dovetailCS = (g: Geo, dx: number, y: number, base: number, tip: number): CS =>
-  g.poly([[dx - base / 2, y], [dx + base / 2, y], [dx + tip / 2, y + K.dovetail], [dx - tip / 2, y + K.dovetail]]);
+export const dtxOf = (d: Derived) => d.L / 2 - 25; // the gang rib and clip: clear of the end tab band and the pin at px
 
 /** The deck's (x, z) profile: a wedge from the deck start to the end wall, flat past it,
  *  down to `zb` (below zero when a Gridfinity unit hangs under the pan). */
@@ -537,10 +543,10 @@ const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
 /** The pocket the lip's 5 × 12 tab drops into: 12.4 × 5.4 since the first cut, turned 90°
  *  from the tab it was for, plus fit. */
 const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: number): M =>
-  // K.dtCl + o.fit per side, the same form as tabHole. A bare 2 * o.fit on the old magic
+  // K.cl + o.fit per side, the same form as tabHole. A bare 2 * o.fit on the old magic
   // 5.4 put the clearance at exactly zero at fit -0.2, which the narrowed LIMITS.fit makes
   // one drag away; every other joint still holds 0.05 mm a side there.
-  g.box(5 + 2 * (K.dtCl + o.fit), 12 + 2 * (K.dtCl + o.fit), h, x, y, z0);
+  g.box(5 + 2 * (K.cl + o.fit), 12 + 2 * (K.cl + o.fit), h, x, y, z0);
 
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
@@ -582,41 +588,51 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   return g.diff(g.union(adds), cuts);
 }
 
-/** A side wall in the lane frame, before it is laid flat: sy = +1 carries the dovetail
- *  tongue rib, -1 the groove, when lanes gang; a single lane's outer faces stay flat.
+/** A side wall in the lane frame, before it is laid flat: sy = +1 carries the gang rib,
+ *  -1 the groove, and both a clip pocket on top, when lanes gang; a single lane's outer
+ *  faces stay flat.
  *  Stands on the shelf or on the wall top of the tier below, full height, and notches
  *  over the deck's ears with a tab down through each. */
 export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number): M {
   const { L, IW, OW } = d;
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
-  const c = K.dtCl + o.fit;
-  const gang = o.lanesWide > 1 && o.base !== "gridfinity"; // on a grid the baseplate joins lanes
+  const c = K.cl + o.fit;
+  const gang = gangs(o);
   const piny = sy * d.piny;
   const notchH = K.deckLo + c;
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const tx of ln.tabs) adds.push(tab(g, "x", notchH + 1, tx, piny, 0));
   for (const sx of [1, -1]) adds.push(tab(g, "x", K.pinH + 1, sx * d.px, piny, H - 1));
-  if (gang && sy > 0) adds.push(...wallDovetailRibs(g, d, H));
+  if (gang && sy > 0) adds.push(...wallRibs(g, d, H));
   const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
   cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH));
-  if (gang && sy < 0) cuts.push(...wallDovetailGrooves(g, d, H, c));
+  if (gang && sy < 0) cuts.push(...wallGrooves(g, d, H, c));
+  if (gang) cuts.push(...clipPockets(g, o, d, H, sy, c));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH, gang));
   return g.diff(g.union(adds), cuts);
 }
 
-const RIB_Z = 8; // the gang dovetail starts this far up the wall, clear of the ear notches
+const RIB_Z = 8; // the gang rib starts this far up the wall, clear of the ear notches
 
-/** The dovetail ribs on the +Y face, one each side of the seam, stopping 12 mm short of the top. */
-function wallDovetailRibs(g: Geo, d: Derived, H: number): M[] {
-  const dtx = dtxOf(d);
-  return [-dtx, dtx].map((dx) => g.prismZ(dovetailCS(g, dx, d.OW / 2, K.dtBase, K.dtTip), H - 12 - RIB_Z, RIB_Z));
+/** The ribs on the +Y face, tab-wide and gangGap out, one each side of the seam, stopping
+ *  12 mm short of the top. They locate the next lane in X; the clip holds it in Y. */
+function wallRibs(g: Geo, d: Derived, H: number): M[] {
+  const h = H - 12 - RIB_Z;
+  return [-1, 1].map((sx) => g.box(K.tabW, K.gangGap, h, sx * dtxOf(d), d.OW / 2 + K.gangGap / 2, RIB_Z + h / 2));
 }
 
 /** The grooves in the -Y face the neighbour's ribs slide into, the rib plus clearance, open at the top. */
-function wallDovetailGrooves(g: Geo, d: Derived, H: number, c: number): M[] {
-  const dtx = dtxOf(d);
-  return [-dtx, dtx].map((dx) => g.prismZ(dovetailCS(g, dx, -d.OW / 2, K.dtBase + 2 * c, K.dtTip + 2 * c), H + 2, RIB_Z - 1));
+function wallGrooves(g: Geo, d: Derived, H: number, c: number): M[] {
+  return [-1, 1].map((sx) => g.box(K.tabW + 2 * c, K.gangGap + 1, H + 2, sx * dtxOf(d), -d.OW / 2 + K.gangGap / 2 - 0.5, RIB_Z - 1 + (H + 2) / 2));
+}
+
+/** A pocket for one clip foot in the top border over each rib or groove: open at the top
+ *  edge and the outer face, clipFootD in from that face, pinH deep so the clip sits flush
+ *  under the tier above. A pocket in the print face whose floor is off the bed. */
+function clipPockets(g: Geo, o: Options, d: Derived, H: number, sy: number, c: number): M[] {
+  const depth = K.clipFootD + c;
+  return [-1, 1].map((sx) => g.box(K.clipFoot + 2 * c, depth + 1, K.pinH + 1, sx * dtxOf(d), sy * (d.OW / 2 - depth / 2 + 0.5), H - K.pinH / 2 + 0.5));
 }
 
 /** What keys the wall: a notch over each deck ear with the wall's own tab left standing in
@@ -632,14 +648,14 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
 }
 
 /** The lattice through the wall and the recess of its outer face down to a web, both
- *  clear of the dovetail bands, the splice band and the end notch. */
+ *  clear of the rib bands, the splice band and the end notch. */
 function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, gang: boolean): M[] {
   const { L, IW, OW } = d;
   const H = ln.H, b = K.border;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const dtx = dtxOf(d);
   const keep: CS[] = [];
-  if (gang) for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.dtTip / 2 - 2.5, 0, dx + K.dtTip / 2 + 2.5, H));
+  if (gang) for (const dx of [-dtx, dtx]) keep.push(g.rect(dx - K.clipFoot / 2 - 2.5, 0, dx + K.clipFoot / 2 + 2.5, H));
   if (d.split) keep.push(g.rect(-K.spliceDepth - 2.5, 0, 2.5, H));
   const endNotch = g.rect(ln.xe - 3, -1, L / 2 + 1, ln.te + K.sideTabH + K.padRise);
   keep.push(endNotch);
@@ -707,9 +723,9 @@ export function layEndWall(m: M, xe: number): M {
   return m.translate([-xe, 0, 0]).rotate([0, -90, 0]);
 }
 
-/** Cut a plate at x=0 into a front and a rear half joined by an in-plane dovetail: the
+/** Cut a plate at x=0 into a front and a rear half joined by an in-plane T-slot: the
  *  rear keeps the tongue, the front gets the socket. `tongue` and `socket` are the
- *  trapezoid profiles, rear-pointing, already extruded through the plate. */
+ *  T profiles, rear-pointing, already extruded through the plate. */
 function splitPlate(g: Geo, plate: M, tongue: M, socket: M): [M, M] {
   const bb = plate.boundingBox();
   const big = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]) * 2 + 20;
@@ -718,30 +734,35 @@ function splitPlate(g: Geo, plate: M, tongue: M, socket: M): [M, M] {
   return [front, rear];
 }
 
-const trapezoid = (base: number, tip: number, depth: number, vc: number, grow = 0): Vec2[] => [
-  [0.5, vc - base / 2 - grow], [0.5, vc + base / 2 + grow], [-depth - grow, vc + tip / 2 + grow], [-depth - grow, vc - tip / 2 - grow],
-];
+/** The T in profile, pointing -X from the seam: a `neck`-wide neck spliceNeck deep, then a
+ *  `head`-wide head to spliceDepth, centred on `vc`. The socket is this grown by the
+ *  clearance: a miter offset of a right-angled outline is the same outline, bigger. */
+const tSlot = (g: Geo, neck: number, head: number, vc: number, grow = 0): CS => {
+  const n = neck / 2, h = head / 2, xn = -K.spliceNeck, xh = -K.spliceDepth;
+  const t = g.poly([[0.5, vc - n], [0.5, vc + n], [xn, vc + n], [xn, vc + h], [xh, vc + h], [xh, vc - h], [xn, vc - h], [xn, vc - n]]);
+  return grow ? t.offset(grow, "Miter") : t;
+};
 
-/** Deck: the tongue is the wedge itself inside the trapezoid, so it carries the slope.
+/** Deck: the tongue is the wedge itself inside the T, so it carries the slope.
  *  `zb` is the deck's underside: a grid deck's floor and feet hang below the pan, and
  *  the tongue takes them too, so it stands on the bed instead of over the socket. */
 export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): [M, M] {
-  const cl = K.dtCl + o.fit;
+  const cl = K.cl + o.fit;
   const w = d.plateY; // wider than any tongue; the floor of a grid deck is this wide
   const wedge = g.prismY(deckProfile(g, d, ln, zb), w, -w / 2);
-  const tongue = g.isect(wedge, g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0)), ln.H - zb, zb - 1));
-  const socket = g.prismZ(g.poly(trapezoid(K.spliceBase, K.spliceTip, K.spliceDepth, 0, cl)), ln.H + 2 - zb, zb - 1);
+  const tongue = g.isect(wedge, g.prismZ(tSlot(g, K.spliceBase, K.spliceTip, 0), ln.H - zb, zb - 1));
+  const socket = g.prismZ(tSlot(g, K.spliceBase, K.spliceTip, 0, cl), ln.H + 2 - zb, zb - 1);
   return splitPlate(g, deck, tongue, socket);
 }
 
 
-/** Wall: the same dovetail sized to the wall height at the seam, slid together in Y
- *  before the wall goes on the deck. Runs on the wall in the lane frame. */
+/** Wall: the same T sized to the wall height at the seam, slid together in Y before
+ *  the wall goes on the deck. Runs on the wall in the lane frame. */
 export function splitWall(g: Geo, o: Options, d: Derived, ln: Lane, wall: M): [M, M] {
-  const cl = K.dtCl + o.fit;
-  const zc = ln.H / 2, base = 0.4 * ln.H, tip = 0.55 * ln.H;
-  const through = (pts: Vec2[]) => g.prismY(g.poly(pts), d.OW + 2, -d.OW / 2 - 1);
-  return splitPlate(g, wall, through(trapezoid(base, tip, K.spliceDepth, zc)), through(trapezoid(base, tip, K.spliceDepth, zc, cl)));
+  const cl = K.cl + o.fit;
+  const zc = ln.H / 2, neck = 0.4 * ln.H, head = 0.55 * ln.H;
+  const through = (cs: CS) => g.prismY(cs, d.OW + 2, -d.OW / 2 - 1);
+  return splitPlate(g, wall, through(tSlot(g, neck, head, zc)), through(tSlot(g, neck, head, zc, cl)));
 }
 
 /** The dispense lip, flat on its back: blade x ∈ [-lipH, 0], tabs past x = 0 in the bed
@@ -761,6 +782,16 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   for (const sy of [1, -1]) parts.push(g.box(tabLen, 12, t, tabLen / 2, sy * d.lipy, t / 2));
   const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
   return g.diff(g.union(parts), [scoop]);
+}
+
+/** The gang clip, flat: a bar over the gap between two lanes with a foot each end in the
+ *  walls' top pockets. Pull the lanes apart and a foot bears on its pocket's inner wall.
+ *  Printed as it lies, with fit taken off the feet the way every tab takes it off the hole. */
+export function buildClip(g: Geo, o: Options): M {
+  const t = K.pinH, foot = K.clipFoot - 2 * o.fit, depth = K.clipFootD - o.fit;
+  const parts = [g.box(K.tabW, K.gangGap + 2 * depth, t, 0, 0, t / 2)];
+  for (const sy of [1, -1]) parts.push(g.box(foot, depth, t, 0, sy * (K.gangGap + depth) / 2, t / 2));
+  return g.union(parts);
 }
 
 /** A foot under a wall at ±px: as thick as the wall, since the deck starts at the wall's
@@ -923,7 +954,7 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole):
  *  cover is off, and those are exactly the ones left behind. */
 export function freeSet(set: PartSet): void {
   for (const lane of set.lanes) for (const plate of lane.plates) for (const mesh of [plate.whole, plate.front, plate.rear]) mesh?.delete();
-  for (const mesh of [set.lip, set.riser, set.gridDeck?.whole, set.gridDeck?.front, set.gridDeck?.rear]) mesh?.delete();
+  for (const mesh of [set.lip, set.riser, set.clip, set.gridDeck?.whole, set.gridDeck?.front, set.gridDeck?.rear]) mesh?.delete();
   for (const mesh of set.cover) mesh.delete();
 }
 
@@ -935,6 +966,7 @@ export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
     lip: buildLip(g, o, d),
     riser: buildRiser(g, o, 24),
     cover: o.cover ? buildCover(g, o, d) : [],
+    clip: gangs(o) ? buildClip(g, o) : undefined,
     gridDeck: o.base === "gridfinity" ? buildGridDeckPlate(g, o, d, cascade ? "bottom" : "top") : undefined,
   };
 }
@@ -949,7 +981,7 @@ function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Pla
 }
 
 // ---------------------------------------------------------------- the print list
-export type PartRole = "lane" | "lip" | "riser" | "cover";
+export type PartRole = "lane" | "lip" | "riser" | "cover" | "clip";
 export interface Part { name: string; mesh: M; qty: number; role: PartRole }
 
 /** The name a lane plate prints under. A flat stack's tiers are all the same lane, so
@@ -959,7 +991,8 @@ export const laneName = (o: Options, role: LaneRole, plate: PlateName) =>
 
 /** Every part to print, named and counted, in the order they are packed. A split plate
  *  is two parts, -front and -rear. On a Gridfinity base the shelf lane's deck is
- *  grid-deck and its plain deck is not printed; risers only come with feet. */
+ *  grid-deck and its plain deck is not printed; risers only come with feet, clips with a
+ *  gang: two per joint per tier. */
 export function partList(set: PartSet, o: Options): Part[] {
   const parts: Part[] = [];
   const add = (name: string, mesh: M | undefined, qty: number, role: PartRole) => {
@@ -981,6 +1014,7 @@ export function partList(set: PartSet, o: Options): Part[] {
   if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
   add("end-lip", set.lip, o.lanesWide * (o.cascade ? 1 : o.tiers), "lip");
   if (o.base === "feet") add("riser-24", set.riser, o.lanesWide * 4, "riser");
+  add("gang-clip", set.clip, 2 * (o.lanesWide - 1) * o.tiers, "clip");
   set.cover.forEach((mesh, i) => add(set.cover.length > 1 ? (i === 0 ? "cover-front" : "cover-rear") : "cover", mesh, o.lanesWide, "cover"));
   return parts;
 }

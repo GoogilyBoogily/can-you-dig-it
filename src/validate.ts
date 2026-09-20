@@ -22,7 +22,7 @@ export const LIMITS: Record<string, Limit> = {
   lipGap: { min: 0, max: 20, label: "lip headroom" },
   // fit is a tolerance offset, not a dimension: 0 is the default and negative is valid.
   // These are the range input's own bounds, and they have to stay that way. The geometry
-  // does not survive the old -2: K.tabT + 2*(dtCl + fit) goes negative below -1.75, which
+  // does not survive the old -2: K.tabT + 2*(cl + fit) goes negative below -1.75, which
   // makes g.box() return an InvalidConstruction with no vertices, and nothing throws.
   fit: { min: -0.2, max: 0.3, label: "fit" },
 };

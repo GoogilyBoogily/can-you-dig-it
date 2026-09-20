@@ -59,7 +59,7 @@ test("plateY covers the laid wall, not just the deck", () => {
   const options: Options = { ...DEFAULTS, canD: 150, canL: 100, slope: 10, length: 464, bed: [250, 210, 400] };
   const derived = solve(options);
   expect(derived.plateY).toBe(Math.max(derived.H, derived.Hb) + K.pinH);
-  expect(derived.plateY).toBeGreaterThan(derived.OW + K.dovetail);
+  expect(derived.plateY).toBeGreaterThan(derived.OW + K.gangGap);
   expect(check(options, derived).some((w) => w.startsWith("FAIL"))).toBe(true);
 });
 

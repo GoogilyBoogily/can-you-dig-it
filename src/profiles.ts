@@ -74,7 +74,7 @@ export const describePicks = (index: ProfileIndex, picks: Picks) => {
 // its height. Lines run at 45° so no tab has them parallel to its root (0° put
 // every wall tab's lines along the root); a flat plate looks the same at any one angle.
 // Every plate prints flat and overhang-free, so fan off costs nothing here, and the
-// overhang fan stays off too or the dovetail groove's 13 % flank gets a frosted band.
+// overhang fan stays off too: there is no downward face left for it to find.
 // 270 °C is PETG's number and would cook PLA, so it is gated on the filament label.
 //
 // Speeds are per extruder variant (Standard, High Flow, ...), one slot per entry of the

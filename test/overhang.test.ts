@@ -6,9 +6,9 @@ const parts = snapshotParts();
 
 // Every plate prints as modelled, so a face that points down and is not on the bed is
 // an overhang the slicer will want to support. The flat-pack rule in one number: none
-// flatter than 45°. The dovetail rib and groove lean 56°, and the Gridfinity foot's
-// chamfers sit on the line at 45° as the spec draws them; those are the only downward
-// faces meant to exist. A bridge or a flat underside is a joint on the wrong face - bar
+// flatter than 45°. The Gridfinity foot's chamfers sit on the line at 45° as the spec
+// draws them, and those are the only downward faces meant to exist; every joint is
+// straight-sided. A bridge or a flat underside is a joint on the wrong face - bar
 // one: a magnet pocket's ceiling is a 6.5 mm bridge, the way every bin prints it, so a
 // magnet part may have flat faces at the pocket depth and nowhere else.
 const STEEPEST_OVERHANG = Math.cos(Math.PI / 4) + 1e-4; // |n.z| of a 45° face, 0.01° of noise allowed
@@ -40,7 +40,7 @@ for (const [name, mesh] of Object.entries(parts)) {
   });
 }
 
-// The flat-pack rule has to hold at a widened fit too. fieldBottom is K.deckLo + K.dtCl +
+// The flat-pack rule has to hold at a widened fit too. fieldBottom is K.deckLo + K.cl +
 // o.fit + K.padRise for every pattern but hex, so fit moves where the lattice starts and
 // can walk a cell onto an ear notch or a bottom border; the notches and pockets it widens
 // can turn a wall into a bridge.
