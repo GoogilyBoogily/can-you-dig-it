@@ -606,8 +606,9 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // up to a 2 mm stud at slope 0.
   const tabLen = K.deckLo + K.lipInset * d.tan;
   // The blade drops between the wall inner faces, so its width is a clearance like any
-  // other and takes fit per side. It was a flat 0.5 mm however the fit was set.
-  const outline = g.roundedRect(K.lipH, d.IW - 1 - 2 * o.fit, 2.4).translate([-K.lipH / 2, 0]);
+  // other: K.cl + fit a side. It was a flat 0.5 mm a side however the fit was set, then
+  // 0.5 + fit; now the same 0.25 every other joint gets.
+  const outline = g.roundedRect(K.lipH, d.IW - 2 * clearanceOf(o), 2.4).translate([-K.lipH / 2, 0]);
   const parts = [roundTop(g, g.prismZ(outline, t), outline, t, 2)];
   for (const sy of [1, -1]) {
     const tab = lipTab(g, tabLen);
