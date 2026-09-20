@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { K, DEFAULTS, PATTERNS, ROWS, solve, laneOf, buildWall, buildEndWall, buildCover, type Options } from "../src/geometry";
+import { cellsOf } from "../src/features/lattice";
 
 import { geo } from "./geo";
 
@@ -70,7 +71,7 @@ test.each([...PATTERNS])("%s auto radius puts three rows in the panel", (pattern
   expect(d.hexR).toBeGreaterThanOrEqual(8);
   expect(d.hexR).toBeLessThanOrEqual(16);
 
-  const field = geo.cellsOf(pattern, d.hexR, d.lig, panel, []);
+  const field = cellsOf(geo, pattern, d.hexR, d.lig, panel, []);
   expect(field, `${pattern} cut no cells at all`).not.toBeNull();
   const centres = field!.decompose().map((cell) => { const b = cell.bounds(); return (b.min[1] + b.max[1]) / 2; }).sort((x, y) => x - y);
   const rows = centres.filter((y, i) => i === 0 || y - centres[i - 1]! > d.hexR);
