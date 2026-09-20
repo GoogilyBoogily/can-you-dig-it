@@ -29,7 +29,7 @@ export function platePose(plate: PlateName, IW: number, xe: number): Pose {
 }
 
 /** The lip is built lying on its back with the blade at x ≤ 0; standing, the blade rises
- *  from the deck at the lip pocket, whose near edge is lipInset - half the 5 mm tab in
- *  from the deck start. (5 becomes K.lipTabT when the lip joint moves here.) */
+ *  from the deck at the lip pocket, whose near edge is lipInset - half the lipTabT tab in
+ *  from the deck start. */
 export const lipPose = (xd: number, tan: number): Pose =>
-  ({ rotate: [0, 90, 0], translate: [xd + K.lipInset - 5 / 2, 0, K.deckLo + K.lipInset * tan] });
+  ({ rotate: [0, 90, 0], translate: [xd + K.lipInset - K.lipTabT / 2, 0, K.deckLo + K.lipInset * tan] });

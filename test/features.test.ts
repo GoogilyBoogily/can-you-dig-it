@@ -4,7 +4,8 @@
 import { test, expect } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile } from "../src/features/joints";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket } from "../src/features/joints";
+import { stand, lipPose } from "../src/features/pose";
 import { geo } from "./geo";
 
 test("clearance is K.cl plus fit, and the overshoot is 1 mm", () => {
@@ -60,4 +61,13 @@ test("the gang T: tongue inside socket at every clearance", () => {
 test("the gang anchors agree across the pitch", () => {
   const d = solve(DEFAULTS);
   expect(gangInner(DEFAULTS, d) - d.gangPitch).toBeCloseTo(-d.IW / 2, 9);
+});
+
+test("the lip tab, stood up, sits inside its pocket", () => {
+  for (const clearance of [K.cl, K.cl + 0.3]) {
+    const tab = stand(lipTab(geo, 4.4), lipPose(-K.lipInset + K.lipTabT / 2, 0)); // pose puts the pocket's near edge at x = 0 here
+    const pocket = lipPocket(geo, clearance, 40, 10).translate([K.lipTabT / 2, 0, 0]);
+    expect(geo.isect(tab, pocket).volume()).toBeCloseTo(tab.volume(), 3);
+    expect(pocket.boundingBox().max[1] - tab.boundingBox().max[1]).toBeCloseTo(clearance, 6);
+  }
 });

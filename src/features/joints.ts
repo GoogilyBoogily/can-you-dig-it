@@ -45,6 +45,20 @@ export function tSlotJoint(g: Geo, spec: { neck: number; head: number; clearance
 export const tabBox = (g: Geo, len: number, wall: number, z0: number): M =>
   g.box(K.tabW, K.tabT, len, 0, (K.tabT - wall) / 2, z0 + len / 2);
 
+/** The lip's tab, as the lip lies to print: `len` along x from 0, lipTabW across y,
+ *  lipTabT thick from z = 0. */
+export const lipTab = (g: Geo, len: number): M =>
+  g.box(len, K.lipTabW, K.lipTabT, len / 2, 0, K.lipTabT / 2);
+
+/** The pocket that tab drops into, cut in the deck with the tab standing: lipTabT along x,
+ *  lipTabW along y, each plus the clearance a side, `h` tall centred on z = zc. Was
+ *  12.4 × 5.4 since the first cut: a bare `2 * o.fit` on that old magic number put the
+ *  clearance at exactly zero at fit -0.2, which the narrowed LIMITS.fit makes one drag
+ *  away; every other joint still holds 0.05 mm a side there, hence `clearance` here rather
+ *  than `o.fit`. */
+export const lipPocket = (g: Geo, clearance: number, h: number, zc: number): M =>
+  g.box(K.lipTabT + 2 * clearance, K.lipTabW + 2 * clearance, h, 0, 0, zc);
+
 /** The gang joint the deck carries: an ear-wide run back to the ear root, then a T
  *  (ear-wide neck, gangHead head, the splice depths) pointing +Y from the origin. The
  *  socket is the grown T cut through the neighbour's rail from below the deck. */

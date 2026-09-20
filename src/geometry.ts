@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, gangJoint } from "./features/joints";
+import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -88,6 +88,9 @@ export const K = {
   // the deck end (laneOf's tabIn), and the two rules that keep an ear clear of a pin
   // (laneOf's clear, check) derive from these, so they move together
   tabW: 16, tabT: 3, pinH: 2.4, coverT: 2.4, earW: 24,
+  // the lip's tab is its own shape, 5 thick by 12 wide, and its pocket is turned 90° from
+  // it: the lip lies on its back to print and stands on the deck
+  lipTabT: 5, lipTabW: 12,
   // the corner is a cross-lap: the end wall stands `post` in from the lane end so the
   // side wall keeps a post behind it that closes its slot, and each plate is slotted -
   // the end wall from its bottom edge up `lap`, the side wall from its top edge down to
@@ -574,14 +577,6 @@ export const gangInner = (o: Options, d: Derived) => d.OW / 2 + K.gangGap + o.wa
 const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
   g.poly([[ln.xd, zb], [d.L / 2, zb], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]);
 
-/** The pocket the lip's 5 × 12 tab drops into: 12.4 × 5.4 since the first cut, turned 90°
- *  from the tab it was for, plus fit. */
-const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: number): M =>
-  // K.cl + o.fit per side, the same form as tabHole. A bare 2 * o.fit on the old magic
-  // 5.4 put the clearance at exactly zero at fit -0.2, which the narrowed LIMITS.fit makes
-  // one drag away; every other joint still holds 0.05 mm a side there.
-  g.box(5 + 2 * clearanceOf(o), 12 + 2 * clearanceOf(o), h, x, y, z0);
-
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
   const minimal = o.design === "minimal";
@@ -630,7 +625,9 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   }
   for (const sy of [1, -1]) {
     for (const tx of ln.tabs) cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, sy * d.piny, -1));
-    cuts.push(lipPocket(g, o, ln.lipx, sy * d.lipy, 40, 10));
+    const pocket = lipPocket(g, clearanceOf(o), 40, 10);
+    cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
+    pocket.delete();
   }
   return g.diff(g.union(adds), cuts);
 }
@@ -775,7 +772,7 @@ export function splitWall(g: Geo, d: Derived, wall: M): [M, M] {
  *  plane, the scoop a vertical cylinder past the top edge. The face-up edges round, and
  *  that face goes toward the cans. */
 export function buildLip(g: Geo, o: Options, d: Derived): M {
-  const t = 5;
+  const t = K.lipTabT;
   // The tab is as long as the deck is thick where it drops through, so it ends flush with
   // the underside at every slope. The viewer stands the lip up with ry = 90 degrees, which
   // maps (x, y, z) to (z, y, -x): this x is the insertion depth, and the t is what has to
@@ -785,7 +782,11 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // other and takes fit per side. It was a flat 0.5 mm however the fit was set.
   const outline = g.roundedRect(K.lipH, d.IW - 1 - 2 * o.fit, 2.4).translate([-K.lipH / 2, 0]);
   const parts = [g.roundTop(g.prismZ(outline, t), outline, t, 2)];
-  for (const sy of [1, -1]) parts.push(g.box(tabLen, 12, t, tabLen / 2, sy * d.lipy, t / 2));
+  for (const sy of [1, -1]) {
+    const tab = lipTab(g, tabLen);
+    parts.push(tab.translate([0, sy * d.lipy, 0]));
+    tab.delete();
+  }
   const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
   return g.diff(g.union(parts), [scoop]);
 }
@@ -858,7 +859,11 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   ];
   if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
   for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(tab(g, "x", K.pinH, sx * d.px, sy * d.piny, 0));
-  for (const sy of [1, -1]) cuts.push(lipPocket(g, o, ln.lipx, sy * d.lipy, 2, 0));
+  for (const sy of [1, -1]) {
+    const pocket = lipPocket(g, clearanceOf(o), 2, 0);
+    cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
+    pocket.delete();
+  }
   return g.diff(g.union(adds), cuts);
 }
 
