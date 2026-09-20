@@ -111,6 +111,10 @@ function refit(want = 0) {
 function choose(i: number) {
   chosen = layouts[i];
   chosenIndex = i;
+  // Retire the in-flight build here, not when the debounce fires. chosen has already
+  // moved on, so a result still carrying the old id would be welded to the new layout:
+  // new capacity over old geometry, and the downloads unlocked on top of it.
+  buildId++;
   clearTimeout(buildTimer);
   setBuildPending(true);
   buildTimer = window.setTimeout(build, 250);
@@ -120,6 +124,7 @@ function choose(i: number) {
  *  downloads cannot hand out geometry for numbers that are gone. */
 function dropBuild() {
   chosen = null; chosenIndex = 0; built = null;
+  for (const id of ["dl3mf", "dlstl"]) $<HTMLButtonElement>(id).disabled = true; // nothing to export
   $("results").hidden = true;
   $("tabs").innerHTML = "";
   for (const id of ["showCans", "explode", "showGrid", "showBed"]) $(id).hidden = true;
@@ -136,7 +141,7 @@ function setBuildPending(pending: boolean) {
 function build() {
   if (!chosen) return;
   if (workerDead) { setStatus(workerDead); return; } // posting to a dead worker would only overwrite the message
-  const id = ++buildId;
+  const id = buildId; // choose() already claimed it
   setBuildPending(true);
   setStatus("Building parts…", true);
   const req: Req = { type: "build", id, options: chosen.options };
@@ -148,7 +153,9 @@ worker.onmessage = (e: MessageEvent<Res>) => {
   if (r.type === "error") {
     // Only the build on screen may re-enable downloads: a superseded build's error, or an
     // export's, must not unlock an export of whatever the worker built before it.
-    if (r.of === "build" && r.id === buildId) setBuildPending(false);
+    // The build on screen failed, so take it off: leaving it up re-enables the downloads
+    // over the previous build's geometry, under an error about this one.
+    if (r.of === "build" && r.id === buildId) { setBuildPending(false); dropBuild(); }
     fail(`Something went wrong: ${r.message}`);
     return;
   }

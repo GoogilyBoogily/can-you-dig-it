@@ -80,10 +80,15 @@ test("an invalid form or a shelf nothing fits takes the old build and its downlo
   expect(await page.isHidden("#results")).toBe(true);
   expect(await page.locator("#tabs button").count()).toBe(0);
   expect(await page.isVisible("#showCans")).toBe(false);
+  // The name of this test promised the downloads went too, and only the panel did: the
+  // buttons stayed live over geometry the form no longer describes.
+  expect(await page.locator("#dl3mf").isDisabled()).toBe(true);
+  expect(await page.locator("#dlstl").isDisabled()).toBe(true);
   await page.fill("#form [name=w]", "60");
   await page.fill("#form [name=h]", "60");
   await page.waitForFunction(() => document.getElementById("status")!.textContent!.startsWith("Nothing fits"));
   expect(await page.isHidden("#results")).toBe(true);
+  expect(await page.locator("#dl3mf").isDisabled()).toBe(true);
   await page.close();
 });
 
