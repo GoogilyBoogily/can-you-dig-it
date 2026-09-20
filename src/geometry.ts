@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf } from "./features/joints";
+import { clearanceOf, tSlotJoint, tProfile } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -585,7 +585,7 @@ const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: numb
 /** The T, pointing +Y from `y0` at `tx`, that ends a gang tongue and, grown by the
  *  clearance, is the socket it drops into. */
 const gangT = (g: Geo, tx: number, y0: number, grow = 0): CS =>
-  tSlot(g, K.earW, K.gangHead, 0, grow).rotate(-90).translate([tx, y0]);
+  tProfile(g, K.earW, K.gangHead, grow).rotate(-90).translate([tx, y0]);
 
 /** A +Y ear run on as a tongue: ear-wide from its root to the neighbour wall's inner
  *  face, so both walls notch over it, then the T into the neighbour's rail. */
@@ -766,25 +766,15 @@ function splitPlate(g: Geo, plate: M, tongue: M, socket: M): [M, M] {
   return [front, rear];
 }
 
-/** The T in profile, pointing -X from the seam: a `neck`-wide neck spliceNeck deep, then a
- *  `head`-wide head to spliceDepth, centred on `vc`. The socket is this grown by the
- *  clearance: a miter offset of a right-angled outline is the same outline, bigger. */
-const tSlot = (g: Geo, neck: number, head: number, vc: number, grow = 0): CS => {
-  const n = neck / 2, h = head / 2, xn = -K.spliceNeck, xh = -K.spliceDepth;
-  const t = g.poly([[0.5, vc - n], [0.5, vc + n], [xn, vc + n], [xn, vc + h], [xh, vc + h], [xh, vc - h], [xn, vc - h], [xn, vc - n]]);
-  return grow ? t.offset(grow, "Miter") : t;
-};
-
 /** Deck: the tongue is the wedge itself inside the T, so it carries the slope.
  *  `zb` is the deck's underside: a grid deck's floor and feet hang below the pan, and
  *  the tongue takes them too, so it stands on the bed instead of over the socket. */
 export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): [M, M] {
-  const cl = clearanceOf(o);
   const w = d.plateY; // wider than any tongue; the floor of a grid deck is this wide
   const wedge = g.prismY(deckProfile(g, d, ln, zb), w, -w / 2);
-  const tongue = g.isect(wedge, g.prismZ(tSlot(g, K.spliceBase, K.spliceTip, 0), ln.H - zb, zb - 1));
-  const socket = g.prismZ(tSlot(g, K.spliceBase, K.spliceTip, 0, cl), ln.H + 2 - zb, zb - 1);
-  return splitPlate(g, deck, tongue, socket);
+  const t = tSlotJoint(g, { neck: K.spliceBase, head: K.spliceTip, clearance: clearanceOf(o), zb, H: ln.H });
+  const tongue = g.isect(wedge, t.male);
+  return splitPlate(g, deck, tongue, t.female);
 }
 
 
