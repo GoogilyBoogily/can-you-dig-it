@@ -85,7 +85,7 @@ function refit(want = 0) {
   const box = $("layouts");
   box.innerHTML = "";
   if (!layouts.length) {
-    const need = laneNeeds(base);
+    const need = laneNeeds(base, space);
     const nothing = `Nothing fits. A single lane needs ${need.w.toFixed(0)} mm of width and ${need.h.toFixed(0)} mm of height.`;
     box.innerHTML = `<p class="empty">${nothing}</p>`;
     setStatus(nothing);
@@ -164,7 +164,10 @@ worker.onmessage = (e: MessageEvent<Res>) => {
     // still finishes and arrives here. Dropping it silently means the user asked for a
     // 3MF, waited, and never got one or a word about it.
     if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); }
-    else console.info(`dropped a superseded ${r.name} export (#${r.id}, now on #${exportId})`);
+    else {
+      console.info(`dropped a superseded ${r.name} export (#${r.id}, now on #${exportId})`);
+      setStatus(`Skipped the earlier ${r.name} - a newer download replaced it.`);
+    }
     return;
   }
   if (r.id !== buildId || !chosen) return; // a newer build is already on its way
@@ -286,9 +289,10 @@ function showProfile() {
 $("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
 
 /** State and label move together, so the two can never disagree. */
-function adoptProfile(loaded: StoredProfile) {
+function adoptProfile(loaded: StoredProfile, persist = true) {
   profile = loaded;
   showProfile();
+  if (!persist) return; // applied from a link: this session only, the stored profile stands
   const failure = saveStoredProfile(loaded);
   setStatus(failure
     ? `Using ${loaded.name} for this session; couldn't save it for next time: ${failure}`
@@ -343,9 +347,9 @@ function showPicks(picks: Picks | null) {
     filaments.filter((f) => f.vendor === vendor).map((f) => ({ value: f.name, label: f.label, group: vendor }))), picks.filament);
 }
 
-function applyPicks(picks: Picks) {
+function applyPicks(picks: Picks, persist = true) {
   const config = composeProfile(index!, picks);
-  adoptProfile({ name: describePicks(index!, picks), config });
+  adoptProfile({ name: describePicks(index!, picks), config }, persist);
   // The printer picked is the bed the parts must fit, so the form follows.
   const bed = bedFromConfig(config);
   let changed = false;
@@ -354,7 +358,9 @@ function applyPicks(picks: Picks) {
     if (Number(input.value) === bed[axis]) return;
     input.value = String(bed[axis]); changed = true;
   });
-  if (changed) refit();
+  // refit(chosenIndex), not refit(): the default resets the choice to 0, and a shared link
+  // carrying both a layout and a printer had its layout dropped when the catalogue landed.
+  if (changed) refit(chosenIndex);
   queueHash(); // the picks are in the link now, and only the bed change needs a refit
 }
 
@@ -374,8 +380,19 @@ fetch(INDEX_URL)
     index = loaded;
     // loadHash ran long before this resolved, so a link's picks are applied here. An
     // unknown machine (a catalogue that moved on) falls through to the stored profile.
-    if (hashPicks && index.machines.some((machine) => machine.name === hashPicks!.machine)) applyPicks(hashPicks);
-    else showProfile();
+    // A link's picks apply for the session but are not written to storage: the recipient
+    // may have imported their own 3MF, and that is the one thing a link cannot rebuild.
+    // composeProfile throws when a preset name has moved on between Bambu releases, and
+    // an uncaught throw here lands in the fetch's catch - which reports the catalogue as
+    // unloadable and leaves every select empty, with no way to pick a printer.
+    try {
+      if (hashPicks && index.machines.some((machine) => machine.name === hashPicks!.machine)) applyPicks(hashPicks, false);
+      else showProfile();
+    } catch (err) {
+      hashPicks = null;
+      showProfile();
+      setStatus(`That link's print settings are no longer in the catalogue, so your own are in use: ${reason(err)}`);
+    }
   })
   .catch((err) => {
     // On the print-settings label, not the status line: the first build lands ~250 ms
@@ -428,11 +445,17 @@ function syncHash() {
   // Not the imported 3MF - that is tens of KB - but the built-in picks are four short
   // strings, and translucent changes the filament and time estimates and the exported
   // settings. Without them the recipient reads different numbers off the same link.
-  if (pick.nozzle.value) {
-    q.set("machine", pick.nozzle.value);
-    q.set("process", pick.process.value);
-    q.set("filament", pick.filament.value);
-    if (pick.translucent.checked) q.set("translucent", "on");
+  // hashPicks until the catalogue lands: the selects are empty for the first few hundred
+  // ms of a page load, and writing the hash from them in that window strips these four
+  // keys out of the link that carried them. Permanently, if the fetch then fails.
+  const picks = pick.nozzle.value
+    ? { machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value, translucent: pick.translucent.checked }
+    : hashPicks;
+  if (picks) {
+    q.set("machine", picks.machine);
+    q.set("process", picks.process);
+    q.set("filament", picks.filament);
+    if (picks.translucent) q.set("translucent", "on");
   }
   history.replaceState(null, "", "#" + q.toString());
 }
@@ -462,11 +485,12 @@ $("share").addEventListener("click", async () => {
   }
 });
 
+// What the WebGL context holds, for the UI test that watches for a leak.
+(window as unknown as { viewerInfo: () => ReturnType<Viewer["info"]> }).viewerInfo = () => viewer.info();
+
 // A range input clamps and step-snaps whatever the hash carried, so the form can end up
 // holding different numbers than the link that opened it. Rewrite the hash from the form:
 // sender and recipient then see the same design, and Share copies what is on screen.
-(window as unknown as { viewerInfo: () => ReturnType<Viewer["info"]> }).viewerInfo = () => viewer.info();
-
 const arrivedWithHash = location.hash.length > 0;
 refit(loadHash());
 if (arrivedWithHash) syncHash();

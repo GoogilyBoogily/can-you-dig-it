@@ -17,16 +17,26 @@ export type Style = "cascade" | "flat";
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
 
-/** The least shelf one lane needs, for the empty state: one flat tier on its base. The
- *  width has to be the rule lanesAcross() applies, or the message turns away a shelf the
- *  solver would have accepted. A grid lane stands on its own floor with no side gap, and
- *  its pitch bottoms out at OW + 2*gridGap however few cells the floor ends up with, so
- *  the narrowest grid shelf is the lane's own width (or one cell, whichever is larger).
- *  shelfCells is not read here: the caller's shelf is the one that did not fit. */
-export function laneNeeds(base: Options): { w: number; h: number } {
-  const d = solve({ ...base, cascade: false, length: 200 });
-  const w = base.base === "gridfinity" ? Math.max(d.OW, K.gridPitch) : d.gangPitch + 2 * SIDE_GAP;
-  return { w, h: baseHeight(base) + d.H };
+/** The least shelf one lane needs, for the empty state: one flat tier on its base. Both
+ *  numbers have to be the rule fitSpace applies, or the message turns away a shelf the
+ *  solver would have accepted.
+ *
+ *  Width: a grid lane stands on its own floor with no side gap, and its pitch bottoms out
+ *  at OW + 2 * gridGap however few cells the floor ends up with, so the narrowest grid
+ *  shelf is the lane's own width (or one cell, whichever is larger). shelfCells is not
+ *  read: the caller's shelf is the one that did not fit.
+ *
+ *  Height: H grows with the lane's length at any slope, and the depth is what sets the
+ *  length, so this needs the space. Take the shallowest tier the depth allows - the
+ *  shortest candidate fitSpace would rank. Pinning a length instead put the number out by
+ *  10 mm at slope 10, in both directions: it turned away shelves that fit, and told a
+ *  user a height was enough when the same message came back at it. */
+export function laneNeeds(base: Options, space: Space): { w: number; h: number } {
+  const seed = { ...base, cascade: false, length: 200 };
+  const w = base.base === "gridfinity" ? Math.max(solve(seed).OW, K.gridPitch) : solve(seed).gangPitch + 2 * SIDE_GAP;
+  const lengths = candidateLengths(space.d - space.front, seed);
+  const heights = lengths.map((length) => solve({ ...seed, length }).H);
+  return { w, h: baseHeight(base) + (heights.length ? Math.min(...heights) : solve(seed).H) };
 }
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {

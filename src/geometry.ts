@@ -185,6 +185,9 @@ export function solve(o: Options): Derived {
   // down, so its height becomes the bed's Y and its thickness the bed's Z; the deck is
   // the tall one, since it carries the whole slope. Getting this wrong either offers a
   // lane that cannot be packed or refuses one that prints flat.
+  // No K.dovetail here. The gang rib is on the wall's outer face, and layWall lays that
+  // face into Z - wallPlateZ below is where it is charged. gangPitch keeps its dovetail:
+  // that is the spacing between lanes on the shelf, not a plate's own footprint.
   const wallPlateY = Math.max(H, Hb) + K.pinH;
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall + (o.lanesWide > 1 && !grid ? K.dovetail : 0);
@@ -194,7 +197,7 @@ export function solve(o: Options): Derived {
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
     plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
-    plateY: Math.max(grid ? foot[3] - foot[1] : OW + K.dovetail, wallPlateY),
+    plateY: Math.max(grid ? foot[3] - foot[1] : OW, wallPlateY),
     plateZ: Math.max(deckPlateZ, wallPlateZ, o.base === "feet" ? 24 + K.pinH : 0),
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
@@ -219,8 +222,9 @@ export function check(o: Options, d: Derived): string[] {
   // laneOf filters only the interior tabs through clear(); the two end tabs are placed
   // unconditionally. The front one sits at inset + 7 from the deck start and the tier
   // below's wall-top pin at -px is 40 in, so they are |inset + 7 - 40| apart whatever the
-  // lane's length. Inside earW/2 + tabW/2 the deck's ear lands on that pin: every part is
-  // a valid solid, one piece, no overhang, and the tier will not seat.
+  // lane's length. Solids touch inside earW/2 + tabW/2 = 10; the margin here is laneOf's
+  // own clear() filter, 12, so the two rules agree and the last 2 mm are not a hair's
+  // clearance. Every part is a valid solid, one piece, no overhang, and it will not seat.
   if (d.inset && Math.abs(d.inset + K.tabW / 2 + 3 - 40) < 12)
     w.push(`FAIL a ${o.canD} mm can puts the deck's front ear on the pin below - the tier will not seat`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
@@ -425,7 +429,7 @@ export class Geo {
       shrunk.delete(); // the slab has the outline now
     }
     for (const pad of pads) keep.push(this.prismZ(pad, zMax - zMin, zMin));
-    // Nine slabs and their union, every time a wall or an end wall is rounded.
+    // Nine slabs and their union, every time the lip or the cover is rounded.
     const stack = this.union(keep);
     const rounded = this.isect(body, stack);
     stack.delete();
@@ -533,7 +537,10 @@ const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
 /** The pocket the lip's 5 × 12 tab drops into: 12.4 × 5.4 since the first cut, turned 90°
  *  from the tab it was for, plus fit. */
 const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: number): M =>
-  g.box(5.4 + 2 * o.fit, 12.4 + 2 * o.fit, h, x, y, z0); // 2 * fit, like tabHole: the knob is per side everywhere
+  // K.dtCl + o.fit per side, the same form as tabHole. A bare 2 * o.fit on the old magic
+  // 5.4 put the clearance at exactly zero at fit -0.2, which the narrowed LIMITS.fit makes
+  // one drag away; every other joint still holds 0.05 mm a side there.
+  g.box(5 + 2 * (K.dtCl + o.fit), 12 + 2 * (K.dtCl + o.fit), h, x, y, z0);
 
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
@@ -811,8 +818,8 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
     feet.push(foot.translate([cx(i), cy(j), z0]));
     // No fit on the magnet pockets: 6.5 x 2.4 is the Gridfinity figure for a 6 x 2 magnet,
-  // so the 0.5 and the 0.4 are already the clearance, and a magnet wants interference.
-  if (o.magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
+    // so the 0.5 and the 0.4 are already the clearance, and a magnet wants interference.
+    if (o.magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
       const mx = cx(i) + sx * K.magnetPitch / 2;
       if (d.split && Math.abs(mx) < K.magnetR + 1) continue; // half a pocket a side holds nothing
       cuts.push(g.cyl(K.magnetR, K.magnetDepth + 1, mx, cy(j) + sy * K.magnetPitch / 2, z0 - 1));

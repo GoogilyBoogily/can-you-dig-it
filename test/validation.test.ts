@@ -169,9 +169,16 @@ test("every bounded input in index.html carries its LIMITS bounds", async () => 
   const html = await Bun.file(new URL("../index.html", import.meta.url)).text();
   const bounded = /<input name="(\w+)" type="(?:number|range)"([^>]*)>/g;
   const inputs = [...html.matchAll(bounded)];
-  // every named bounded input, or one written with its attributes in another order slips
-  // past. The explode slider is deliberately nameless: it drives the viewer, not the solver.
-  expect(inputs.length).toBe(html.match(/<input name="\w+" type="(?:number|range)"/g)!.length);
+  // Count every bounded input that carries a name, however its attributes are ordered, and
+  // require the strict matcher above to have found all of them. A floor written with the
+  // same attribute order as the matcher is a tautology: it cannot disagree, and reordering
+  // one input's attributes would drop it out of the cross-check silently.
+  const named = [...html.matchAll(/<input ([^>]*type="(?:number|range)"[^>]*)>/g)]
+    .filter(([, attrs]) => / name="\w+"/.test(` ${attrs}`));
+  expect(inputs.map(([, name]) => name).sort())
+    .toEqual(named.map(([, attrs]) => /name="(\w+)"/.exec(attrs)![1]).sort());
+  // The explode slider is deliberately nameless: it drives the viewer, not the solver.
+  expect(named.length).toBeLessThan([...html.matchAll(/<input [^>]*type="(?:number|range)"/g)].length);
   for (const [, name, attrs] of inputs) {
     const limit = LIMITS[name];
     expect(limit, name).toBeDefined();

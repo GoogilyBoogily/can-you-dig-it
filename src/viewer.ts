@@ -135,7 +135,8 @@ export class Viewer {
     this.cached.clear();
   }
 
-  /** Cans in the assembly view; the frame is taken with them in so the camera does not jump. */
+  /** Cans in the assembly view. They sit inside the lanes, so framing on the visible
+   *  objects alone still covers them and the camera does not jump when they come on. */
   showCans(on: boolean) { this.cans.visible = on; }
 
   showGrid(on: boolean) { this.gridOn = on; this.grid.visible = on; }
