@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap } from "./features/joints";
+import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -642,26 +642,32 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const c = clearanceOf(o);
   const piny = sy * d.piny;
   const notchH = K.deckLo + c;
+  const pinJ = pinJoint(g, { wall: o.wall, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const tx of ln.tabs) adds.push(tab(g, "x", notchH + 1, tx, piny, 0));
-  for (const sx of [1, -1]) adds.push(tab(g, "x", K.pinH + 1, sx * d.px, piny, H - 1));
+  // pinJ.pin is built in the joint frame (+y toward this wall's own outer face), so the
+  // side whose outer face points -y needs a Y-mirror before it lands at sy * d.py
+  const pin = sy > 0 ? pinJ.pin : pinJ.pin.mirror([0, 1, 0]);
+  for (const sx of [1, -1]) adds.push(pin.translate([sx * d.px, sy * d.py, H]));
   const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
-  cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH));
+  cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH, pinJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
-  return g.diff(g.union(adds), cuts);
+  const m = g.diff(g.union(adds), cuts);
+  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
+  return m;
 }
 
 /** What keys the wall: a notch over each deck ear with the wall's own tab left standing in
  *  it (so the ear's slot stays), the corner slot the end wall drops into from the top
  *  edge down to the lap line, and the notches for the tier below's pins or the risers'
  *  bosses. */
-function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number): M[] {
+function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, pinJ: ReturnType<typeof pinJoint>): M[] {
   const piny = sy * d.piny;
   const notch = (w: number, h: number, x: number) => g.box(w + 2 * c, o.wall + 2, h + 1, x, sy * d.py, (h - 1) / 2);
   const cuts = ln.tabs.map((tx) => g.diff(notch(K.earW, notchH, tx), [tab(g, "x", notchH + 2, tx, piny, -1)]));
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.te + K.lap, H: ln.H, clearance: c });
   cuts.push(lap.female.translate([ln.xe, sy * d.py, 0])); lap.male.delete(); lap.female.delete();
-  for (const sx of [1, -1]) cuts.push(notch(K.tabW, K.pinH + c, sx * d.px));
+  for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
   return cuts;
 }
 
@@ -797,7 +803,12 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
  *  bottom notch. */
 export function buildRiser(g: Geo, o: Options, h: number): M {
   const side = 20; // the foot's length along the lane; it was a parameter no caller set
-  return g.union([g.box(side, o.wall, h, 0, 0, h / 2), tab(g, "x", K.pinH, 0, 0, h)]);
+  const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 }); // the boss is the male: clearance is the notch's
+  // the boss is centred on the riser, not flush with an inner face - a riser has none
+  const boss = pinJ.pin.translate([0, (o.wall - K.tabT) / 2, h]);
+  const riser = g.union([g.box(side, o.wall, h, 0, 0, h / 2), boss]);
+  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete(); boss.delete();
+  return riser;
 }
 
 /** One Gridfinity foot, centred, from z = 0 up: hulls of the profile's rounded
@@ -859,13 +870,19 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
     g.isect(g.union(feet), g.prismZ(outline, K.unitH, z0)), // the run-on chamfers stop at the bin's edge
   ];
   if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
-  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(tab(g, "x", K.pinH, sx * d.px, sy * d.piny, 0));
+  const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 });
+  for (const sy of [1, -1]) {
+    const pin = sy > 0 ? pinJ.pin : pinJ.pin.mirror([0, 1, 0]); // see buildWall
+    for (const sx of [1, -1]) adds.push(pin.translate([sx * d.px, sy * d.py, 0]));
+  }
   for (const sy of [1, -1]) {
     const pocket = lipPocket(g, clearanceOf(o), 2, 0);
     cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
     pocket.delete();
   }
-  return g.diff(g.union(adds), cuts);
+  const m = g.diff(g.union(adds), cuts);
+  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
+  return m;
 }
 
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
@@ -873,7 +890,11 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   const outline = g.rect(-L / 2, -OW / 2, L / 2, OW / 2);
   const plate = g.roundTop(g.prismZ(outline, t), outline, t, t / 2);
   const cuts: M[] = [];
-  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(tabHole(g, o, "x", t + 2, sx * d.px, sy * d.piny, -1));
+  const pinJ = pinJoint(g, { wall: o.wall, clearance: clearanceOf(o) });
+  for (const sy of [1, -1]) {
+    const hole = sy > 0 ? pinJ.hole : pinJ.hole.mirror([0, 1, 0]); // see buildWall
+    for (const sx of [1, -1]) cuts.push(hole.translate([sx * d.px, sy * d.py, 0]));
+  }
   // cascade loading window: the top tier loads from above at its high end, so the cover
   // opens there, one can wide and the full inner width (only the wall strips remain).
   // A flat top tier loads from the front over its lip and keeps a whole cover.
@@ -918,6 +939,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     if (cells) cuts.push(g.prismZ(cells, t + 2, -1));
   }
   const m = g.diff(plate, cuts);
+  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
   if (d.split) {
     const big = L + 20;
     return [g.isect(m, g.box(big, big, 10, -big / 2, 0, 0)), g.isect(m, g.box(big, big, 10, big / 2, 0, 0))];

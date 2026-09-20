@@ -59,6 +59,17 @@ export const lipTab = (g: Geo, len: number): M =>
 export const lipPocket = (g: Geo, clearance: number, h: number, zc: number): M =>
   g.box(K.lipTabT + 2 * clearance, K.lipTabW + 2 * clearance, h, 0, 0, zc);
 
+/** A pin on a wall top (or a boss on a riser or a grid deck) and what receives it: the
+ *  notch in the bottom of the wall above, centred on the wall so the pin's offset to the
+ *  inner face is inside it, and the hole through the cover. */
+export function pinJoint(g: Geo, spec: { wall: number; clearance: number }): { pin: M; notch: M; hole: M } {
+  const { wall, clearance: c } = spec;
+  const pin = tabBox(g, K.pinH, wall, 0);
+  const notch = g.box(K.tabW + 2 * c, wall + 2 * OVER, K.pinH + c + OVER, 0, 0, (K.pinH + c - OVER) / 2);
+  const hole = g.box(K.tabW + 2 * c, K.tabT + 2 * c, K.coverT + 2 * OVER, 0, (K.tabT - wall) / 2, K.coverT / 2);
+  return { pin, notch, hole };
+}
+
 /** The corner: the end wall keeps a wall-square post from the lap line to the tier top,
  *  and the side wall is slotted from its top edge down to that line to take it. The
  *  origin is the end wall's inner face on the side wall's centreline. */

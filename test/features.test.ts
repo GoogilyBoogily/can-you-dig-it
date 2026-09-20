@@ -4,7 +4,7 @@
 import { test, expect } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap } from "../src/features/joints";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint } from "../src/features/joints";
 import { stand, lipPose } from "../src/features/pose";
 import { geo } from "./geo";
 
@@ -71,6 +71,16 @@ test("the corner cross-lap: post inside slot, slot open at the wall top", () => 
     expect(j.male.boundingBox().max[2]).toBeCloseTo(80, 6);
     expect(j.female.boundingBox().max[2]).toBeCloseTo(81, 6);
     expect(j.female.boundingBox().max[0] - j.male.boundingBox().max[0]).toBeCloseTo(clearance, 6);
+  }
+});
+
+test("the pin: inside the notch above and the cover hole at every clearance", () => {
+  for (const clearance of [K.cl, K.cl + 0.3]) {
+    const j = pinJoint(geo, { wall: 6, clearance });
+    expect(geo.isect(j.pin, j.notch).volume()).toBeCloseTo(j.pin.volume(), 3);
+    expect(geo.isect(j.pin, j.hole).volume()).toBeCloseTo(j.pin.volume(), 3);
+    expect(j.pin.boundingBox().max[2]).toBeCloseTo(K.pinH, 6);
+    expect(j.hole.boundingBox().max[0] - j.pin.boundingBox().max[0]).toBeCloseTo(clearance, 6);
   }
 });
 
