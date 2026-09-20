@@ -131,3 +131,72 @@ test("Share copies the full URL even before anything was typed", async () => {
   expect(copied).toContain("cascade=on");
   await context.close();
 });
+
+// index.html had a <div class="profilePick"> inside a <p class="profile">, and a <div>
+// start tag closes an open <p>. The parsed DOM put the whole block beside the paragraph
+// instead of inside it, so `.actions .profile button` stopped matching #profileClear and
+// the tiny Clear button rendered at full action size. Every test addressed these by id,
+// which works at any nesting, so nothing saw it.
+test("the print-settings block is one element, not four siblings", async () => {
+  const page = await browser.newPage();
+  await page.goto(URL_);
+  await page.waitForSelector("#pickPrinter");
+  const shape = await page.evaluate(() => {
+    const clear = document.getElementById("profileClear")!;
+    return {
+      parent: clear.parentElement!.className,
+      contains: document.querySelector(".profile")!.contains(document.querySelector(".profilePick")!),
+      fontSize: getComputedStyle(clear).fontSize,
+      strayEmpty: document.querySelectorAll(".actions p:empty").length,
+    };
+  });
+  expect(shape.parent).toBe("profile");
+  expect(shape.contains).toBe(true);
+  expect(shape.fontSize).toBe("12px"); // .actions .profile button, not the 15px .actions button
+  expect(shape.strayEmpty).toBe(0);
+  await page.close();
+});
+
+// The picks change the filament and time estimates on screen and the settings in the
+// exported 3MF, so a link without them shows the recipient different numbers. The
+// catalogue is fetched, so they are applied when it lands, not when the hash is read.
+test("a shared link carries the print settings, translucent included", async () => {
+  const page = await browser.newPage();
+  await page.goto(`${URL_}#w=600&d=400&h=500`);
+  await page.waitForSelector("#pickPrinter");
+  await page.selectOption("#pickPrinter", "Bambu Lab P2S");
+  await page.waitForFunction(() => (document.getElementById("pickNozzle") as HTMLSelectElement).value !== "");
+  await page.check("#pickTranslucent");
+  await page.waitForFunction(() => location.hash.includes("translucent=on"), undefined, { timeout: 15000 });
+  const shared = await page.evaluate(() => location.href);
+  expect(shared).toContain("machine=");
+  expect(shared).toContain("process=");
+  expect(shared).toContain("filament=");
+
+  const recipient = await browser.newPage();
+  await recipient.goto(shared);
+  await recipient.waitForFunction(() => (document.getElementById("pickPrinter") as HTMLSelectElement).value !== "", undefined, { timeout: 15000 });
+  expect(await recipient.inputValue("#pickPrinter")).toBe("Bambu Lab P2S");
+  expect(await recipient.isChecked("#pickTranslucent")).toBe(true);
+  await recipient.close();
+  await page.close();
+});
+
+// replaceState is rate limited, and the hash write used to run once per input event while
+// the build was debounced. A held arrow key is ~30 a second; the writes the browser
+// dropped included the one Share makes, so Share copied a stale link and said it had not.
+test("a burst of edits still leaves Share copying the current numbers", async () => {
+  const page = await browser.newPage();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(`${URL_}#w=600&d=400&h=500`);
+  await page.waitForSelector(".layout");
+  await page.focus("#form [name=w]");
+  for (let i = 0; i < 60; i++) await page.keyboard.press("ArrowUp");
+  const shown = await page.inputValue("#form [name=w]");
+  expect(Number(shown)).toBe(660);
+  await page.click("#share");
+  await page.waitForFunction(() => document.getElementById("status")!.textContent === "Link copied.");
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(new URLSearchParams(new URL(copied).hash.slice(1)).get("w")).toBe(shown);
+  await page.close();
+});

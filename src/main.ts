@@ -63,7 +63,7 @@ form.addEventListener("input", (e) => {
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
   if (t.name === "lipGap") (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = t.value;
   refit(); // first: it resets the chosen layout, which the hash carries
-  syncHash();
+  queueHash();
 });
 form.addEventListener("submit", (e) => e.preventDefault());
 
@@ -288,6 +288,7 @@ function loadProfile() {
 // Printer → nozzle → process → filament, out of Bambu Studio's own preset catalogue.
 // The lower selects only ever list what fits the chosen machine.
 let index: ProfileIndex | null = null;
+let hashPicks: Picks | null = null; // print settings a shared link carried, waiting for the index
 const pick = {
   printer: $<HTMLSelectElement>("pickPrinter"), nozzle: $<HTMLSelectElement>("pickNozzle"),
   process: $<HTMLSelectElement>("pickProcess"), filament: $<HTMLSelectElement>("pickFilament"),
@@ -333,7 +334,8 @@ function applyPicks(picks: Picks) {
     if (Number(input.value) === bed[axis]) return;
     input.value = String(bed[axis]); changed = true;
   });
-  if (changed) { refit(); syncHash(); }
+  if (changed) refit();
+  queueHash(); // the picks are in the link now, and only the bed change needs a refit
 }
 
 pick.printer.addEventListener("change", () => {
@@ -348,7 +350,13 @@ pick.translucent.addEventListener("change", () => { if (built) renderResults(); 
 
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
-  .then((loaded: ProfileIndex) => { index = loaded; showProfile(); })
+  .then((loaded: ProfileIndex) => {
+    index = loaded;
+    // loadHash ran long before this resolved, so a link's picks are applied here. An
+    // unknown machine (a catalogue that moved on) falls through to the stored profile.
+    if (hashPicks && index.machines.some((machine) => machine.name === hashPicks!.machine)) applyPicks(hashPicks);
+    else showProfile();
+  })
   .catch((err) => {
     // On the print-settings label, not the status line: the first build lands ~250 ms
     // later and would wipe it before anyone read it.
@@ -380,13 +388,32 @@ loadProfile();
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
 const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
+// replaceState is rate limited - Chrome drops past ~100 in 30 s, Safari throws - and the
+// hash write used to run once per input event while the build was debounced. Holding an
+// arrow key in a number field is ~30 events a second, and the writes the browser dropped
+// included the one Share makes, so Share copied a stale link and said "Link copied."
+let hashTimer = 0;
+function queueHash() {
+  clearTimeout(hashTimer);
+  hashTimer = window.setTimeout(syncHash, 250);
+}
 function syncHash() {
+  clearTimeout(hashTimer); // a queued write would only repeat this one
   const q = new URLSearchParams();
   for (const k of KEYS) {
     const el = form.elements.namedItem(k) as HTMLInputElement;
     q.set(k, el.type === "checkbox" ? (el.checked ? "on" : "off") : el.value);
   }
   if (chosenIndex > 0) q.set("layout", String(chosenIndex));
+  // Not the imported 3MF - that is tens of KB - but the built-in picks are four short
+  // strings, and translucent changes the filament and time estimates and the exported
+  // settings. Without them the recipient reads different numbers off the same link.
+  if (pick.nozzle.value) {
+    q.set("machine", pick.nozzle.value);
+    q.set("process", pick.process.value);
+    q.set("filament", pick.filament.value);
+    if (pick.translucent.checked) q.set("translucent", "on");
+  }
   history.replaceState(null, "", "#" + q.toString());
 }
 function loadHash() {
@@ -396,6 +423,9 @@ function loadHash() {
     const el = form.elements.namedItem(k) as HTMLInputElement | null; if (!el || !q.has(k)) continue;
     if (el.type === "checkbox") el.checked = q.get(k) === "on"; else el.value = q.get(k)!;
   }
+  hashPicks = q.has("machine")
+    ? { machine: q.get("machine")!, process: q.get("process") ?? "", filament: q.get("filament") ?? "", translucent: q.get("translucent") === "on" }
+    : null;
   (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number((form.elements.namedItem("fit") as HTMLInputElement).value).toFixed(2);
   (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = (form.elements.namedItem("lipGap") as HTMLInputElement).value;
