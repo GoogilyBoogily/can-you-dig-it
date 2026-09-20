@@ -2,7 +2,7 @@
 // the spec foot proud under every one, a skirt where the lane runs past its floor, and
 // magnet pockets in every foot. docs/gridfinity-spec.md has every number and its K.
 import type { Manifold as M } from "manifold-3d";
-import { K, gridSpan, type Derived, type Geo } from "../geometry";
+import { K, gridSpan, type Derived, type Geo, type Vec3 } from "../geometry";
 
 /** One Gridfinity foot, centred, from z = 0 up: hulls of the profile's rounded
  *  rectangles, so the 45° faces are exact and the corners concentric. An extrude with
@@ -13,7 +13,7 @@ import { K, gridSpan, type Derived, type Geo } from "../geometry";
 export function buildFoot(g: Geo, over: number): M {
   const { footFlat: flat, footChamferLo: lo, footWall: wall, footChamferHi: hi, footR: r } = K;
   const mid = flat + 2 * lo, top = mid + 2 * hi; // 37.2, 41.5
-  const ring = (side: number, radius: number, z: number) => g.roundedRect(side, side, radius).toPolygons().flat().map(([x, y]) => [x, y, z] as [number, number, number]);
+  const ring = (side: number, radius: number, z: number) => g.roundedRect(side, side, radius).toPolygons().flat().map(([x, y]) => [x, y, z] as Vec3);
   return g.union([
     g.hull([...ring(flat, r - hi - lo, 0), ...ring(mid, r - hi, lo)]),
     g.prismZ(g.roundedRect(mid, mid, r - hi), wall, lo),
