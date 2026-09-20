@@ -2,7 +2,7 @@
 // used to be sized from the high end alone, so a short or level lane held cans that
 // could not get out: 18 mm short at 0°, 2.4 mm short on a 300 mm lane at 3°.
 import { test, expect } from "bun:test";
-import { K, DEFAULTS, solve, buildLip } from "../src/geometry";
+import { K, DEFAULTS, solve, buildLip, stand, lipPose } from "../src/geometry";
 import { geo } from "./geo";
 
 test("the front can clears the ceiling as it crosses the lip", () => {
@@ -36,8 +36,7 @@ test("the lip tab ends flush with the deck underside at every slope", () => {
   for (const slope of [0, 3, 7, 10]) {
     const o = { ...DEFAULTS, slope };
     const d = solve(o);
-    // Stand the lip up the way the viewer does: ry = +90 maps (x, y, z) to (z, y, -x).
-    const stood = buildLip(geo, o, d).rotate([0, 90, 0]).translate([0, 0, K.deckLo + K.lipInset * d.tan]);
+    const stood = stand(buildLip(geo, o, d), lipPose(-d.L / 2, d.tan));
     expect(stood.boundingBox().min[2]).toBeCloseTo(0, 6);
   }
 });

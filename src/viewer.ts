@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, laneName, laneXe, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
+import { K, laneName, laneXe, platePose, lipPose, type Derived, type Options, type LaneRole, type PlateName, type Pose } from "./geometry";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -170,12 +170,18 @@ export class Viewer {
     const track = (mesh: THREE.Object3D, px: number, py: number, pz: number) =>
       this.exploded.push({ mesh, rest: mesh.position.clone(), push: new THREE.Vector3(px, py, pz) });
     const IW = d.IW, xe = laneXe(o, d);
-    // plate -> lane frame: the inverse of layWall / layEndWall / the lip's lying build
+    const rad = (deg: number) => (deg * Math.PI) / 180;
+    // plate -> lane frame: the same pose geometry lays the plate flat with. three.js
+    // "ZYX" is manifold's order - X first, seen from the model
+    const posed = (m: THREE.Object3D, p: Pose) => {
+      m.rotation.set(rad(p.rotate[0]), rad(p.rotate[1]), rad(p.rotate[2]), "ZYX");
+      m.position.set(...p.translate);
+    };
     const pose: Record<string, (m: THREE.Object3D) => void> = {
       "deck": () => {},
-      "wall-left": (m) => { m.rotation.set(Math.PI / 2, 0, Math.PI, "ZYX"); m.position.set(0, IW / 2, 0); },
-      "wall-right": (m) => { m.rotation.set(Math.PI / 2, 0, 0); m.position.set(0, -IW / 2, 0); },
-      "end-wall": (m) => { m.rotation.set(0, Math.PI / 2, 0); m.position.set(xe, 0, 0); },
+      "wall-left": (m) => posed(m, platePose("wall-left", IW, xe)),
+      "wall-right": (m) => posed(m, platePose("wall-right", IW, xe)),
+      "end-wall": (m) => posed(m, platePose("end-wall", IW, xe)),
     };
     const push: Record<string, [number, number, number]> = {
       "deck": [0, 0, 0], "wall-left": [0, STEP, 0], "wall-right": [0, -STEP, 0], "end-wall": [STEP, 0, 0],
@@ -216,7 +222,7 @@ export class Viewer {
           else putPlate(lane, name, plate, "");
         }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
-        if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, K.deckLo + K.lipInset * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);
+        if (isBottom || !cascade) { const lp = lipPose(xd, d.tan); put(lane, "end-lip", ...lp.translate, false, [-2 * STEP, 0, 0], rad(lp.rotate[1])); }
         // cans, in the lane's own frame
         const n = isBottom || !cascade ? (cascade ? d.nBottom : d.n) : d.n;
         for (let i = 0; i < n; i++) {

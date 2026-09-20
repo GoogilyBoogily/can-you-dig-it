@@ -3,6 +3,7 @@
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
 import { clearanceOf } from "./features/joints";
+import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
@@ -748,14 +749,11 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   return g.diff(body, cuts);
 }
 
-/** Lay a side wall flat, outer face up. Inverse in the viewer's showAssembly. */
-export function layWall(m: M, sy: number, IW: number): M {
-  const turned = sy > 0 ? m.rotate([0, 0, 180]) : m;
-  return turned.translate([0, IW / 2, 0]).rotate([-90, 0, 0]);
-}
-export function layEndWall(m: M, xe: number): M {
-  return m.translate([-xe, 0, 0]).rotate([0, -90, 0]);
-}
+export { platePose, lipPose, lay, stand, type Pose } from "./features/pose";
+
+/** Lay a side wall flat, outer face up. The viewer stands it back up with the same pose. */
+export const layWall = (m: M, sy: number, IW: number): M => lay(m, platePose(sy > 0 ? "wall-left" : "wall-right", IW, 0));
+export const layEndWall = (m: M, xe: number): M => lay(m, platePose("end-wall", 0, xe));
 
 /** Cut a plate at x=0 into a front and a rear half joined by an in-plane T-slot: the
  *  rear keeps the tongue, the front gets the socket. `tongue` and `socket` are the
