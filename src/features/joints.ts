@@ -44,3 +44,17 @@ export function tSlotJoint(g: Geo, spec: { neck: number; head: number; clearance
  *  notch leaves standing are all this box. */
 export const tabBox = (g: Geo, len: number, wall: number, z0: number): M =>
   g.box(K.tabW, K.tabT, len, 0, (K.tabT - wall) / 2, z0 + len / 2);
+
+/** The gang joint the deck carries: an ear-wide run back to the ear root, then a T
+ *  (ear-wide neck, gangHead head, the splice depths) pointing +Y from the origin. The
+ *  socket is the grown T cut through the neighbour's rail from below the deck. */
+export function gangJoint(g: Geo, spec: { run: number; clearance: number; through: number }): Pair {
+  const { run, clearance, through } = spec;
+  const t = (grow = 0) => tProfile(g, K.earW, K.gangHead, grow).rotate(-90);
+  const runBox = g.box(K.earW, run, K.deckLo, 0, -run / 2, K.deckLo / 2);
+  const head = g.prismZ(t(), K.deckLo);
+  const male = g.union([runBox, head]);
+  runBox.delete(); head.delete();
+  const female = g.prismZ(t(clearance), through + 2 * OVER, -OVER);
+  return { male, female };
+}

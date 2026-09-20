@@ -3,8 +3,8 @@
 // intersection is the male), and the shell between them is exactly the clearance.
 import { test, expect } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
-import { K, DEFAULTS } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint } from "../src/features/joints";
+import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile } from "../src/features/joints";
 import { geo } from "./geo";
 
 test("clearance is K.cl plus fit, and the overshoot is 1 mm", () => {
@@ -36,4 +36,28 @@ test("the splice T: tongue inside socket, socket wider by the clearance", () => 
     expect(t.min[0]).toBeCloseTo(-K.spliceDepth, 6);
     expect(s.min[0]).toBeCloseTo(-K.spliceDepth - clearance, 6);
   }
+});
+
+test("the gang T: tongue inside socket at every clearance", () => {
+  for (const clearance of [K.cl, K.cl + 0.3]) {
+    const j = gangJoint(geo, { run: 10, clearance, through: 20 });
+    // The run is fused into its own deck - it never crosses into a mating part, so it has
+    // no female counterpart (test/gang.test.ts's "clears its socket" check is what proves
+    // the run never collides with the neighbour's deck). Only the head is the true
+    // tab/socket pair, so that is what has to sit inside the grown female.
+    const head = geo.prismZ(tProfile(geo, K.earW, K.gangHead).rotate(-90), K.deckLo);
+    fits({ male: head, female: j.female });
+    head.delete();
+    expect(j.male.boundingBox().min[1]).toBeCloseTo(-10, 6); // the run reaches back to the ear root
+    expect(j.male.boundingBox().max[1]).toBeCloseTo(K.spliceDepth, 6); // the T's head, +Y
+    expect(j.female.boundingBox().max[2]).toBeCloseTo(21, 6);
+  }
+});
+
+// The tongue is placed at gangInner in its own lane and the socket at -IW/2 in the
+// neighbour's; they meet only because gangPitch = OW + gangGap. Nothing in geometry.ts
+// asserts that, so this does.
+test("the gang anchors agree across the pitch", () => {
+  const d = solve(DEFAULTS);
+  expect(gangInner(DEFAULTS, d) - d.gangPitch).toBeCloseTo(-d.IW / 2, 9);
 });

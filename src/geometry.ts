@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, tProfile } from "./features/joints";
+import { clearanceOf, tSlotJoint, gangJoint } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -567,7 +567,7 @@ const gangs = (o: Options) => o.lanesWide > 1 && o.base !== "gridfinity";
  *  and the T inside the neighbour's rail. */
 const gangReach = (o: Options) => K.gangGap + o.wall + K.spliceDepth;
 /** The neighbour wall's inner face, where the T starts, in the lane frame. */
-const gangInner = (o: Options, d: Derived) => d.OW / 2 + K.gangGap + o.wall;
+export const gangInner = (o: Options, d: Derived) => d.OW / 2 + K.gangGap + o.wall;
 
 /** The deck's (x, z) profile: a wedge from the deck start to the end wall, flat past it,
  *  down to `zb` (below zero when a Gridfinity unit hangs under the pan). */
@@ -581,25 +581,6 @@ const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: numb
   // 5.4 put the clearance at exactly zero at fit -0.2, which the narrowed LIMITS.fit makes
   // one drag away; every other joint still holds 0.05 mm a side there.
   g.box(5 + 2 * clearanceOf(o), 12 + 2 * clearanceOf(o), h, x, y, z0);
-
-/** The T, pointing +Y from `y0` at `tx`, that ends a gang tongue and, grown by the
- *  clearance, is the socket it drops into. */
-const gangT = (g: Geo, tx: number, y0: number, grow = 0): CS =>
-  tProfile(g, K.earW, K.gangHead, grow).rotate(-90).translate([tx, y0]);
-
-/** A +Y ear run on as a tongue: ear-wide from its root to the neighbour wall's inner
- *  face, so both walls notch over it, then the T into the neighbour's rail. */
-function gangTongue(g: Geo, o: Options, d: Derived, tx: number): M {
-  const root = d.IW / 2 - 1, inner = gangInner(o, d);
-  const run = g.box(K.earW, inner - root, K.deckLo, tx, (root + inner) / 2, K.deckLo / 2);
-  return g.union([run, g.prismZ(gangT(g, tx, inner), K.deckLo)]);
-}
-
-/** The socket in the -Y rail the neighbour's tongue rises into as this deck sets down:
- *  open at the wall face and through the deck, like a tab hole - a pocket from below
- *  would be a ceiling. It sits in the outer 8 mm of the rail, under the can's neck. */
-const gangSocket = (g: Geo, o: Options, d: Derived, ln: Lane, tx: number): M =>
-  g.prismZ(gangT(g, tx, -d.IW / 2, clearanceOf(o)), ln.dhi + 4, -1);
 
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
@@ -616,9 +597,12 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const cuts: M[] = [];
   for (const tx of ln.tabs) {
     if (!keyed(tx)) { adds.push(ear(tx, 1), ear(tx, -1)); continue; }
-    adds.push(gangTongue(g, o, d, tx));
-    cuts.push(gangSocket(g, o, d, ln, tx));
-    cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, gangInner(o, d) - K.tabT / 2, -1));
+    const inner = gangInner(o, d);
+    const gang = gangJoint(g, { run: inner - (IW / 2 - 1), clearance: clearanceOf(o), through: ln.dhi });
+    adds.push(gang.male.translate([tx, inner, 0]));
+    cuts.push(gang.female.translate([tx, -IW / 2, 0]));
+    gang.male.delete(); gang.female.delete();
+    cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, inner - K.tabT / 2, -1));
   }
   if (!o.solid) {
     // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
