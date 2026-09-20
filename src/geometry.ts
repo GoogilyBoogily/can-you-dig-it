@@ -295,6 +295,11 @@ export class Geo {
   diff(a: M, cuts: M[]): M {
     return cuts.length ? this.Manifold.difference([a, ...cuts]) : a;
   }
+  /** A part the way every builder makes one: everything that grows, then everything cut
+   *  away, each in one batch boolean. */
+  assemble(adds: M[], cuts: M[]): M {
+    return this.diff(this.union(adds), cuts);
+  }
   isect(a: M, b: M): M {
     return this.Manifold.intersection([a, b]);
   }
@@ -457,7 +462,7 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
     pocket.delete();
   }
-  const deck = g.diff(g.union(adds), cuts);
+  const deck = g.assemble(adds, cuts);
   earJ.ear.delete(); earJ.slot.delete(); earJ.notch.delete();
   return deck;
 }
@@ -478,7 +483,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const cuts: M[] = [g.prismX(roundOver(g, sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
   cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
-  const m = g.diff(g.union(adds), cuts);
+  const m = g.assemble(adds, cuts);
   pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
   earJ.ear.delete(); earJ.slot.delete(); earJ.notch.delete();
   return m;
@@ -546,7 +551,6 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const adds = [g.box(o.wall, IW, ewh - te, xe + o.wall / 2, 0, (ewh + te) / 2)];
   for (const sy of [1, -1]) adds.push(lap.male.translate([xe, sy * d.py, 0]));
   lap.male.delete(); lap.female.delete();
-  const body = g.union(adds);
   // the outer top edge rounds, like the side walls'. A loading lip's inner edge stays
   // square: printed outer face up it would be a round on the bed edge, and a can loaded
   // over the lip slides over the outer edge anyway
@@ -559,7 +563,7 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
     const rd = recessDepth(o);
     if (rd) cuts.push(g.prismX(g.rect(gy0, te - 1, gy1, ewh - b), rd + 1, xo - rd));
   }
-  return g.diff(body, cuts);
+  return g.assemble(adds, cuts);
 }
 
 export { platePose, lipPose, lay, stand, type Pose } from "./features/pose";
@@ -622,7 +626,7 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
     tab.delete();
   }
   const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
-  return g.diff(g.union(parts), [scoop]);
+  return g.assemble(parts, [scoop]);
 }
 
 /** A foot under a wall at ±px: as thick as the wall, since the deck starts at the wall's
@@ -652,7 +656,7 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, 0));
   const cuts = [...unit.pockets];
   for (const sy of [1, -1]) cuts.push(lipPocket(g, clearanceOf(o), 2, 0).translate([ln.lipx, sy * d.lipy, 0]));
-  const out = g.diff(g.union(adds), cuts);
+  const out = g.assemble(adds, cuts);
   pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
   return out;
 }
