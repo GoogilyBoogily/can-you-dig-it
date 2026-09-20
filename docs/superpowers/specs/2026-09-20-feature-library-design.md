@@ -1,5 +1,9 @@
 # Feature library: joints and features as reusable procedural pieces
 
+**Status: shipped 2026-09-20** (`main` 1b550f8, 25 commits from 37ab0b5). The Context
+and Decisions below are as written before the work; "As built" is what landed and where
+it differs.
+
 ## Context
 
 `src/geometry.ts` (1066 lines) builds every plate wholesale. Seven joint families exist;
@@ -44,155 +48,93 @@ a fixed joint set; boxes.py's settings-object idiom is the battle-tested match.
 | Tests | New `test/features.test.ts` per joint + existing suites untouched |
 | Pose | One `platePose` exported from geometry; viewer and `front.test.ts` use its inverse |
 
-## Design
+## As built
 
-### Placement (as built: no `frame.ts`)
+### Files
+- `src/features/joints.ts` — every joint from one spec, built at a local origin, placed by
+  `geometry.ts`.
+- `src/features/pose.ts` — where each plate stands; `lay` flattens, `stand` is its inverse,
+  the viewer builds its three.js Euler from the same numbers.
+- `src/features/lattice.ts` — the pattern cells, `ROWS`, `ligFor`, `rowsRadius`, `autoR`.
+- `src/features/pocket.ts` — `recessDepth`, `roundOver`, `roundTop`.
+- `src/features/gridfinity.ts` — `buildFoot`, `gridUnit`.
+- `src/geometry.ts` — `Options`, `K`, `solve`, `check`, `laneOf`, `Geo` (kernel wrappers plus
+  `assemble(adds, cuts)` and `circle`), the `build*`/`split*` composers, `partList`,
+  `freeSet`, `filamentGrams`. 1066 → 830 lines.
+- `test/features.test.ts` (joint pairs), `test/pose.test.ts` (round trip, laid-flat
+  orientation, lip flush); `overhangArea` lives in `test/geo.ts`.
+
+### Placement
 ```ts
-export const clearanceOf = (o: Options) => K.cl + o.fit   // joints.ts
-export const OVER = 1                                      // fuse/overshoot margin, see "snapshot safety"
-export function placeSide(m: M, sy: number, x: number, y: number, z: number): M   // mirror across y for the -Y wall, then move
+export const clearanceOf = (o: Options) => K.cl + o.fit   // the only spelling
+export const OVER = 1                                      // fuse/overshoot margin
+export const earNotchH = (clearance: number) => K.deckLo + clearance
+export function placeSide(m: M, sy: number, x: number, y: number, z: number): M
 ```
-Local frame of the wall joints (`earJoint`, `pinJoint`, `crossLap`): x along the lane,
-y the wall's centreline with +y toward the wall's outer face, z = 0 at the deck
-underside / wall bottom. `tSlotJoint` sits at the seam, `gangJoint` at the tongue's
-root, and `lipTab`/`lipPocket` in the lip's and the deck's own frames. A side-dependent
-piece goes on with `placeSide` (its y offset to the inner face is signed), a symmetric
-one with `.translate()`. The plan's `Frame`/`place()` was dropped: no feature needs a
-rotation.
+The wall joints (`earJoint`, `pinJoint`, `crossLap`) share one frame: x along the lane, y
+the wall's centreline with +y toward the wall's outer face, z = 0 at the deck underside
+/ wall bottom. `tSlotJoint` sits at the seam, `gangJoint` at the tongue's root,
+`lipTab`/`lipPocket` in the lip's and the deck's own frames. A side-dependent piece (its
+y offset to the inner face is signed) goes on with `placeSide`, which mirrors for the
+−Y wall and frees the intermediate; a symmetric piece with `.translate()`. The planned
+`Frame`/`place()` was not built: no feature needs a rotation.
 
-### `src/features/joints.ts` — one spec, two halves
+### Joints
 ```ts
 export interface Pair { male: M; female: M }
-export function tabJoint(g, spec: { len: number; along: "x"|"y"; clearance: number; through: number }): Pair
-export function tSlotJoint(g, spec: { neck: number; head: number; clearance: number; depth: number }): Pair   // tSlot() moves here
-export function crossLap(g, spec: { wall: number; lapZ: number; H: number; clearance: number }): Pair          // post vs slot
-export function lipTab(g, spec: { len: number; t: number; w: number; clearance: number; through: number }): Pair // 5 × 12 → K.lipTabT/K.lipTabW
-export function gangJoint(g, spec: { earW: number; head: number; run: number; clearance: number; through: number }): Pair
-// composites: every piece at one origin (tab centre x, wall centreline y, z = 0)
-export function earJoint(g, spec: { wall: number; root: number; notchH: number; clearance: number; through: number }):
-  { deck: { add: M; cut: M }; wall: { add: M; cut: M } }
-export function pinJoint(g, spec: { wall: number; clearance: number; coverT: number }):
-  { pin: M; notch: M; hole: M }        // wall-top pin / riser boss / grid boss all use `pin`; wall above uses `notch`; cover uses `hole`
+export const tabBox = (g, len, wall, z0): M                       // the one tab cross-section, flush with the inner face
+export const tProfile = (g, neck, head, grow = 0): CS             // the T; grown, it is the socket
+export function tSlotJoint(g, { neck, head, clearance, zb, H }): Pair
+export function gangJoint(g, { run, clearance, through }): Pair   // male = run + T; female = grown T only
+export function crossLap(g, { wall, lapZ, H, clearance }): Pair   // end-wall post / side-wall slot
+export const lipTab = (g, len): M                                 // lying, the lip's frame
+export const lipPocket = (g, clearance, h, zc): M                 // standing, the deck's frame
+export function pinJoint(g, { wall, clearance }): { pin, notch, hole }
+export function earJoint(g, { wall, through, clearance }): { ear, slot, notch }
 ```
-Rules: female = male grown by `clearance` in-plane (`tSlot` already does this with a
-miter offset; boxes grow `2 * clearance` per axis); female extends `OVER` past both faces
-of the plate it cuts; male overlaps its host by `OVER`. The ear's `root` (1 mm into the
-deck) and the notch's Y depth (`wall + 2`) are spec fields, not literals — phase 1 keeps
-every number the same, it only moves where it is written.
+Rules: the female is the male grown by `clearance` in-plane (miter offset for the T,
+`2·clearance` per axis for boxes) and run `OVER` past the faces it cuts; the male is the
+exact shape. `earJoint.notch` is the pocket minus the tab it leaves standing. New `K`:
+`lipTabT 5`, `lipTabW 12`, `earRoot 1`, `coverInset 14`, `coverBar 0.5`, `coverSeam 6`,
+`riserL 20`. `Lane` gained `lapZ`; `Derived` lost `piny` (every pin piece is placed at
+`d.py` with its own offset).
 
-### `src/features/lattice.ts`
-`Lattice`, `ROWS`, `ligFor`, `autoR`, `Geo.cells/cellsOf/hexCells/slats` move here as
-free functions taking `g`. Field rectangle helper `panel(g, x0, y0, x1, y1, border)`
-replaces the three border-inset idioms (`695`, `741`, `914`). `ROWS` stays exported
-from `geometry.ts` (re-export) for `test/pattern.test.ts`.
-
-### `src/features/pocket.ts`
-`recess(g, spec: { face: CS; depth: number; pads: CS[] })` — the recess-to-web block
-written at `706-707` and `744-745`. `roundOver`/`roundTop` move here unchanged.
-
-### `src/features/gridfinity.ts`
-`buildFoot`, floor cells, magnet pockets, skirt out of `buildGridDeck`. Same signatures,
-same numbers; `test/spec.test.ts` keeps checking `K` against `docs/gridfinity-spec.md`.
-
-### `src/features/pose.ts`
+### Pose
 ```ts
-export interface Pose { rotate: [number, number, number]; translate: [number, number, number] }   // degrees, manifold order
-export function platePose(plate: PlateName, sy: 1 | -1, IW: number, xe: number): Pose
-export const lipPose: Pose
+export interface Pose { rotate: Vec3; translate: Vec3 }   // degrees; manifold order X, Y, Z, then move
+export const stand = (m, p): M; export const lay = (m, p): M   // exact inverses
+export function platePose(plate: PlateName, IW: number, xe: number): Pose
+export const lipPose = (xd: number, tan: number): Pose
 ```
-`layWall`/`layEndWall` become `lay(m, platePose(...))` (translate then rotate, as
-today). Viewer builds its three.js Euler from the same `Pose` inverted; `front.test.ts`
-uses `lipPose`. Rotation-order gotcha: manifold `rotate([x,y,z])` applies X then Y then
-Z; three's `rotation.set(..., "ZYX")` in the viewer is the inverse order — the helper
-in viewer.ts converts, and `test/pose.test.ts` asserts `lay` then inverse-pose returns
-the original bounds for all four plates.
+three.js `rotation.set(rx, ry, rz, "ZYX")` is `Rz·Ry·Rx` — X first, the same as manifold —
+so the viewer converts degrees to radians and nothing else.
 
-### `geometry.ts` after
-Keeps `Options`, `K`, `solve`, `check`, `laneOf`, `Geo` (kernel wrappers only: box, cyl,
-poly, rect, prism*, union, diff, isect, hull, cs2d), `build*`, `split*`, `partList`,
-`freeSet`, `filamentGrams`. Each `build*` reads: place features, collect `adds`/`cuts`,
-one `g.diff(g.union(adds), cuts)`. Same export list; tests import nothing new except
-`test/features.test.ts` importing `src/features/*`.
+### Where it differs from the plan
+- `panel()` and `recess()` helpers not built: the three border-inset rectangles and the
+  two recesses share a depth and nothing else.
+- Joint tests assert containment plus the bounding-box shell on both in-plane axes
+  (`grownBy`), not the analytic shell volume; `ref.json` pins the real dimensions.
+- The gang-anchor identity `gangInner(o,d) === d.gangPitch − d.IW/2` is asserted in
+  `test/features.test.ts`, not `check()` — `check()` is user-facing FAIL strings.
+- `tab`/`tabHole` retired; `buildWall` no longer adds its own ear tab (the notch leaves it).
 
-## Snapshot safety (why identical geometry is reachable)
+### Snapshot
+Phase 1 (23 commits) left `ref.json` byte-identical: every `+1/+2/+4` margin became
+`OVER`, and `A ∪ (B ∪ extra-inside-A) = A ∪ B`, `A − (C ∪ extra-outside-A) = A − C`.
+Phase 2 moved one part on purpose: the lip blade is `d.IW − 2·clearanceOf(o)` (0.25 a
+side like every joint; was 0.5), so `end-lip` grew ±0.25 in y, +49 mm³.
 
-- Overshoot: `A ∪ (B ∪ extra-inside-A) = A ∪ B`; `A − (C ∪ extra-outside-A) = A − C`. Every
-  `+1/+2/+4` margin today is one of those; standardising to `OVER` moves no surface.
-  Exception to check per joint: cut overshoots must stay outside the plate (e.g. tab hole
-  `ln.dhi + 4` from `z = -1` — top at `dhi + 3 > te`, safe).
-- Boolean order can move float noise. Tolerance is 0.01 % volume, 0.01 mm bounds; the
-  cross-kernel switch moved 0.0225 %, so order changes are inside tolerance in practice.
-  Run `bun test test/regress.test.ts` after every joint migration; if a part moves,
-  that step introduced a real dimension change — find it, do not regenerate.
-- The gang anchors line up only because `gangInner(o,d) === d.gangPitch - d.IW/2`
-  when `gangs(o)`. Assert it in `check()` and in `test/features.test.ts`.
+### Phase 2 record
+1. Lip blade → `clearanceOf` form. Done (above).
+2. Cover grille radius → `rowsRadius(panelH, rows, k)` shared with `autoR`; the cover's
+   `k` is `K.coverBar` (bars half the radius by design — a grille, not a lattice).
+3. Cover inset and seam band → `K.coverInset`, `K.coverSeam`.
+4. Riser length → `K.riserL`.
+5. `d.piny` retired.
+6. Ear root → `K.earRoot`. The minimal deck's `plinth` stays a named local (one site).
+7. Flat-pack spec no longer names the 56° dovetail.
+8. `Geo.assemble` names the adds-then-cuts protocol five builders used.
 
-## Migration order (one commit each, regress green after every one)
-
-1. `frame.ts` + `clearanceOf` + `OVER`; replace the six `K.cl + o.fit` spellings
-   (leave `813` — changing it moves geometry). No feature yet.
-2. `pose.ts`; `layWall`/`layEndWall` via `lay`; viewer + `front.test.ts` use the inverse;
-   `test/pose.test.ts`.
-3. `tSlotJoint` (already one-spec) — `splitDeck` uses `.male/.female`. Lowest risk.
-4. `gangJoint` — `gangTongue`/`gangSocket` become one call; add the anchor assertion.
-5. `lipTab` — `K.lipTabT = 5`, `K.lipTabW = 12`; `buildLip` + both `lipPocket` sites.
-6. `crossLap` — `buildEndWall` posts + `wallNotches` slot from one spec.
-7. `pinJoint` — wall pin, riser boss, grid boss, wall notch, cover hole.
-8. `earJoint` — ear, slot, notch, tab. Highest coupling; last among joints.
-9. `lattice.ts` — move `cells*`, `ROWS`, `autoR`, `ligFor`; `panel()` helper.
-10. `pocket.ts` — `recess`, `roundOver`, `roundTop`.
-11. `gridfinity.ts` — `buildFoot`, floor, magnets, skirt.
-12. `test/features.test.ts` grows with each of 3–8; final pass adds per-feature
-    overhang check.
-
-Each step: `bun run check`, `bun test test/`, read `git diff --stat`.
-
-## `test/features.test.ts`
-
-Per joint, with `spec.clearance = K.cl` and again at `K.cl + 0.3`:
-- **Fits**: `geo.isect(male, complementOf(female)).volume() ≈ 0` — in manifold terms
-  `geo.diff(male, [female]).volume()` is `0` (male sits entirely inside female).
-- **Clearance is the spec's**: `geo.diff(female, [male])` volume equals the analytic
-  shell for the box joints (`(w+2c)(t+2c) − w·t` × through) — catches a female grown
-  by the wrong amount.
-- **Overhang**: extract `overhangArea` from `test/overhang.test.ts` into `test/geo.ts`
-  (smallest change; the existing file imports it back) and assert `0` on each `male`
-  placed on its host face and on each composite's add-pieces.
-- **Composites**: `earJoint` — deck `add − cut` is one solid; wall `cut` contains
-  wall `add` (notch minus own tab leaves the tab).
-- **Gang anchor**: `gangInner(o,d) === d.gangPitch - d.IW/2` for `DEFAULTS`.
-
-## Risks
-
-- Manual `.delete()` calls in `cells`, `roundTop`, `wallPerforation`, `buildDeck`,
-  `filamentGrams` must move with their code; `test/islands.test.ts` and the leak-free
-  worker rely on them. Rule: a feature frees its intermediates, returns only what the
-  caller owns.
-- `buildLip` is built lying down with axes swapped from the pocket. Keep that: `lipTab`
-  returns `male` in the lip's lying frame and `female` in the deck frame, both sized
-  from one spec (`K.lipTabT = 5`, `K.lipTabW = 12`). One spec, two frames — no build
-  transform changes in phase 1. Guarded by `front.test.ts`.
-- `pinJoint` notch at `d.py` vs pin at `d.piny`: composite puts both at one origin; the
-  notch's Y extent (`wall + 2`) still swallows the difference, so geometry is identical.
-- three.js Euler vs manifold rotate order in `pose.ts` — covered by `test/pose.test.ts`.
-
-## Phase 2 follow-ups (each its own commit with `bun run ref` and a read diff)
-
-1. ~~Lip blade width `d.IW - 1 - 2 * o.fit` (`813`) → `clearanceOf(o)` form.~~ Done: `d.IW - 2 * clearanceOf(o)`, 0.25 a side like every joint (was 0.5); only `end-lip` moved in the snapshot.
-2. ~~Cover grille radius `(OW - 28 - 1) / (a + bb/2)` (`917`) → `autoR` with `ligFor`,
-   or document why the cover's ligament is `R/2`.~~ Done: `rowsRadius(panelH, rows, k)` under both `autoR` (k = `ligRatio`) and the cover (k = `K.coverBar`, bars half the radius by design — a grille, not a lattice).
-3. ~~Cover field inset bare `14` and seam band `6` (`914`, `935`) → `K`.~~ Done: `K.coverInset`, `K.coverSeam`.
-4. ~~Riser `side = 20` (`824`) → `K`.~~ Done: `K.riserL`.
-5. ~~Pin notch anchored at `d.py` while pin is at `d.piny`: one anchor.~~ Done: `d.piny` is gone; every pin piece is placed at `d.py` with its own offset.
-6. ~~Ear `root = 1`~~ Done: `K.earRoot`. The minimal deck's `plinth = max(earW, gangHead)/2 + 3` stays a named local: one site, the comment carries the 3.
-7. ~~Spec drift: `2026-09-18-flat-pack-design.md:25` still names the 56° dovetail.~~ Done.
-
-## Verification
-
-- `bun run check` — strict tsc.
-- `bun test test/` — regress identical, overhang, islands, splice, gang, pack (18
-  plates), pattern, cover, front, gridfinity, parts, plus new `features` and `pose`.
-- `bun run test:ui` once at the end (viewer pose change touches the DOM path).
-- `bun run dev`, open the assembly + exploded views, confirm walls/end wall/lip stand
-  where they did (pose step).
-- `git diff ref.json` must be empty through phase 1.
+## Verification (as run)
+- `bun run check` clean; `bun test test/` 840 pass; `bun run test:ui` 29 pass.
+- `ref.json` identical through phase 1; phase 2 diff read: `end-lip` only.
