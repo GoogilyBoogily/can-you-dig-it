@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint } from "./features/joints";
+import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -645,10 +645,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const pinJ = pinJoint(g, { wall: o.wall, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const tx of ln.tabs) adds.push(tab(g, "x", notchH + 1, tx, piny, 0));
-  // pinJ.pin is built in the joint frame (+y toward this wall's own outer face), so the
-  // side whose outer face points -y needs a Y-mirror before it lands at sy * d.py
-  const pin = sy > 0 ? pinJ.pin : pinJ.pin.mirror([0, 1, 0]);
-  for (const sx of [1, -1]) adds.push(pin.translate([sx * d.px, sy * d.py, H]));
+  for (const sx of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
   const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
   cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH, pinJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
@@ -871,10 +868,7 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   ];
   if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
   const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 });
-  for (const sy of [1, -1]) {
-    const pin = sy > 0 ? pinJ.pin : pinJ.pin.mirror([0, 1, 0]); // see buildWall
-    for (const sx of [1, -1]) adds.push(pin.translate([sx * d.px, sy * d.py, 0]));
-  }
+  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, 0));
   for (const sy of [1, -1]) {
     const pocket = lipPocket(g, clearanceOf(o), 2, 0);
     cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
@@ -891,10 +885,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   const plate = g.roundTop(g.prismZ(outline, t), outline, t, t / 2);
   const cuts: M[] = [];
   const pinJ = pinJoint(g, { wall: o.wall, clearance: clearanceOf(o) });
-  for (const sy of [1, -1]) {
-    const hole = sy > 0 ? pinJ.hole : pinJ.hole.mirror([0, 1, 0]); // see buildWall
-    for (const sx of [1, -1]) cuts.push(hole.translate([sx * d.px, sy * d.py, 0]));
-  }
+  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(placeSide(pinJ.hole, sy, sx * d.px, sy * d.py, 0));
   // cascade loading window: the top tier loads from above at its high end, so the cover
   // opens there, one can wide and the full inner width (only the wall strips remain).
   // A flat top tier loads from the front over its lip and keeps a whole cover.

@@ -70,6 +70,17 @@ export function pinJoint(g: Geo, spec: { wall: number; clearance: number }): { p
   return { pin, notch, hole };
 }
 
+/** A joint piece on one side of the lane: mirrored across y for the -Y side (its y
+ *  offset to the wall's inner face is signed), then moved. Returns a fresh Manifold
+ *  the caller owns; the mirrored intermediate is freed here. */
+export function placeSide(m: M, sy: number, x: number, y: number, z: number): M {
+  if (sy > 0) return m.translate([x, y, z]);
+  const mirrored = m.mirror([0, 1, 0]);
+  const placed = mirrored.translate([x, y, z]);
+  mirrored.delete();
+  return placed;
+}
+
 /** The corner: the end wall keeps a wall-square post from the lap line to the tier top,
  *  and the side wall is slotted from its top edge down to that line to take it. The
  *  origin is the end wall's inner face on the side wall's centreline. */
