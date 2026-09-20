@@ -69,6 +69,25 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, o, set, "top");
   }
+  // A single lane: the whole un-ganged wall branch. No dovetail rib, no groove, and no
+  // keep-out band in the lattice where they would have been - and not one wall plate in
+  // the snapshot was un-ganged, so overhang.test.ts never saw the branch either. A cell
+  // landing where the band used to be would have shipped.
+  {
+    const o: Options = { ...base, lanesWide: 1 };
+    const set = buildAll(geo, o, solve(o));
+    for (const part of partList(set, o)) if (part.role === "cover") parts["single-" + part.name] = part.mesh;
+    lanes("single-", o, set, "top"); lanes("single-", o, set, "bottom");
+  }
+  // A flat stack: the only style the solver offers when cascade is off, and the snapshot
+  // had none of it but a grid deck. Its top-role end wall carries the 20 mm loading lip
+  // on every tier and its deck runs full length, which no cascade part does. partList
+  // leaves the role out of the name here, so these are lane-deck, not lane-top-deck.
+  {
+    const o: Options = { ...base, cascade: false };
+    const set = buildAll(geo, o, solve(o));
+    for (const part of partList(set, o)) if (part.name.startsWith("lane-") || part.role === "cover") parts["flat-" + part.name] = part.mesh;
+  }
   // Gridfinity: the shelf lane's deck on its feet - a 410 lane (six cans, ten cells, the
   // longest a 256 bed prints in halves); with magnet pockets; in a corner of its floor;
   // the flat stack's; and on a 150 × 304 shelf (7 × 3 cells), where the lane overhangs
