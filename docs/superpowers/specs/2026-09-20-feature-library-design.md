@@ -178,13 +178,13 @@ Per joint, with `spec.clearance = K.cl` and again at `K.cl + 0.3`:
 
 ## Phase 2 follow-ups (each its own commit with `bun run ref` and a read diff)
 
-1. Lip blade width `d.IW - 1 - 2 * o.fit` (`813`) → `clearanceOf(o)` form.
-2. Cover grille radius `(OW - 28 - 1) / (a + bb/2)` (`917`) → `autoR` with `ligFor`,
-   or document why the cover's ligament is `R/2`.
-3. Cover field inset bare `14` and seam band `6` (`914`, `935`) → `K`.
-4. Riser `side = 20` (`824`) → `K`.
+1. ~~Lip blade width `d.IW - 1 - 2 * o.fit` (`813`) → `clearanceOf(o)` form.~~ Done: `d.IW - 2 * clearanceOf(o)`, 0.25 a side like every joint (was 0.5); only `end-lip` moved in the snapshot.
+2. ~~Cover grille radius `(OW - 28 - 1) / (a + bb/2)` (`917`) → `autoR` with `ligFor`,
+   or document why the cover's ligament is `R/2`.~~ Done: `rowsRadius(panelH, rows, k)` under both `autoR` (k = `ligRatio`) and the cover (k = `K.coverBar`, bars half the radius by design — a grille, not a lattice).
+3. ~~Cover field inset bare `14` and seam band `6` (`914`, `935`) → `K`.~~ Done: `K.coverInset`, `K.coverSeam`.
+4. ~~Riser `side = 20` (`824`) → `K`.~~ Done: `K.riserL`.
 5. ~~Pin notch anchored at `d.py` while pin is at `d.piny`: one anchor.~~ Done: `d.piny` is gone; every pin piece is placed at `d.py` with its own offset.
-6. Ear `root = 1` and `plinth = max(earW, gangHead)/2 + 3` (`630`) → `K` and derived.
+6. ~~Ear `root = 1`~~ Done: `K.earRoot`. The minimal deck's `plinth = max(earW, gangHead)/2 + 3` stays a named local: one site, the comment carries the 3.
 7. ~~Spec drift: `2026-09-18-flat-pack-design.md:25` still names the 56° dovetail.~~ Done.
 
 ## Verification
