@@ -26,7 +26,9 @@ function overhangArea(mesh: (typeof parts)[string], magnets = false): number {
     const [bx, by, bz] = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
     const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
     const len = Math.hypot(nx, ny, nz);
-    if (len < 1e-9 || nz / len > -STEEPEST_OVERHANG) continue; // up, vertical, or steeper than 45°
+    // a sliver of three near-collinear points (a kumiko diagonal meeting a pad edge, 1e-4
+    // mm²) has a normal that is float noise, not a face
+    if (len < 2e-3 || nz / len > -STEEPEST_OVERHANG) continue; // degenerate, up, vertical, or steeper than 45°
     if (p.every(([, , z]) => Math.abs(z - zMin) < 1e-3)) continue; // on the bed
     if (magnets && p.every(([, , z]) => Math.abs(z - MAGNET_CEILING) < 1e-3)) continue;
     area += len / 2;

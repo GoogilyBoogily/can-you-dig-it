@@ -18,7 +18,7 @@ test("a 12 x 10 in shelf offers four cans a deck on two flat tiers", () => {
 test("the lane is the shortest that holds its cans, not the longest that fits", () => {
   const layout = fourByTwo(fitSpace(SHELF, DEFAULTS, { cascade: false }))!;
   expect(layout.derived.L).toBe(laneLengthFor({ ...DEFAULTS, cascade: false }, 4));
-  expect(layout.derived.L).toBe(278);
+  expect(layout.derived.L).toBe(281);
 });
 
 // Three tiers of three used to out-count two of four. They fitted only because a tier

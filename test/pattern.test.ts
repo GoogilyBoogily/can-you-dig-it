@@ -42,15 +42,15 @@ test.each(PATTERNS.filter((p) => p !== "hex"))("%s leaves the wall solid over ev
   }
 });
 
-// Slats run the width of their field component, so they have to stop at the splice band
-// or the wall tongue would have a slot through its root. Cells drop there as before.
+// Slats run the width of their field component, so they have to stop at the seam's border
+// or the halves would butt on a slotted edge. Cells drop there as before.
 test.each([...PATTERNS])("%s keeps the splice band of a long wall full thickness", (pattern) => {
   const o: Options = { ...DEFAULTS, pattern }; // 480 mm: split
   const d = solve(o);
   expect(d.split).toBe(true);
   const ln = laneOf(o, d, "top");
   const wall = buildWall(geo, o, d, ln, 1);
-  const probe = geo.box(13, o.wall, ln.H - 2 * K.border, -4, d.IW / 2 + o.wall / 2, ln.H / 2);
+  const probe = geo.box(2 * K.border, o.wall, ln.H - 2 * K.border, 0, d.IW / 2 + o.wall / 2, ln.H / 2);
   expect(geo.isect(wall, probe).volume()).toBeCloseTo(probe.volume(), 3);
 });
 

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, laneName, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
+import { K, laneName, laneXe, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -169,7 +169,7 @@ export class Viewer {
     const STEP = 40; // mm of travel per joint at full explode
     const track = (mesh: THREE.Object3D, px: number, py: number, pz: number) =>
       this.exploded.push({ mesh, rest: mesh.position.clone(), push: new THREE.Vector3(px, py, pz) });
-    const IW = d.IW, xe = d.L / 2 - o.wall;
+    const IW = d.IW, xe = laneXe(o, d);
     // plate -> lane frame: the inverse of layWall / layEndWall / the lip's lying build
     const pose: Record<string, (m: THREE.Object3D) => void> = {
       "deck": () => {},

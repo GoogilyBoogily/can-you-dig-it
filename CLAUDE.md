@@ -87,28 +87,38 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   because regular hexes cannot be self-supporting in a standing wall — every orientation
   of a 120° hexagon has a ceiling edge at ≤ 30° — and Bambu at its 30° threshold supported
   all of them. Spec in `docs/superpowers/specs/2026-09-18-flat-pack-design.md`.
-- One tab for every joint: 8 wide, 3 thick, flush with the plate's inner face (the bed
+- One tab for every joint: 16 wide, 3 thick, flush with the plate's inner face (the bed
   side when it prints — flush with the outer face it would hang in the air). Walls stack
   on walls, full-height rectangles, so the lattice keeps its three rows end to end. The
-  deck sits between them, IW wide, and puts a 12 × 6 × 4 mm ear under each wall with a
+  deck sits between them, IW wide, and puts a 24 × 6 × 4 mm ear under each wall with a
   closed slot in it; the wall notches over the ear inside its 5 mm border and drops a
   tab through the slot to the wall top below. That is what locates a wall in X and Y and
   carries the deck on the tier below. The first cut stood the wall on an OW-wide rail
   with a sloped bottom edge and lost a row of cells to it (+15 % volume); ears cost +6 %.
   Pins (2.4 mm tabs) at ±px on the wall tops go into notches in the wall above (X) and
-  the cover's holes (X and Y). Ears go where the deck is solid, not in ties.
+  the cover's holes (X and Y). Ears go where the deck is solid, not in ties. The three
+  numbers that keep an ear off a pin (`tabIn`, `tabClear`, `pinIn`) derive from `earW`
+  and `tabW`; do not hand-tune them. Ears were 12 and tabs 8 until 2026-09-20.
+- A head (T, dovetail) only locks when the tongue enters in its own plane: deck splice,
+  gang tongue. A wall dropping onto a deck gets a straight tab; two standing plates get
+  a cross-lap. Nothing slides sideways to assemble. Spec in
+  `docs/superpowers/specs/2026-09-20-drop-in-joints-design.md`.
 - Cascade: tiers alternate 180° about Z. Upper decks lose one can-length to the drop
   chute (`inset = canD + 6 + wall`); the bottom deck runs full length to the end-lip.
 - High-end wall is full height only when a tier sits above it (it closes that tier's
   chute). `top=true` lanes get a 20 mm loading lip instead. Flat layouts use `top` lanes.
-  It stands on the deck end, flattened for the last `wall` mm, with a tab down through
-  the deck and one each side into a bottom-edge notch of the side walls, so a tier
-  assembles top down.
-- Long lanes split at x=0 with in-plane T-slots on the deck and on each wall (`tSlot`:
-  a 30-wide neck 3 deep, a 40-wide head to 8; the wall's is 0.4H / 0.55H). The deck
-  halves drop together in Z, the wall halves slide together in Y before they go on the
-  deck; the head locks X. They were dovetails until 2026-09-20. Half-laps are gone: a
-  lap printed face-up is a 10 mm cantilever.
+  It stands `post` (3 mm) in from the lane end on the flattened deck and cross-laps the
+  side walls: slotted from its bottom edge up `lap` (12) over the side wall band, OW
+  wide above that with posts to full tier height whatever the lip; the side wall is
+  slotted from its top edge down to the same line, closed behind by its own post. The
+  end wall drops in last: X from the side wall's slot, the side walls' Y from its body
+  and the deck ears. `laneXe` is the one place its x lives (the viewer uses it too).
+- Long lanes split at x=0. The deck has an in-plane T-slot (`tSlot`: a 30-wide neck 3
+  deep, a 40-wide head to 8); the halves drop together in Z and the head locks X. The
+  walls butt: a plane cut, each half on its own ears, the tier above and the cover
+  bridging the seam. The wall T slid together in Y and was the one joint that did not
+  drop in. Deck dovetails until 2026-09-20. Half-laps are gone: a lap printed face-up is
+  a 10 mm cantilever.
 - Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
   the whole point of the flat-pack. Only whole cells are cut, centred in the panel; a
   cell touching a keep-out (splice, end notch) is dropped, not clipped, so

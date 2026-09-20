@@ -101,3 +101,7 @@ Not done:
   rightmost deck variant without them would cost one more deck part per role; not
   decided.
 - Not merged. `git checkout main && git merge sliding-slots && git push`, then CI.
+
+Superseded in part by `2026-09-20-drop-in-joints-design.md`: the wall splice T is gone
+(the halves butt), the corner is a cross-lap, and the ears and tabs are 24 and 16. The
+deck splice T and the gang tongue stand.

@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { DEFAULTS, PATTERNS, solve, buildCover, type Options } from "../src/geometry";
+import { DEFAULTS, PATTERNS, solve, buildCover, laneXe, type Options } from "../src/geometry";
 
 import { geo } from "./geo";
 
@@ -7,7 +7,7 @@ import { geo } from "./geo";
 function coverHitByDroppedCan(options: Options): number {
   const derived = solve(options);
   const [cover] = buildCover(geo, options, derived);
-  const canCentreX = derived.L / 2 - options.wall - (options.canD + 8) / 2; // centred in the window
+  const canCentreX = laneXe(options, derived) - (options.canD + 8) / 2; // centred in the window
   const can = geo.cyl(options.canD / 2, options.canL, 0, 0, -options.canL / 2)
     .rotate([90, 0, 0]).translate([canCentreX, 0, 0]); // axis along Y, spanning the cover plate
   return geo.isect(cover, can).volume();

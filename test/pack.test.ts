@@ -9,7 +9,7 @@ import ref from "../ref.json";
 
 const BED: [number, number, number] = [256, 256, 256];
 const MARGIN = 3, GAP = 6;
-const PLATES = 19;
+const PLATES = 18;
 
 /** A box the size of a real part's bounds. The packer reads bounds, so a box is the part. */
 const boxOf = (name: string): MeshData => {
@@ -102,7 +102,8 @@ test("the shelves on a plate are centred front to back", () => {
 // A ganged deck is 155 deep with its tongues and leaves a 250 × 89 mm strip behind it;
 // an end wall or an end-lip fits there flat, a wall (100) does not. Beside a 162 mm front
 // half an end wall fits turned. PLATES for the default gang; the count is what the packer
-// is judged on. It was 16 when decks were 138 deep and a wall went behind each one.
+// is judged on. It was 16 when decks were 138 deep and a wall went behind each one, 19
+// while the rear wall halves carried an 8 mm splice tongue.
 test("small parts fill the space behind a deck instead of taking their own plate", () => {
   expect(byPlate(packed).length).toBe(PLATES);
   for (const parts of byPlate(packed))
