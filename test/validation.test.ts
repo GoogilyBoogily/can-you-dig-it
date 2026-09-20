@@ -198,3 +198,22 @@ test("pack() refuses a mesh with no geometry instead of poisoning the plate", ()
   const good = pack([{ mesh: box("deck"), qty: 2 }], [256, 256, 256], 3);
   expect(good.every((p) => p.bbox.every(Number.isFinite))).toBe(true);
 });
+
+// laneOf runs its interior tabs through clear(), which keeps them 12 mm off the wall-top
+// pins at +-px, but places the two end tabs unconditionally. The front one and the pin
+// below it are |inset + 7 - 40| apart whatever the lane length, so a 20-32 mm can drops
+// the deck's ear straight onto that pin. Every part is a valid one-piece solid with no
+// overhang - the snapshot, the island test and the overhang test all pass - and the tier
+// will not seat. Only cascade lanes have a chute, so only they have the clash.
+test("a can that puts the deck's front ear on the pin below is rejected", () => {
+  for (const canD of [20, 25, 31]) {
+    const options = { ...DEFAULTS, canD };
+    expect(check(options, solve(options)).some((w) => w.startsWith("FAIL") && w.includes("seat")), `canD ${canD}`).toBe(true);
+    // The flat style has no chute, so it keeps working and is still offered.
+    expect(fitSpace({ w: 400, d: 400, h: 900, front: 0 }, options, { cascade: true }).every((l) => l.style === "flat")).toBe(true);
+  }
+  for (const canD of [33, 66, 100]) {
+    const options = { ...DEFAULTS, canD };
+    expect(check(options, solve(options)).some((w) => w.includes("seat")), `canD ${canD}`).toBe(false);
+  }
+});

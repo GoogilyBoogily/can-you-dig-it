@@ -217,6 +217,13 @@ export function check(o: Options, d: Derived): string[] {
   if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
   if (d.plateZ > d.usableZ) w.push(`FAIL plate ${d.plateZ.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
   if (d.inset && d.inset - o.wall < o.canD + 4) w.push(`FAIL chute ${(d.inset - o.wall).toFixed(0)} mm is narrower than a can - cans would jam at the drop`);
+  // laneOf filters only the interior tabs through clear(); the two end tabs are placed
+  // unconditionally. The front one sits at inset + 7 from the deck start and the tier
+  // below's wall-top pin at -px is 40 in, so they are |inset + 7 - 40| apart whatever the
+  // lane's length. Inside earW/2 + tabW/2 the deck's ear lands on that pin: every part is
+  // a valid solid, one piece, no overhang, and the tier will not seat.
+  if (d.inset && Math.abs(d.inset + K.tabW / 2 + 3 - 40) < 12)
+    w.push(`FAIL a ${o.canD} mm can puts the deck's front ear on the pin below - the tier will not seat`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
   if (o.wall < K.dovetail + 2.5) w.push(`WARN wall ${o.wall} mm leaves under 2.5 mm behind the dovetail`);
