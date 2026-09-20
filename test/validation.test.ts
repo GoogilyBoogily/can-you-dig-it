@@ -160,17 +160,41 @@ test("the fit slider's full range is accepted", () => {
   for (const fit of [-0.2, 0, 0.3]) expect(() => readNumbers({ fit })).not.toThrow();
 });
 
-// The browser's own min/max on a number input and LIMITS are the same numbers, or a
-// shared link loads a value the gate accepts into a field the browser marks invalid.
-test("every number input in index.html carries its LIMITS bounds", async () => {
+// The browser's own min/max and LIMITS are the same numbers, or a shared link loads a
+// value the gate accepts into a field the browser marks invalid. This used to match only
+// type="number", and the only two fields that disagreed were the two type="range" ones:
+// fit was -2..2 in LIMITS against -0.2..0.3 in the markup, lipGap 0..30 against 0..20.
+// A range clamps silently on assignment, so the markup was the real gate and nothing saw it.
+test("every bounded input in index.html carries its LIMITS bounds", async () => {
   const html = await Bun.file(new URL("../index.html", import.meta.url)).text();
-  const inputs = [...html.matchAll(/<input name="(\w+)" type="number"([^>]*)>/g)];
-  // every number input, or one written with its attributes in another order slips past
-  expect(inputs.length).toBe(html.match(/type="number"/g)!.length);
+  const bounded = /<input name="(\w+)" type="(?:number|range)"([^>]*)>/g;
+  const inputs = [...html.matchAll(bounded)];
+  // every named bounded input, or one written with its attributes in another order slips
+  // past. The explode slider is deliberately nameless: it drives the viewer, not the solver.
+  expect(inputs.length).toBe(html.match(/<input name="\w+" type="(?:number|range)"/g)!.length);
   for (const [, name, attrs] of inputs) {
     const limit = LIMITS[name];
     expect(limit, name).toBeDefined();
     expect(Number(/min="([^"]*)"/.exec(attrs)?.[1]), `${name} min`).toBe(limit.min);
     expect(Number(/max="([^"]*)"/.exec(attrs)?.[1]), `${name} max`).toBe(limit.max);
   }
+});
+
+
+// bboxOf seeds with +-Infinity and hands them back for a mesh with no vertices. pack()
+// tests every extent with `>`, which -Infinity passes, so the empty part seated, set its
+// shelf width to -Infinity, and the centring pushed every part already on that shelf to
+// x = Infinity. The 3MF then carried `<vertex x="Infinity">` and the part that looked
+// wrong was not the broken one. Unreachable today - the fit slider clamps well above the
+// -1.75 where a tab hole goes negative - but the only thing stopping it is markup.
+test("pack() refuses a mesh with no geometry instead of poisoning the plate", () => {
+  const box = (name: string): MeshData => {
+    const pos = new Float32Array([0, 0, 0, 100, 0, 0, 100, 50, 0]);
+    return { name, pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos) };
+  };
+  const empty: MeshData = { name: "ghost", pos: new Float32Array(0), idx: new Uint32Array(0), bbox: bboxOf(new Float32Array(0)) };
+  expect(bboxOf(new Float32Array(0))[0]).toBe(Infinity);
+  expect(() => pack([{ mesh: box("deck"), qty: 1 }, { mesh: empty, qty: 1 }], [256, 256, 256], 3)).toThrow(/ghost/);
+  const good = pack([{ mesh: box("deck"), qty: 2 }], [256, 256, 256], 3);
+  expect(good.every((p) => p.bbox.every(Number.isFinite))).toBe(true);
 });

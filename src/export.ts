@@ -81,6 +81,13 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
   const seats: Seat[] = [];
   for (const { name, mesh } of flat) {
     const width = mesh.bbox[3] - mesh.bbox[0], depth = mesh.bbox[4] - mesh.bbox[1];
+    // bboxOf seeds with +-Infinity and returns them for a mesh with no vertices, so width
+    // is -Infinity. Every test below is a `>`, which -Infinity passes: the part seats, its
+    // shelf width becomes -Infinity, and the centring drags every part already on that
+    // shelf out to x = Infinity - a 3MF full of `Infinity` vertices, from one bad part
+    // that is not the one that looks wrong.
+    if (!Number.isFinite(width) || !Number.isFinite(depth))
+      throw new Error(`${name} has no geometry to pack - it came out of the kernel empty`);
     const orientations: [number, number, boolean][] = [[width, depth, false], [depth, width, true]];
     let seat: Seat | null = null;
     // One past the last plate is a fresh one, opened only once every existing plate is full.

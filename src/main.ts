@@ -412,4 +412,9 @@ $("share").addEventListener("click", async () => {
   }
 });
 
+// A range input clamps and step-snaps whatever the hash carried, so the form can end up
+// holding different numbers than the link that opened it. Rewrite the hash from the form:
+// sender and recipient then see the same design, and Share copies what is on screen.
+const arrivedWithHash = location.hash.length > 0;
 refit(loadHash());
+if (arrivedWithHash) syncHash();
