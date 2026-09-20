@@ -81,9 +81,20 @@ test("the pin: inside the notch above and the cover hole at every clearance", ()
     expect(geo.isect(j.pin, j.notch).volume()).toBeCloseTo(j.pin.volume(), 3);
     expect(geo.isect(j.pin, j.hole).volume()).toBeCloseTo(j.pin.volume(), 3);
     expect(j.pin.boundingBox().max[2]).toBeCloseTo(K.pinH, 6);
-    expect(j.hole.boundingBox().max[0] - j.pin.boundingBox().max[0]).toBeCloseTo(clearance, 6);
+    // containment alone passes on an oversized female: the shell is the clearance on
+    // both in-plane axes, and on the notch's x (its y runs through the wall)
+    expect(grownBy(j.pin, j.hole)).toEqual([clearance, clearance]);
+    expect(grownBy(j.pin, j.notch)[0]).toBeCloseTo(clearance, 6);
   }
 });
+
+/** How far `outer` reaches past `inner` on +x and +y: the clearance a side, if the
+ *  female is the male grown by exactly that. */
+function grownBy(inner: M, outer: M): [number, number] {
+  const a = inner.boundingBox(), b = outer.boundingBox();
+  return [round6(b.max[0] - a.max[0]), round6(b.max[1] - a.max[1])];
+}
+const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 test("the lip tab, stood up, sits inside its pocket", () => {
   for (const clearance of [K.cl, K.cl + 0.3]) {
@@ -106,6 +117,7 @@ test("the ear joint: the wall's tab fills the ear's slot, the ear fills the notc
     const tab = geo.isect(notched, geo.box(K.earW, wall + 1, deckLo + clearance, 0, 0, (deckLo + clearance) / 2));
     expect(geo.isect(tab, j.slot).volume()).toBeCloseTo(tab.volume(), 3);
     expect(tab.boundingBox().max[0] - tab.boundingBox().min[0]).toBeCloseTo(K.tabW, 6);
+    expect(grownBy(tab, j.slot)).toEqual([clearance, clearance]);
     // the ear sits in the notch: the deck adds the ear and cuts the slot at the same
     // spot, so what actually reaches the deck is ear-minus-its-own-slot; checked against
     // the notch itself, not a slab, since the ear roots past the wall's own inner face
@@ -113,6 +125,7 @@ test("the ear joint: the wall's tab fills the ear's slot, the ear fills the notc
     const earFinal = geo.diff(j.ear, [j.slot]);
     expect(geo.isect(earFinal, j.notch).volume()).toBeCloseTo(earFinal.volume(), 3);
     expect(j.ear.boundingBox().min[1]).toBeCloseTo(-wall / 2 - 1, 6); // rooted 1 mm into the deck
+    expect(grownBy(j.ear, j.notch)[0]).toBeCloseTo(clearance, 6); // the notch is the ear plus the clearance in x
     // laid flat outer face up, a notched wall has nothing hanging
     expect(overhangArea(lay(notched, platePose("wall-left", 0, 0)))).toBe(0);
   }
