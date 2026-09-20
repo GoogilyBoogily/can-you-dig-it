@@ -81,6 +81,22 @@ export function placeSide(m: M, sy: number, x: number, y: number, z: number): M 
   return placed;
 }
 
+/** The joint that carries a deck on a wall: the deck puts an ear out under the wall with
+ *  a slot through it; the wall notches over the ear and leaves its tab standing in the
+ *  notch to drop through the slot to the wall top below. Origin at the tab's x on the
+ *  wall's centreline; +y is out through the wall. The ear roots OVER into the deck. */
+export function earJoint(g: Geo, spec: { wall: number; through: number; clearance: number }): { ear: M; slot: M; notch: M } {
+  const { wall, through, clearance: c } = spec;
+  const ear = g.box(K.earW, wall + OVER, K.deckLo, 0, -OVER / 2, K.deckLo / 2);
+  const slot = g.box(K.tabW + 2 * c, K.tabT + 2 * c, through + 2 * OVER, 0, (K.tabT - wall) / 2, through / 2);
+  const notchH = K.deckLo + c;
+  const pocket = g.box(K.earW + 2 * c, wall + 2 * OVER, notchH + OVER, 0, 0, (notchH - OVER) / 2);
+  const tab = tabBox(g, notchH + 2 * OVER, wall, -OVER);
+  const notch = g.diff(pocket, [tab]);
+  pocket.delete(); tab.delete();
+  return { ear, slot, notch };
+}
+
 /** The corner: the end wall keeps a wall-square post from the lap line to the tier top,
  *  and the side wall is slotted from its top edge down to that line to take it. The
  *  origin is the end wall's inner face on the side wall's centreline. */

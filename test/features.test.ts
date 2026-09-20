@@ -4,9 +4,9 @@
 import { test, expect } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint } from "../src/features/joints";
-import { stand, lipPose } from "../src/features/pose";
-import { geo } from "./geo";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint, earJoint } from "../src/features/joints";
+import { stand, lipPose, platePose, lay } from "../src/features/pose";
+import { geo, overhangArea } from "./geo";
 
 test("clearance is K.cl plus fit, and the overshoot is 1 mm", () => {
   expect(clearanceOf(DEFAULTS)).toBe(K.cl);
@@ -90,5 +90,29 @@ test("the lip tab, stood up, sits inside its pocket", () => {
     const pocket = lipPocket(geo, clearance, 40, 10).translate([K.lipTabT / 2, 0, 0]);
     expect(geo.isect(tab, pocket).volume()).toBeCloseTo(tab.volume(), 3);
     expect(pocket.boundingBox().max[1] - tab.boundingBox().max[1]).toBeCloseTo(clearance, 6);
+  }
+});
+
+test("the ear joint: the wall's tab fills the ear's slot, the ear fills the notch", () => {
+  for (const clearance of [K.cl, K.cl + 0.3]) {
+    const wall = 6, deckLo = K.deckLo;
+    const j = earJoint(geo, { wall, through: 30, clearance });
+    // what the notch leaves standing in a wall slab is the tab, and it sits in the slot
+    const slab = geo.box(60, wall, 40, 0, 0, 20);
+    const notched = geo.diff(slab, [j.notch]);
+    // bounded to the notch's own footprint (not the whole 60 mm slab): outside it, the
+    // slab's untouched sides would count as "standing" too and can't fit in the slot
+    const tab = geo.isect(notched, geo.box(K.earW, wall + 1, deckLo + clearance, 0, 0, (deckLo + clearance) / 2));
+    expect(geo.isect(tab, j.slot).volume()).toBeCloseTo(tab.volume(), 3);
+    expect(tab.boundingBox().max[0] - tab.boundingBox().min[0]).toBeCloseTo(K.tabW, 6);
+    // the ear sits in the notch: the deck adds the ear and cuts the slot at the same
+    // spot, so what actually reaches the deck is ear-minus-its-own-slot; checked against
+    // the notch itself, not a slab, since the ear roots past the wall's own inner face
+    // into the deck, past where a finite slab of the wall alone would clip it away
+    const earFinal = geo.diff(j.ear, [j.slot]);
+    expect(geo.isect(earFinal, j.notch).volume()).toBeCloseTo(earFinal.volume(), 3);
+    expect(j.ear.boundingBox().min[1]).toBeCloseTo(-wall / 2 - 1, 6); // rooted 1 mm into the deck
+    // laid flat outer face up, a notched wall has nothing hanging
+    expect(overhangArea(lay(notched, platePose("wall-left", 0, 0)))).toBe(0);
   }
 });

@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide } from "./features/joints";
+import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide, earJoint } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 
 export type Vec2 = [number, number];
@@ -550,19 +550,6 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, tabs, edges, lipx };
 }
 
-/** A tab, pin or boss: the one cross-section every joint uses, flush with the plate's
- *  inner face. `along` is the axis the 8 mm runs on. */
-function tab(g: Geo, along: "x" | "y", len: number, cx: number, cy: number, z0: number): M {
-  const [sx, sy] = along === "x" ? [K.tabW, K.tabT] : [K.tabT, K.tabW];
-  return g.box(sx, sy, len, cx, cy, z0 + len / 2);
-}
-/** The hole a tab enters, through the full height given. */
-function tabHole(g: Geo, o: Options, along: "x" | "y", len: number, cx: number, cy: number, z0: number): M {
-  const c = 2 * clearanceOf(o);
-  const [sx, sy] = along === "x" ? [K.tabW + c, K.tabT + c] : [K.tabT + c, K.tabW + c];
-  return g.box(sx, sy, len, cx, cy, z0 + len / 2);
-}
-
 /** Whether the deck carries the gang joint: more than one lane, and not on a grid,
  *  where the baseplate joins them. */
 const gangs = (o: Options) => o.lanesWide > 1 && o.base !== "gridfinity";
@@ -587,17 +574,18 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   // ear too; the -Y ear at the same tab is the socket instead. The lip-end ear stays an
   // ear on both sides: the lip pockets sit where its socket head would go
   const adds = [g.prismY(deckProfile(g, d, ln), IW, -IW / 2)];
-  const ear = (tx: number, sy: number) => g.box(K.earW, o.wall + 1, K.deckLo, tx, sy * (IW / 2 + o.wall / 2 - 0.5), K.deckLo / 2);
+  const earJ = earJoint(g, { wall: o.wall, through: ln.dhi, clearance: clearanceOf(o) });
   const keyed = (tx: number) => gangs(o) && Math.abs(tx - ln.lipx) > 20;
   const cuts: M[] = [];
   for (const tx of ln.tabs) {
-    if (!keyed(tx)) { adds.push(ear(tx, 1), ear(tx, -1)); continue; }
+    if (!keyed(tx)) { adds.push(placeSide(earJ.ear, 1, tx, d.py, 0), placeSide(earJ.ear, -1, tx, -d.py, 0)); continue; }
     const inner = gangInner(o, d);
     const gang = gangJoint(g, { run: inner - (IW / 2 - 1), clearance: clearanceOf(o), through: ln.dhi });
     adds.push(gang.male.translate([tx, inner, 0]));
     cuts.push(gang.female.translate([tx, -IW / 2, 0]));
     gang.male.delete(); gang.female.delete();
-    cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, inner - K.tabT / 2, -1));
+    // the neighbour wall's inner face is at `inner`, its tab flush inside it
+    cuts.push(earJ.slot.translate([tx, inner + (o.wall - 2 * K.tabT) / 2, 0]));
   }
   if (!o.solid) {
     // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
@@ -624,12 +612,14 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     earPadUnion.delete();
   }
   for (const sy of [1, -1]) {
-    for (const tx of ln.tabs) cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, sy * d.piny, -1));
+    for (const tx of ln.tabs) cuts.push(placeSide(earJ.slot, sy, tx, sy * d.py, 0));
     const pocket = lipPocket(g, clearanceOf(o), 40, 10);
     cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
     pocket.delete();
   }
-  return g.diff(g.union(adds), cuts);
+  const deck = g.diff(g.union(adds), cuts);
+  earJ.ear.delete(); earJ.slot.delete(); earJ.notch.delete();
+  return deck;
 }
 
 /** A side wall in the lane frame, before it is laid flat: sy = +1 is the left wall, -1
@@ -640,17 +630,17 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const c = clearanceOf(o);
-  const piny = sy * d.piny;
   const notchH = K.deckLo + c;
   const pinJ = pinJoint(g, { wall: o.wall, clearance: c });
+  const earJ = earJoint(g, { wall: o.wall, through: 0, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
-  for (const tx of ln.tabs) adds.push(tab(g, "x", notchH + 1, tx, piny, 0));
   for (const sx of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
   const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
-  cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH, pinJ));
+  cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH, pinJ, earJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
   const m = g.diff(g.union(adds), cuts);
   pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
+  earJ.ear.delete(); earJ.slot.delete(); earJ.notch.delete();
   return m;
 }
 
@@ -658,10 +648,8 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
  *  it (so the ear's slot stays), the corner slot the end wall drops into from the top
  *  edge down to the lap line, and the notches for the tier below's pins or the risers'
  *  bosses. */
-function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, pinJ: ReturnType<typeof pinJoint>): M[] {
-  const piny = sy * d.piny;
-  const notch = (w: number, h: number, x: number) => g.box(w + 2 * c, o.wall + 2, h + 1, x, sy * d.py, (h - 1) / 2);
-  const cuts = ln.tabs.map((tx) => g.diff(notch(K.earW, notchH, tx), [tab(g, "x", notchH + 2, tx, piny, -1)]));
+function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>): M[] {
+  const cuts = ln.tabs.map((tx) => placeSide(earJ.notch, sy, tx, sy * d.py, 0));
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.te + K.lap, H: ln.H, clearance: c });
   cuts.push(lap.female.translate([ln.xe, sy * d.py, 0])); lap.male.delete(); lap.female.delete();
   for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
