@@ -533,7 +533,7 @@ const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
 /** The pocket the lip's 5 × 12 tab drops into: 12.4 × 5.4 since the first cut, turned 90°
  *  from the tab it was for, plus fit. */
 const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: number): M =>
-  g.box(5.4 + o.fit, 12.4 + o.fit, h, x, y, z0);
+  g.box(5.4 + 2 * o.fit, 12.4 + 2 * o.fit, h, x, y, z0); // 2 * fit, like tabHole: the knob is per side everywhere
 
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
@@ -747,7 +747,9 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // maps (x, y, z) to (z, y, -x): this x is the insertion depth, and the t is what has to
   // fit the 5.4 mm pocket. A fixed 6 protruded by 2 - 8*tan - up to a 2 mm stud at slope 0.
   const tabLen = K.deckLo + K.lipInset * d.tan;
-  const outline = g.roundedRect(K.lipH, d.IW - 1, 2.4).translate([-K.lipH / 2, 0]);
+  // The blade drops between the wall inner faces, so its width is a clearance like any
+  // other and takes fit per side. It was a flat 0.5 mm however the fit was set.
+  const outline = g.roundedRect(K.lipH, d.IW - 1 - 2 * o.fit, 2.4).translate([-K.lipH / 2, 0]);
   const parts = [g.roundTop(g.prismZ(outline, t), outline, t, 2)];
   for (const sy of [1, -1]) parts.push(g.box(tabLen, 12, t, tabLen / 2, sy * d.lipy, t / 2));
   const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
@@ -808,7 +810,9 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
   const feet: M[] = [], cuts: M[] = [];
   for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
     feet.push(foot.translate([cx(i), cy(j), z0]));
-    if (o.magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
+    // No fit on the magnet pockets: 6.5 x 2.4 is the Gridfinity figure for a 6 x 2 magnet,
+  // so the 0.5 and the 0.4 are already the clearance, and a magnet wants interference.
+  if (o.magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
       const mx = cx(i) + sx * K.magnetPitch / 2;
       if (d.split && Math.abs(mx) < K.magnetR + 1) continue; // half a pocket a side holds nothing
       cuts.push(g.cyl(K.magnetR, K.magnetDepth + 1, mx, cy(j) + sy * K.magnetPitch / 2, z0 - 1));

@@ -220,6 +220,16 @@ function translucentHours(parts: PartOut[]) {
   return `, about ${(mm3 / translucentFeed(Number(machine.nozzle)) / 3600).toFixed(0)} h at 20 mm/s`;
 }
 
+/** What the weight is made of. DENSITY is PETG's, so a picked filament that is not PETG
+ *  is named with the estimate rather than silently reported as PETG: the mass is right to
+ *  within the density difference, and the label no longer contradicts the picker. */
+function filamentNote(): string {
+  const picked = pick.filament.value;
+  if (!picked) return " PETG";
+  const family = /PETG|PLA|ABS|ASA|PC|PA|TPU|PVA|HIPS/i.exec(picked)?.[0].toUpperCase();
+  return family === "PETG" || !family ? " PETG" : ` ${family} (weighed at PETG's density)`;
+}
+
 function renderResults() {
   const { parts, placed, nplates, layout } = built!;
   const d = layout.derived, o = layout.options;
@@ -233,7 +243,7 @@ function renderResults() {
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${K.lipH} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}; ${(d.Hb - K.deckLo - K.lipH - K.lipInset * d.tan - o.canD).toFixed(0)} mm over the can as it clears the lip</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
-    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
+    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg${filamentNote()}${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
     ${layout.warnings.length ? `<p class="warn">${layout.warnings.join("<br>")}</p>` : ""}`;
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";
