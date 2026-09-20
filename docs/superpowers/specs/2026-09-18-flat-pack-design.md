@@ -22,8 +22,9 @@ Every feature on a plate is one of three things:
 
 Nothing on the bed face. Nothing under an edge. If a joint needs something else, it's the
 wrong joint. `test/overhang.test.ts` walks every triangle of every snapshot part and fails
-on a downward face flatter than 45° that isn't sitting on the bed. The dovetail rib and
-groove lean 56° and are the only downward faces meant to exist.
+on a downward face flatter than 45° that isn't sitting on the bed. Every joint is
+straight-sided; the only downward faces are the Gridfinity foot chamfers at 45° and a
+magnet pocket's ceiling (see `test/overhang.test.ts`).
 
 ## Plates
 

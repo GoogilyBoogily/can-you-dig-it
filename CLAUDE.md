@@ -38,6 +38,16 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   positions); `buildDeck`, `buildWall`, `buildEndWall` in the lane frame, `layWall` /
   `layEndWall` to put them flat; `splitDeck`, `splitWall`, `buildLanePlates`, `buildLip`,
   `buildRiser`, `buildCover`, `buildAll`.
+- `src/features/` — the pieces `geometry.ts` composes, each built at a local origin (x
+  along the lane, y the wall's centreline, z = 0 at the deck underside) and placed with
+  `.translate()` / `.mirror([0,1,0])`. `joints.ts`: every joint from one spec — `earJoint`,
+  `pinJoint`, `crossLap`, `tSlotJoint`, `gangJoint`, `lipTab`/`lipPocket`; `placeSide`
+  puts a piece on either wall; `clearanceOf(o)` is the only spelling of `K.cl + o.fit`,
+  `OVER` the only overshoot. `pose.ts`: `platePose` / `lipPose`, used by `lay` in geometry
+  and stood back up in the viewer — one set of numbers. `lattice.ts` (cells, `ROWS`,
+  `autoR`), `pocket.ts` (`recessDepth`, rounds), `gridfinity.ts` (`gridUnit`).
+  `test/features.test.ts` holds every pair to "male inside female, shell = clearance".
+  Spec in `docs/superpowers/specs/2026-09-20-feature-library-design.md`.
 - `src/solver.ts` — `fitSpace(space, base, {cascade})` → ranked layouts. Pure arithmetic.
   Lane length candidates are the longest that fits plus the shortest lane for every whole
   can count (`laneLengthFor`, the inverse of `solve()`'s deck count), so a lane never
