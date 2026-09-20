@@ -216,7 +216,6 @@ export function check(o: Options, d: Derived): string[] {
   const fitsTurned = d.plateY <= d.usableX && d.plateX <= d.usableY;
   if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
   if (d.plateZ > d.usableZ) w.push(`FAIL plate ${d.plateZ.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
-  if (d.inset && d.inset - o.wall < o.canD + 4) w.push(`FAIL chute ${(d.inset - o.wall).toFixed(0)} mm is narrower than a can - cans would jam at the drop`);
   // laneOf filters only the interior tabs through clear(); the two end tabs are placed
   // unconditionally. The front one sits at inset + 7 from the deck start and the tier
   // below's wall-top pin at -px is 40 in, so they are |inset + 7 - 40| apart whatever the
@@ -226,7 +225,6 @@ export function check(o: Options, d: Derived): string[] {
     w.push(`FAIL a ${o.canD} mm can puts the deck's front ear on the pin below - the tier will not seat`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
-  if (o.wall < K.dovetail + 2.5) w.push(`WARN wall ${o.wall} mm leaves under 2.5 mm behind the dovetail`);
   return w;
 }
 
@@ -292,20 +290,21 @@ export class Geo {
 
   /**
    * Hexagon holes on a uniform-gap grid inside `bounds`, returned as one
-   * multi-polygon CrossSection. ystretch = sqrt(3) makes the self-supporting
-   * cell: vertical side ligaments, 45 deg peaks. Only whole cells are kept and
-   * the grid is centred in the panel, so every hole is the same shape and the
-   * border reads as a frame. A cell touching one of the `holes` keep-outs is
-   * dropped rather than clipped, for the same reason.
+   * multi-polygon CrossSection. Regular pointy-top cells: printed flat they are
+   * vertical holes, which is the whole point of the flat-pack. (A stretched cell
+   * was how a standing wall was made self-supporting, before the plates lay down.)
+   * Only whole cells are kept and the grid is centred in the panel, so every hole
+   * is the same shape and the border reads as a frame. A cell touching one of the
+   * `holes` keep-outs is dropped rather than clipped, for the same reason.
    */
-  hexCells(R: number, t: number, bounds: CS, ystretch = 1, holes: CS[] = []): CS | null {
+  hexCells(R: number, t: number, bounds: CS, holes: CS[] = []): CS | null {
     const P = R + t / Math.sqrt(3);
     const hexa: Vec2[] = [];
     for (let k = 0; k < 6; k++) {
       const a = ((90 + 60 * k) * Math.PI) / 180;
-      hexa.push([R * Math.cos(a), R * Math.sin(a) * ystretch]);
+      hexa.push([R * Math.cos(a), R * Math.sin(a)]);
     }
-    const lat = { dx: Math.sqrt(3) * P, dy: 1.5 * P * ystretch, hw: (Math.sqrt(3) * R) / 2, hh: R * ystretch, stagger: true };
+    const lat = { dx: Math.sqrt(3) * P, dy: 1.5 * P, hw: (Math.sqrt(3) * R) / 2, hh: R, stagger: true };
     return this.cells(lat, bounds, holes, (cx, cy) => this.poly(hexa.map(([px, py]) => [px + cx, py + cy] as Vec2)));
   }
 
@@ -358,7 +357,7 @@ export class Geo {
     const square = { dx: 2 * R + t, dy: 2 * R + t, hw: R, hh: R, stagger: false };
     switch (p) {
       case "hex":
-        return this.hexCells(R, t, panel, 1, keep);
+        return this.hexCells(R, t, panel, keep);
       case "circle": // round perforation on the same 60° stagger, holes 2R across, t apart
         return this.cells({ dx: 2 * R + t, dy: (Math.sqrt(3) / 2) * (2 * R + t), hw: R, hh: R, stagger: true }, panel, keep,
           (cx, cy) => this.CrossSection.circle(R, 48).translate([cx, cy]));
@@ -555,6 +554,7 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     // wall's pad round its notch: an ear is rooted in the deck by 1 mm, and inside a
     // 2.5 mm tie the tab hole takes all of it. Six loose 12 × 6 × 4 chips a lane, once
     const earPads = ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - 3, -IW, tx + K.earW / 2 + 3, IW));
+    const earPadUnion = g.cs2d(...earPads);
     for (let i = 0; i + 1 < ln.edges.length; i += 2) {
       const a = ln.edges[i], b = ln.edges[i + 1];
       if (b - a <= 12) continue;
@@ -562,9 +562,10 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
       if (minimal) for (const sy of [1, -1]) {
         const face = g.rect(a, sy * (IW / 2 - strip), b, sy * IW / 2);
         cuts.push(g.prismZ(face, ln.dhi + 4, K.deckLo));
-        cuts.push(g.prismZ(face.subtract(g.cs2d(...earPads)), K.deckLo + 1, -1));
+        cuts.push(g.prismZ(face.subtract(earPadUnion), K.deckLo + 1, -1)); // hoisted: five bands x two sides rebuilt it
       }
     }
+    earPadUnion.delete();
   }
   for (const sy of [1, -1]) {
     for (const tx of ln.tabs) cuts.push(tabHole(g, o, "x", ln.dhi + 4, tx, sy * d.piny, -1));
@@ -649,12 +650,14 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   const rd = o.wall - (o.design === "minimal" ? K.ligMin : K.web);
   if (rd > 0.2) {
     const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
+    const padUnion = g.cs2d(...pads); // the same union for every component; it was rebuilt per iteration
     const field = panel.subtract(g.cs2d(...keep));
     for (const comp of field.decompose()) {
       const { min: [gx0], max: [gx1] } = comp.bounds();
-      const face = g.rect(gx0, -1, gx1, H - b).subtract(g.cs2d(...pads));
+      const face = g.rect(gx0, -1, gx1, H - b).subtract(padUnion);
       cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
     }
+    padUnion.delete();
   }
   return cuts;
 }
@@ -754,7 +757,8 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
 /** A foot under a wall at ±px: as thick as the wall, since the deck starts at the wall's
  *  inner face and the next gang 3 mm past its outer one. The boss goes into the wall's
  *  bottom notch. */
-export function buildRiser(g: Geo, o: Options, h: number, side = 20): M {
+export function buildRiser(g: Geo, o: Options, h: number): M {
+  const side = 20; // the foot's length along the lane; it was a parameter no caller set
   return g.union([g.box(side, o.wall, h, 0, 0, h / 2), tab(g, "x", K.pinH, 0, 0, h)]);
 }
 
@@ -837,7 +841,10 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     keep.push(window.offset(4, "Miter"));
   }
   if (!o.solid) {
-    for (const sx of [1, -1]) for (const sy of [1, -1]) keep.push(g.rect(sx * d.px - 8, sy * d.py - 8, sx * d.px + 8, sy * d.py + 8));
+    // No keep-out round the pin holes: the field stops 14 mm in from OW/2 and the holes
+    // are at d.piny = IW/2 + 1.5, which is 6.5 mm from that edge - the cells never reach
+    // them. The rectangles that used to be here were centred on d.py, not the piny the
+    // holes are cut at, and were 2 mm short of the field even so.
     // bigger cells and fat bars than the walls: a grille, not a lattice
     const field = g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14);
     // the grille has its own radius, sized like the walls' so three whole rows fill the

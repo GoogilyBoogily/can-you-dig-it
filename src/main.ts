@@ -2,8 +2,8 @@ import { K, DENSITY, type Options } from "./geometry";
 import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
-import { extractProfile, plateSummary, stripCopy, type Placement } from "./export";
-import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
+import { extractProfile, plateSummary, type Placement } from "./export";
+import { hasStoredProfile, loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { optionsFrom, type FormValues } from "./validate";
 import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
@@ -159,7 +159,14 @@ worker.onmessage = (e: MessageEvent<Res>) => {
     fail(`Something went wrong: ${r.message}`);
     return;
   }
-  if (r.type === "file") { if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); } return; }
+  if (r.type === "file") {
+    // A second download click supersedes the first, and the worker is serial: the first
+    // still finishes and arrives here. Dropping it silently means the user asked for a
+    // 3MF, waited, and never got one or a word about it.
+    if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); }
+    else console.info(`dropped a superseded ${r.name} export (#${r.id}, now on #${exportId})`);
+    return;
+  }
   if (r.id !== buildId || !chosen) return; // a newer build is already on its way
   setBuildPending(false);
   built = { parts: r.parts, placed: r.placed, nplates: r.nplates, layout: chosen };
@@ -232,11 +239,11 @@ function renderResults() {
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";
   const byPlate = new Map<number, Placement[]>();
   for (const p of placed) { if (!byPlate.has(p.plate)) byPlate.set(p.plate, []); byPlate.get(p.plate)!.push(p); }
-  const gramsOf = (name: string) => { const p = parts.find((p) => p.name === stripCopy(name)); return p ? partGrams(p) : 0; };
+  const gramsOf = (part: string) => { const p = parts.find((p) => p.name === part); return p ? partGrams(p) : 0; };
   for (const [n, items] of [...byPlate.entries()].sort((a, b) => a[0] - b[0])) {
     const b = document.createElement("button"); b.type = "button"; b.className = "plate"; b.setAttribute("data-key", `plate:${n}`);
     const summary = plateSummary(items);
-    b.innerHTML = `<span class="n">${n + 1}</span><span>${summary}</span><span class="g">${g(items.reduce((a, i) => a + gramsOf(i.name), 0))}</span>`;
+    b.innerHTML = `<span class="n">${n + 1}</span><span>${summary}</span><span class="g">${g(items.reduce((a, i) => a + gramsOf(i.part), 0))}</span>`;
     b.addEventListener("click", () => showTab(`plate:${n}`));
     pl.appendChild(b);
   }
@@ -280,7 +287,10 @@ function adoptProfile(loaded: StoredProfile) {
 
 function loadProfile() {
   profile = loadStoredProfile();
-  if (!profile) clearStoredProfile(); // don't re-read a value we already rejected
+  // Only when something was there to reject. loadStoredProfile returns null for an absent
+  // value and for a localStorage that threw, and clearing the second logs "could not clear
+  // the saved profile" at a browser that never had one.
+  if (!profile && hasStoredProfile()) clearStoredProfile(); // don't re-read a value we already rejected
   showProfile();
 }
 

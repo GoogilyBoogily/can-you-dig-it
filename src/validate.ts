@@ -30,8 +30,12 @@ export const LIMITS: Record<string, Limit> = {
 /** Check each number against its limit. Throws naming the first bad field. */
 export function readNumbers(values: Record<string, number>): Record<string, number> {
   for (const [key, value] of Object.entries(values)) {
-    const limit = LIMITS[key];
-    if (!limit) continue; // not a dimension we police
+    // hasOwn, not a plain lookup: LIMITS is an object literal, so LIMITS["toString"] and
+    // LIMITS["constructor"] are truthy inherited values whose min and max are undefined,
+    // and every comparison against undefined is false. A key like that walked straight
+    // through the one gate the app has.
+    if (!Object.hasOwn(LIMITS, key)) continue; // not a dimension we police
+    const limit = LIMITS[key]!;
     if (!Number.isFinite(value)) throw new Error(`${limit.label} needs a number`);
     if (value < limit.min || value > limit.max)
       throw new Error(`${limit.label} must be between ${limit.min} and ${limit.max} mm`);

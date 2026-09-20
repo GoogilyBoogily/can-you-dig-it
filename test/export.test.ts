@@ -81,7 +81,7 @@ test("a 5th plate wraps onto a 3-wide grid", () => {
 
 // The grid is only useful if it reaches the geometry: objects are baked into place,
 // and model_settings.config is belt-and-braces on top.
-const onPlate = (plate: number): Placement => ({ ...triangle, name: `part-${plate}`, plate });
+const onPlate = (plate: number): Placement => ({ ...triangle, name: `part-${plate}`, part: `part-${plate}`, plate });
 
 test("a 3MF bakes each object onto its plate origin", () => {
   const model = strFromU8(unzipSync(threeMf([onPlate(0), onPlate(1)], BED))["3D/3dmodel.model"]);
@@ -103,19 +103,26 @@ test("a 3MF declares one plate block per plate, with its objects", () => {
 // plate says what is on it instead of "Plate 1".
 test("a 3MF names each plate after what is on it", () => {
   const placed: Placement[] = [
-    { ...triangle, name: "deck-01", plate: 0 },
-    { ...triangle, name: "deck-02", plate: 0 },
-    { ...triangle, name: "end-lip", plate: 1 },
+    { ...triangle, name: "deck-01", part: "deck", plate: 0 },
+    { ...triangle, name: "deck-02", part: "deck", plate: 0 },
+    { ...triangle, name: "end-lip", part: "end-lip", plate: 1 },
   ];
   const config = strFromU8(unzipSync(threeMf(placed, BED))["Metadata/model_settings.config"]);
   expect(config).toContain(`<metadata key="plater_name" value="2x deck"/>`);
   expect(config).toContain(`<metadata key="plater_name" value="end-lip"/>`);
 });
 
-test("plateSummary counts copies, keeps pack order, and leaves a digit in a part name alone", () => {
-  const on = (name: string): Placement => ({ ...triangle, name, plate: 0 });
-  expect(plateSummary([on("lane-deck-01"), on("riser-24-01"), on("lane-deck-02"), on("riser-24-02"), on("end-lip")]))
+// The part a copy came from is carried on the placement, not parsed back out of its
+// name. It used to be a /-\d{2}$/ strip, which took the "24" off a riser-24 printed
+// once, and missed the suffix entirely from copy 100 on - a 1000 mm shelf makes 140 of
+// every plate, and those read 0 g in the panel and put a 3-digit name in the 3MF.
+test("plateSummary counts copies, keeps pack order, and is not fooled by a digit or a 3-digit copy", () => {
+  const on = (part: string, copy?: number): Placement =>
+    ({ ...triangle, name: copy === undefined ? part : `${part}-${String(copy).padStart(2, "0")}`, part, plate: 0 });
+  expect(plateSummary([on("lane-deck", 1), on("riser-24", 1), on("lane-deck", 2), on("riser-24", 2), on("end-lip")]))
     .toBe("2x lane-deck, 2x riser-24, end-lip");
+  expect(plateSummary([on("lane-deck", 100), on("lane-deck", 101)])).toBe("2x lane-deck");
+  expect(plateSummary([on("riser-24")])).toBe("riser-24");
 });
 
 // bbs_3mf.cpp sets m_is_bbl_3mf only when the Application metadata starts with

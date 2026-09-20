@@ -9,6 +9,7 @@ export interface MeshData {
 
 export interface Placement extends MeshData {
   plate: number; // 0-based; pos is already on the plate, there is nothing left to apply
+  part: string; // the part this is a copy of, carried rather than parsed back out of `name`
 }
 
 export function bboxOf(pos: Float32Array): MeshData["bbox"] {
@@ -127,12 +128,9 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
       pos[i + 1] = (rotated ? mesh.pos[i] : mesh.pos[i + 1]) + dy;
       pos[i + 2] = mesh.pos[i + 2] - bb[2];
     }
-    return { name, pos, idx: mesh.idx, bbox: bboxOf(pos), plate };
+    return { name, part: mesh.name, pos, idx: mesh.idx, bbox: bboxOf(pos), plate };
   });
 }
-
-/** The part a placed copy came from: `lane-deck-02` → `lane-deck`. */
-export const stripCopy = (name: string) => name.replace(/-\d{2}$/, "");
 
 /**
  * What sits on a plate, biggest part first: `2x lane-deck, end-lip`. The Plates panel
@@ -141,7 +139,7 @@ export const stripCopy = (name: string) => name.replace(/-\d{2}$/, "");
  * the gcode file it exports.
  */
 export function plateSummary(items: Placement[]): string {
-  const names = items.map((i) => stripCopy(i.name));
+  const names = items.map((i) => i.part);
   return [...new Set(names)].map((nm) => { const c = names.filter((x) => x === nm).length; return c > 1 ? `${c}x ${nm}` : nm; }).join(", ");
 }
 

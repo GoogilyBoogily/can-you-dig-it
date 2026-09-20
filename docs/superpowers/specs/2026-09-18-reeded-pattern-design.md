@@ -1,5 +1,9 @@
 # Reeded pattern: the Japandi face
 
+> **Not built.** This design was written and never implemented: nothing in `src/`,
+> `index.html` or `test/` refers to it. Read it as a proposal, not as a description of
+> the app. (Noted 2026-09-19, during the correctness audit.)
+
 A sixth `pattern`, `reeded`. No holes in the walls: the outer recess keeps a run of
 vertical ribs, flush with the border, so the standing wall reads as a framed reeded panel.
 The cover is the slat grille. Everything else is the standard or minimal lane.

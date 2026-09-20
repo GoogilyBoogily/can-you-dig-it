@@ -57,7 +57,10 @@ export class Viewer {
     const c = this.ren.domElement;
     let drag = false, lx = 0, ly = 0, btn = 0;
     c.addEventListener("pointerdown", (e) => { drag = true; lx = e.clientX; ly = e.clientY; btn = e.button; c.setPointerCapture(e.pointerId); });
-    c.addEventListener("pointerup", () => (drag = false));
+    // pointercancel too: a touch the browser reinterprets as a scroll or a back gesture
+    // fires no pointerup, and the drag stayed live afterwards - the model then rotated
+    // under a pointer with no button held.
+    for (const end of ["pointerup", "pointercancel"]) c.addEventListener(end, () => (drag = false));
     c.addEventListener("pointermove", (e) => {
       if (!drag) return;
       const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
@@ -107,7 +110,12 @@ export class Viewer {
   }
 
   private frame(pad = 1.15) {
-    const b = new THREE.Box3().setFromObject(this.group);
+    // Frame what is on screen. Box3.setFromObject counts invisible objects, and both the
+    // bed and the grid are added hidden by default: a 400 mm bed framed the camera for a
+    // 400 mm object while a 45 mm part was showing, so the part rendered tiny. Turning
+    // the bed on still frames it, which is the point of turning it on.
+    const b = new THREE.Box3();
+    for (const child of this.group.children) if (child.visible) b.expandByObject(child);
     if (b.isEmpty()) return;
     b.getCenter(this.target);
     this.dist = (b.getSize(new THREE.Vector3()).length() * pad) / (2 * Math.tan((this.cam.fov * Math.PI) / 360));

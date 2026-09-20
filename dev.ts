@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 
 const DIST = resolve("dist");
 const PORT = 3000;
-const WATCHED = ["src", "index.html", "styles.css"];
+const WATCHED = ["src", "index.html", "styles.css", "profiles"]; // build.ts copies profiles/ too
 
 /** URL path → a file inside `root`, or null when it climbs out. `root` must be absolute. */
 export function resolveStaticPath(urlPath: string, root: string = DIST): string | null {
@@ -46,12 +46,25 @@ export function serveDist(port: number, root: string = DIST) {
 if (import.meta.main) {
   await rebuild();
 
-  // Editors fire several events per save; coalesce them into one build.
+  // Editors fire several events per save; coalesce them into one build. The debounce
+  // coalesces events, not builds: build.ts opens with rmSync("dist"), so a second save
+  // while the first build is still running deleted the files it had already written, and
+  // a reload landing in that window 404s on the page itself. One at a time, then.
   let pending: ReturnType<typeof setTimeout> | undefined;
+  let building = false, queued = false;
+  const run = async () => {
+    if (building) { queued = true; return; }
+    building = true;
+    try {
+      do { queued = false; await rebuild(); } while (queued);
+    } finally {
+      building = false;
+    }
+  };
   for (const target of WATCHED) {
     watch(target, { recursive: true }, () => {
       clearTimeout(pending);
-      pending = setTimeout(rebuild, 80);
+      pending = setTimeout(run, 80);
     });
   }
 

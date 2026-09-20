@@ -24,7 +24,7 @@ type Preset = Record<string, any>;
 // Presets refer to each other by the `name` inside the file, which is not always the
 // file name ("Bambu Support For PA/PET @base" lives in "Bambu Support For PA PET @base.json").
 const files = new Map<string, Preset>();
-async function loadKind(kind: string): Promise<string[]> {
+async function presetNames(kind: string): Promise<string[]> {
   const names: string[] = [];
   for (const file of readdirSync(join(PRESETS, kind)).filter((f) => f.endsWith(".json")).sort()) {
     const preset = await Bun.file(join(PRESETS, kind, file)).json();
@@ -41,9 +41,15 @@ function flattenPreset(kind: string, name: string): Preset {
   return inherits ? { ...flattenPreset(kind, inherits), ...own } : own;
 }
 
-const presetNames = loadKind;
 
-const version = process.env.BAMBU_VERSION ?? (await Bun.file(`${APP}/Info.plist`).text()).match(/CFBundleShortVersionString<\/key>\s*<string>([^<]+)/)![1];
+const version = process.env.BAMBU_VERSION ?? await bundleVersion();
+/** Bambu Studio's own version, off the macOS bundle. Anywhere else, BAMBU_VERSION says it. */
+async function bundleVersion(): Promise<string> {
+  const plist = await Bun.file(`${APP}/Info.plist`).text().catch(() => "");
+  const found = /CFBundleShortVersionString<\/key>\s*<string>([^<]+)/.exec(plist)?.[1];
+  if (!found) throw new Error(`no ${APP}/Info.plist to read the version from - set BAMBU_VERSION (see the header of this file)`);
+  return found;
+}
 
 const machines: Machine[] = [];
 for (const name of await presetNames("machine")) {
@@ -81,5 +87,5 @@ for (const name of await presetNames("filament")) {
 
 const index: ProfileIndex = { version, machines, processes, filaments };
 const json = JSON.stringify(index);
-await Bun.write("profiles/index.json", json);
+await Bun.write(new URL("profiles/index.json", import.meta.url), json); // not CWD-relative
 console.log(`profiles/index.json ${(json.length / 1024).toFixed(0)} KB: ${machines.length} machines, ${processes.length} processes, ${filaments.length} filaments`);
