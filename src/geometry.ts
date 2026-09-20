@@ -6,6 +6,7 @@ import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoi
 import { lay, platePose } from "./features/pose";
 import { cellsOf, ligFor, autoR, ROWS } from "./features/lattice";
 import { recessDepth, roundOver, roundTop } from "./features/pocket";
+import { gridUnit } from "./features/gridfinity";
 export { ROWS, ligFor, autoR, type Lattice } from "./features/lattice";
 
 export type Vec2 = [number, number];
@@ -627,23 +628,6 @@ export function buildRiser(g: Geo, o: Options, h: number): M {
   return riser;
 }
 
-/** One Gridfinity foot, centred, from z = 0 up: hulls of the profile's rounded
- *  rectangles, so the 45° faces are exact and the corners concentric. An extrude with
- *  a scale would square the top corner and bind in the baseplate's r4 pocket. The
- *  upper chamfer runs on `over` mm past the profile: neighbouring feet then meet in
- *  a 45° ridge and their rounded corners close in a 45° pit, and the floor over them
- *  has no flat underside anywhere. */
-function buildFoot(g: Geo, over: number): M {
-  const { footFlat: flat, footChamferLo: lo, footWall: wall, footChamferHi: hi, footR: r } = K;
-  const mid = flat + 2 * lo, top = mid + 2 * hi; // 37.2, 41.5
-  const ring = (side: number, radius: number, z: number) => g.roundedRect(side, side, radius).toPolygons().flat().map(([x, y]) => [x, y, z] as Vec3);
-  return g.union([
-    g.hull([...ring(flat, r - hi - lo, 0), ...ring(mid, r - hi, lo)]),
-    g.prismZ(g.roundedRect(mid, mid, r - hi), wall, lo),
-    g.hull([...ring(mid, r - hi, lo + wall), ...ring(top + 2 * over, r + over, lo + wall + hi + over)]),
-  ]);
-}
-
 /** The bottom-tier deck as a Gridfinity bin: the ordinary deck on a 7 mm unit that
  *  hangs below it, z −7 to 0 - a floor of whole cells round the lane (`d.floor`, where
  *  the alignment put it), a foot under every cell, and the riser's boss at ±px for the
@@ -652,50 +636,16 @@ function buildFoot(g: Geo, over: number): M {
  *  z = 0; the lip's tab now ends flush with the pan, and its pocket keeps 1 mm of
  *  clearance under it for the fit. Prints as it sits, feet down, like every bin. */
 export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
-  const { floorCells: [nx, ny], floor: [fx0, fy0, fx1, fy1] } = d;
-  const footH = K.footChamferLo + K.footWall + K.footChamferHi;
-  const z0 = -K.unitH;
-  // the bin's r3.75 corners, except where the lane's own corner lands on one: flush in a
-  // corner, a deck ear would hang a square millimetre over the round. Where the lane
-  // runs past its floor (a shelf too narrow for the cells that would cover it), the
-  // outline is the lane's and a skirt stands under it, bed to floor, beside the
-  // baseplate: solid, so nothing overhangs, and the foot chamfers run into it
-  const lane = g.rect(-d.L / 2, -d.OW / 2, d.L / 2, d.OW / 2);
-  const outline = g.roundedRect(gridSpan(nx), gridSpan(ny), K.footR).translate([(fx0 + fx1) / 2, (fy0 + fy1) / 2]).add(lane);
-  const skirt = lane.subtract(g.rect(fx0 - 2 * K.gridGap, fy0 - 2 * K.gridGap, fx1 + 2 * K.gridGap, fy1 + 2 * K.gridGap));
-  // the corner pit between four feet is the last void to close, sqrt(2)·4 − 3.75 = 1.9 mm
-  // above the foot tops. The chamfers run on through the whole 2.25 mm and past it, and
-  // the outline prism clips them flat at the deck's underside: the merged run-ons are
-  // the floor, and no slab has to start above the last pit - a slab 0.1 mm over it left
-  // slivers where the 24-segment corner arcs fell short
-  const foot = buildFoot(g, K.unitH - footH + 0.5);
-  const cx = (i: number) => fx0 - K.gridGap + (i + 0.5) * K.gridPitch, cy = (j: number) => fy0 - K.gridGap + (j + 0.5) * K.gridPitch;
-  const feet: M[] = [], cuts: M[] = [];
-  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
-    feet.push(foot.translate([cx(i), cy(j), z0]));
-    // No fit on the magnet pockets: 6.5 x 2.4 is the Gridfinity figure for a 6 x 2 magnet,
-    // so the 0.5 and the 0.4 are already the clearance, and a magnet wants interference.
-    if (o.magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
-      const mx = cx(i) + sx * K.magnetPitch / 2;
-      if (d.split && Math.abs(mx) < K.magnetR + 1) continue; // half a pocket a side holds nothing
-      cuts.push(g.cyl(K.magnetR, K.magnetDepth + 1, mx, cy(j) + sy * K.magnetPitch / 2, z0 - 1));
-    }
-  }
-  const adds = [
-    deck,
-    g.isect(g.union(feet), g.prismZ(outline, K.unitH, z0)), // the run-on chamfers stop at the bin's edge
-  ];
-  if (!skirt.isEmpty()) adds.push(g.prismZ(skirt, K.unitH, z0));
+  const unit = gridUnit(g, d, o.magnets);
+  const adds = [deck, unit.floor];
+  if (unit.skirt) adds.push(unit.skirt);
   const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 });
   for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, 0));
-  for (const sy of [1, -1]) {
-    const pocket = lipPocket(g, clearanceOf(o), 2, 0);
-    cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
-    pocket.delete();
-  }
-  const m = g.diff(g.union(adds), cuts);
+  const cuts = [...unit.pockets];
+  for (const sy of [1, -1]) cuts.push(lipPocket(g, clearanceOf(o), 2, 0).translate([ln.lipx, sy * d.lipy, 0]));
+  const out = g.diff(g.union(adds), cuts);
   pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
-  return m;
+  return out;
 }
 
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
