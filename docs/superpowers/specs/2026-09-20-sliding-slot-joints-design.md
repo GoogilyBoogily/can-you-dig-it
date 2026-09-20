@@ -31,36 +31,47 @@ already wide enough.
 `tSlot()` is the eight-point outline. The socket grows by `cl + fit` with a miter offset,
 which at right angles is an exact square offset, so the hand-grown trapezoid is gone.
 
-## Gang: rib, groove and clip
+## Gang: a deck tongue in a deck socket
 
-The rib on the +Y face at ±dtx is an 8 × 3 box, `RIB_Z` to H − 12 as before. The groove in
-the −Y face is the rib plus clearance, open at the top. Lanes still slide down onto each
-other. That locates X along the whole height. It does not hold the lanes together in Y, and
-nothing on a wall face can: any profile that locks Y is an undercut when the wall prints outer
-face up.
+Nothing on a wall face can hold two lanes together in Y. A rib locates X, and any head
+on it that would lock Y is an undercut when the wall prints outer face up. So the walls
+carry nothing, and the deck does the whole job: Y is in-plane for a deck.
 
-So a clip does it. A dogbone plate, `pinH` 2.4 thick, printed flat: two feet `clipFoot` 14 wide
-× 4 deep, joined by an 8-wide bar `gangGap` 3 long. Each wall gets a pocket for a foot at ±dtx
-in its top border: 14 + 2c wide, 4 + c in from the outer face, `pinH` deep from the top edge.
-Open at the top edge and at the outer face. Printed outer face up that is a pocket in the
-print face whose floor sits 2 mm above the bed, which the rule allows. The two pockets face
-each other across the gap and the clip drops in from the top. Pull the lanes apart and each
-foot bears on the inner wall of its pocket. The tier above, or the cover, holds the clip down.
-A top tier with no cover keeps it by friction.
+Every +Y ear except the lip-end one runs on as a tongue: ear-wide from its root, under
+its own wall, across the gap and under the neighbour's wall, then a T into the
+neighbour's rail - an ear-wide neck `spliceNeck` 3 deep and a `gangHead` 18 wide head to
+`spliceDepth` 8. The tongue is the neighbour's ear at that tab as well: that wall
+notches over it and drops its tab through a second slot in it. On the −Y side the same
+tab has no ear; it has the socket, the T grown by the clearance, cut through the deck
+like a tab hole. It sits in the outer 8 mm of the rail, under a can's neck, where
+nothing rolls.
 
-The pocket lives above the recess (the top border is 5 mm of full-thickness wall) and above
-the rib. The lattice keep-out band at ±dtx is the foot's half-width plus 2.5, the same 9.5 mm
-it was for the dovetail tip.
+Assembly: set the second deck down and the first deck's tongues rise into its sockets.
+The head locks Y, the neck locks X, at every tie. Walls go on after, as before.
 
-Rib, groove, pockets and clip exist only when lanes gang: `lanesWide > 1` and not on a
-Gridfinity base, where the baseplate joins them. `gang-clip` prints 2 per joint per tier.
+The neck is the ear's width and not the tab's because the neighbour wall's tab hole
+crosses it: at 8 wide the neck was all hole and the head printed loose. The lip-end ear
+stays an ear on both sides because the lip pockets sit where its socket head would go.
+
+A ganged deck is `gangReach` = gap + wall + 8 = 17 mm wider than OW on its +Y side, and
+the last lane's tongues hang free on the outer edge, as the old rib did. On a 256 bed a
+155 mm deck no longer takes a wall behind it: the default gang packs on 19 plates, not
+16.
+
+Walls are one part whatever the lane count. Their old names, `wall-tongue` and
+`wall-socket`, are `wall-left` and `wall-right`.
+
+Gang joints exist only when lanes gang: `lanesWide > 1` and not on a Gridfinity base,
+where the baseplate joins them.
 
 ## Constants
 
 `dovetail` is `gangGap`. `dtCl` is `cl`: it was every tab's clearance, never the dovetail's.
-`dtBase` and `dtTip` are gone; the rib is `tabW` wide. New: `clipFoot` 14, `spliceNeck` 3.
+`dtBase` and `dtTip` are gone. New: `gangHead` 18, `spliceNeck` 3.
 
-## Viewer
+## First cut
 
-`showAssembly` places a clip at (±dtx, the joint's y, H − pinH) on every tier of every joint
-and pushes it across with the gang when exploded.
+The first cut kept a rectangular rib and groove on the walls and added a dogbone clip
+dropped into pockets on the two wall tops to hold Y. That is two parts sliding into a
+third; the ask was one part's tongue into the other's socket, and the deck is the only
+plate that can carry it.

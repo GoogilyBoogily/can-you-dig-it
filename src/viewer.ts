@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, dtxOf, laneName, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
+import { K, laneName, type Derived, type Options, type LaneRole, type PlateName } from "./geometry";
 import type { PartOut } from "./worker";
 
-const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, clip: 0xd8a04a, can: 0xc8372d, bed: 0x2a2e35 };
+const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
 
 export class Viewer {
   private scene = new THREE.Scene();
@@ -173,12 +173,12 @@ export class Viewer {
     // plate -> lane frame: the inverse of layWall / layEndWall / the lip's lying build
     const pose: Record<string, (m: THREE.Object3D) => void> = {
       "deck": () => {},
-      "wall-tongue": (m) => { m.rotation.set(Math.PI / 2, 0, Math.PI, "ZYX"); m.position.set(0, IW / 2, 0); },
-      "wall-socket": (m) => { m.rotation.set(Math.PI / 2, 0, 0); m.position.set(0, -IW / 2, 0); },
+      "wall-left": (m) => { m.rotation.set(Math.PI / 2, 0, Math.PI, "ZYX"); m.position.set(0, IW / 2, 0); },
+      "wall-right": (m) => { m.rotation.set(Math.PI / 2, 0, 0); m.position.set(0, -IW / 2, 0); },
       "end-wall": (m) => { m.rotation.set(0, Math.PI / 2, 0); m.position.set(xe, 0, 0); },
     };
     const push: Record<string, [number, number, number]> = {
-      "deck": [0, 0, 0], "wall-tongue": [0, STEP, 0], "wall-socket": [0, -STEP, 0], "end-wall": [STEP, 0, 0],
+      "deck": [0, 0, 0], "wall-left": [0, STEP, 0], "wall-right": [0, -STEP, 0], "end-wall": [STEP, 0, 0],
     };
     // a plate into a lane group, standing, with its explode push; split halves also part along X
     const putPlate = (lane: THREE.Group, name: string, plate: string, half: "" | "-front" | "-rear") => {
@@ -209,15 +209,11 @@ export class Viewer {
         const lane = new THREE.Group();
         lane.position.set(0, y, z); if (rot) lane.rotation.z = Math.PI;
         this.group.add(lane); track(lane, 0, gI * STEP, t * STEP);
-        for (const plate of ["deck", "wall-tongue", "wall-socket", "end-wall"] as PlateName[]) {
+        for (const plate of ["deck", "wall-left", "wall-right", "end-wall"] as PlateName[]) {
           // the shelf lane's deck carries the Gridfinity unit below z = 0, like the risers do
           const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : laneName(o, role, plate);
           if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }
           else putPlate(lane, name, plate, "");
-        }
-        // the gang clips on this tier's wall tops, over the gap to the next lane, flush
-        if (gI + 1 < o.lanesWide) for (const sx of [1, -1]) {
-          put(this.group, "gang-clip", sx * dtxOf(d), y + d.OW / 2 + K.gangGap / 2, z + (isBottom ? d.Hb : d.H) - K.pinH, false, [0, (gI + 0.5) * STEP, (t + 0.5) * STEP]);
         }
         const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
         if (isBottom || !cascade) put(lane, "end-lip", -d.L / 2 + 5.5, 0, K.deckLo + K.lipInset * d.tan, false, [-2 * STEP, 0, 0], Math.PI / 2);

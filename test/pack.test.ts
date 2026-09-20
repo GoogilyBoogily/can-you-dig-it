@@ -9,7 +9,7 @@ import ref from "../ref.json";
 
 const BED: [number, number, number] = [256, 256, 256];
 const MARGIN = 3, GAP = 6;
-const PLATES = 16;
+const PLATES = 19;
 
 /** A box the size of a real part's bounds. The packer reads bounds, so a box is the part. */
 const boxOf = (name: string): MeshData => {
@@ -24,7 +24,7 @@ const boxOf = (name: string): MeshData => {
 const defaultParts = () => {
   const parts = [{ mesh: boxOf("end-lip"), qty: 2 }, { mesh: boxOf("cover-front"), qty: 2 }, { mesh: boxOf("cover-rear"), qty: 2 }];
   for (const role of ["top", "bottom"]) {
-    for (const plate of ["deck", "wall-tongue", "wall-socket"])
+    for (const plate of ["deck", "wall-left", "wall-right"])
       for (const half of ["front", "rear"]) parts.push({ mesh: boxOf(`lane-${role}-${plate}-${half}`), qty: 2 });
     parts.push({ mesh: boxOf(`lane-${role}-end-wall`), qty: 2 });
   }
@@ -37,14 +37,17 @@ const byPlate = (placed: Placement[]) => {
   return [...plates.entries()].sort((a, b) => a[0] - b[0]).map(([, parts]) => parts);
 };
 
-/** Parts on one shelf share its centreline, whatever their own depth. */
+/** Parts on one shelf share its centreline, whatever their own depth. Clustered with a
+ *  tolerance, not keyed on a rounded string: the default gang's first shelf centres on
+ *  87.2565, and toFixed(3) put the deck and its shelf-mates in different buckets. */
 const shelvesOf = (parts: Placement[]) => {
-  const rows = new Map<string, Placement[]>();
+  const rows: { centre: number; parts: Placement[] }[] = [];
   for (const p of parts) {
-    const key = ((p.bbox[1] + p.bbox[4]) / 2).toFixed(3);
-    rows.set(key, [...(rows.get(key) ?? []), p]);
+    const centre = (p.bbox[1] + p.bbox[4]) / 2;
+    const row = rows.find((r) => Math.abs(r.centre - centre) < 1e-3);
+    if (row) row.parts.push(p); else rows.push({ centre, parts: [p] });
   }
-  return [...rows.values()];
+  return rows.map((r) => r.parts);
 };
 
 const packed = pack(defaultParts(), BED, MARGIN, GAP);
@@ -96,9 +99,10 @@ test("the shelves on a plate are centred front to back", () => {
   }
 });
 
-// A deck leaves a 250 × 109 mm strip behind it that nothing else in the set fits
-// unturned. Turned 90°, an end-lip or an end wall does - and the plate it used to need
-// disappears. PLATES for the default gang; the count is what the packer is judged on.
+// A ganged deck is 155 deep with its tongues and leaves a 250 × 89 mm strip behind it;
+// an end wall or an end-lip fits there flat, a wall (100) does not. Beside a 162 mm front
+// half an end wall fits turned. PLATES for the default gang; the count is what the packer
+// is judged on. It was 16 when decks were 138 deep and a wall went behind each one.
 test("small parts fill the space behind a deck instead of taking their own plate", () => {
   expect(byPlate(packed).length).toBe(PLATES);
   for (const parts of byPlate(packed))
@@ -112,7 +116,7 @@ test("the default gap is the 6 mm the plate counts were measured at", () => {
 });
 
 test("a part is turned 90° only when that is what makes it fit", () => {
-  const long = packed.filter((p) => p.name.includes("-deck-") || p.name.includes("-wall-"));
-  // Decks are 248 × 138 and walls 248 × 100 on a 250 × 250 usable bed: they fit flat, so they stay flat.
+  const long = packed.filter((p) => p.name.includes("-deck-") || p.name.includes("-wall-left-") || p.name.includes("-wall-right-"));
+  // Decks are 248 × 155 and walls 248 × 100 on a 250 × 250 usable bed: they fit flat, so they stay flat.
   for (const part of long) expect(part.bbox[3] - part.bbox[0], part.name).toBeGreaterThan(part.bbox[4] - part.bbox[1]);
 });

@@ -41,7 +41,6 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     "cover-rear": twoTiers.cover[1],
     "end-lip": twoTiers.lip,
     "riser-24": twoTiers.riser,
-    "gang-clip": twoTiers.clip!,
     "minimal-cover-front": minimalTwo.cover[0],
     "minimal-cover-rear": minimalTwo.cover[1],
   };
@@ -70,10 +69,7 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, o, set, "top");
   }
-  // A single lane: the whole un-ganged wall branch. No gang rib, no groove, no clip pocket, no
-  // keep-out band in the lattice where they would have been - and not one wall plate in
-  // the snapshot was un-ganged, so overhang.test.ts never saw the branch either. A cell
-  // landing where the band used to be would have shipped.
+  // A single lane: the un-ganged deck, ears on both sides and no tongue or socket.
   {
     const o: Options = { ...base, lanesWide: 1 };
     const set = buildAll(geo, o, solve(o));

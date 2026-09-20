@@ -6,7 +6,7 @@ import type { Manifold } from "manifold-3d";
 import { DEFAULTS, PATTERNS, partList, solve, type Options, type PartSet, type Plate, type PlateName } from "../src/geometry";
 
 const m = {} as Manifold;
-const PLATES: PlateName[] = ["deck", "wall-tongue", "wall-socket", "end-wall"];
+const PLATES: PlateName[] = ["deck", "wall-left", "wall-right", "end-wall"];
 const plates = (split: boolean): Plate[] => PLATES.map((name) => (split && name !== "end-wall" ? { name, front: m, rear: m } : { name, whole: m }));
 
 /** A PartSet shaped like buildAll's for `o`, every mesh the same stand-in. */
@@ -24,8 +24,8 @@ const names = (o: Options, split = false) => partList(setFor(o, split), o).map((
 
 test("a two-tier cascade gang: every plate of both lanes, one lip, covers", () => {
   expect(names(DEFAULTS)).toEqual([
-    ["lane-bottom-deck", 2, "lane"], ["lane-bottom-wall-tongue", 2, "lane"], ["lane-bottom-wall-socket", 2, "lane"], ["lane-bottom-end-wall", 2, "lane"],
-    ["lane-top-deck", 2, "lane"], ["lane-top-wall-tongue", 2, "lane"], ["lane-top-wall-socket", 2, "lane"], ["lane-top-end-wall", 2, "lane"],
+    ["lane-bottom-deck", 2, "lane"], ["lane-bottom-wall-left", 2, "lane"], ["lane-bottom-wall-right", 2, "lane"], ["lane-bottom-end-wall", 2, "lane"],
+    ["lane-top-deck", 2, "lane"], ["lane-top-wall-left", 2, "lane"], ["lane-top-wall-right", 2, "lane"], ["lane-top-end-wall", 2, "lane"],
     ["end-lip", 2, "lip"],
     ["cover", 2, "cover"],
   ]);
@@ -33,14 +33,14 @@ test("a two-tier cascade gang: every plate of both lanes, one lip, covers", () =
 
 test("a third tier adds one mid lane per lane across; a fourth adds another", () => {
   expect(names({ ...DEFAULTS, tiers: 3 }).filter(([n]) => String(n).startsWith("lane-mid"))).toEqual([
-    ["lane-mid-deck", 2, "lane"], ["lane-mid-wall-tongue", 2, "lane"], ["lane-mid-wall-socket", 2, "lane"], ["lane-mid-end-wall", 2, "lane"],
+    ["lane-mid-deck", 2, "lane"], ["lane-mid-wall-left", 2, "lane"], ["lane-mid-wall-right", 2, "lane"], ["lane-mid-end-wall", 2, "lane"],
   ]);
   expect(names({ ...DEFAULTS, tiers: 4 }).find(([n]) => n === "lane-mid-deck")).toEqual(["lane-mid-deck", 4, "lane"]);
 });
 
 test("a flat stack prints one lane per tier under one name, and a lip for each", () => {
   expect(names({ ...DEFAULTS, cascade: false, tiers: 3, lanesWide: 1 })).toEqual([
-    ["lane-deck", 3, "lane"], ["lane-wall-tongue", 3, "lane"], ["lane-wall-socket", 3, "lane"], ["lane-end-wall", 3, "lane"],
+    ["lane-deck", 3, "lane"], ["lane-wall-left", 3, "lane"], ["lane-wall-right", 3, "lane"], ["lane-end-wall", 3, "lane"],
     ["end-lip", 3, "lip"],
     ["cover", 1, "cover"],
   ]);
@@ -49,12 +49,12 @@ test("a flat stack prints one lane per tier under one name, and a lip for each",
 test("a long lane's plates and cover come as -front and -rear halves; the end wall stays whole", () => {
   expect(names({ ...DEFAULTS, lanesWide: 1, tiers: 2 }, true)).toEqual([
     ["lane-bottom-deck-front", 1, "lane"], ["lane-bottom-deck-rear", 1, "lane"],
-    ["lane-bottom-wall-tongue-front", 1, "lane"], ["lane-bottom-wall-tongue-rear", 1, "lane"],
-    ["lane-bottom-wall-socket-front", 1, "lane"], ["lane-bottom-wall-socket-rear", 1, "lane"],
+    ["lane-bottom-wall-left-front", 1, "lane"], ["lane-bottom-wall-left-rear", 1, "lane"],
+    ["lane-bottom-wall-right-front", 1, "lane"], ["lane-bottom-wall-right-rear", 1, "lane"],
     ["lane-bottom-end-wall", 1, "lane"],
     ["lane-top-deck-front", 1, "lane"], ["lane-top-deck-rear", 1, "lane"],
-    ["lane-top-wall-tongue-front", 1, "lane"], ["lane-top-wall-tongue-rear", 1, "lane"],
-    ["lane-top-wall-socket-front", 1, "lane"], ["lane-top-wall-socket-rear", 1, "lane"],
+    ["lane-top-wall-left-front", 1, "lane"], ["lane-top-wall-left-rear", 1, "lane"],
+    ["lane-top-wall-right-front", 1, "lane"], ["lane-top-wall-right-rear", 1, "lane"],
     ["lane-top-end-wall", 1, "lane"],
     ["end-lip", 1, "lip"],
     ["cover-front", 1, "cover"], ["cover-rear", 1, "cover"],

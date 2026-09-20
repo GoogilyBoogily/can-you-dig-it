@@ -111,7 +111,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   lap printed face-up is a 10 mm cantilever.
 - Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
   the whole point of the flat-pack. Only whole cells are cut, centred in the panel; a
-  cell touching a keep-out (rib band, splice, end notch) is dropped, not clipped, so
+  cell touching a keep-out (splice, end notch) is dropped, not clipped, so
   every hole is the same shape and the solid bands read as intended. `hexAuto` sizes the radius so three rows fill the
   upper-deck wall; the ligament follows the radius (`ligFor`). The high-end wall gets the
   same lattice and recess. The standard cover is a grille with its own radius (three
@@ -126,14 +126,12 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   (`fieldBottom`): a square edge or a chord would bridge a notch where a hexagon only
   lands a tip; hex stays at the border so its snapshot did not move. Slats cannot be
   dropped whole, so they are cut per component of `panel − keep` and skip anything under
-  4R wide — that is what keeps the splice and rib bands solid. Slat cover takes the
+  4R wide — that is what keeps the splice band solid. Slat cover takes the
   whole-row path on both designs. Spec in
   `docs/superpowers/specs/2026-09-18-pattern-axis-design.md`.
   Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
   through the bottom border, with pads left over every ear notch (the notch's own width,
   so ear and pad read as one post) and the end-wall notch. The
-  rib bands stay full: the −Y face needs 3 mm behind its groove, and the +Y recess
-  cut runs 1 mm past the face and would sever the rib.
   In the minimal deck the fin-to-wall strip keeps an ear-high
   plinth under each ear: rooted by 1 mm inside a 2.5 mm tie, the tab hole took all of
   it and the ears printed loose (`test/islands.test.ts`). Deck centre band is open with
@@ -141,14 +139,16 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
   tongue's whole root (`test/splice.test.ts`).
-- Gang joint (2026-09-20, was a 56° dovetail): the +Y wall grows a tab-wide, 3 mm rib at
-  ±dtx (`dtxOf`, L/2 − 25), the −Y wall of the next lane takes it in a groove open at the
-  top, and the lanes slide together in Z. That locates X only — nothing on a wall face
-  can lock Y without an undercut — so a `gang-clip` (dogbone, 2.4 thick, 14 × 4 feet,
-  printed flat) drops into a pocket in each wall's top border at ±dtx and holds the joint
-  in Y; the tier above or the cover holds the clip down. Two clips per joint per tier.
-  Rib, groove, pockets and clip exist only when `gangs(o)`: `lanesWide > 1` and not on a
-  grid; a lone lane's outer faces are flat (`test/gang.test.ts`). Spec in
+- Gang joint (2026-09-20, was a 56° dovetail rib on the walls): the deck carries it, since
+  nothing on a wall face can lock Y without an undercut. Every +Y ear but the lip-end one
+  runs on as a tongue under both walls into a T socket cut through the neighbour's rail
+  (`gangTongue`, `gangSocket`; ear-wide neck, `gangHead` 18 head, the splice depths). The
+  tongue is the neighbour's ear too and carries that wall's tab slot. The −Y side of the
+  same tab has the socket instead of an ear. Decks set down onto each other; head locks
+  Y, neck locks X, at every tie. Walls are one part whatever the lane count
+  (`wall-left` / `wall-right`). A ganged deck is `gangReach` (gap + wall + 8) wider on its
+  +Y side; `plateY` charges it, and the default gang packs on 19 plates, not 16. Only when
+  `gangs(o)`: `lanesWide > 1` and not on a grid (`test/gang.test.ts`). Spec in
   `docs/superpowers/specs/2026-09-20-sliding-slot-joints-design.md`.
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
   `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
