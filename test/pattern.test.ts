@@ -7,13 +7,23 @@ const shortLane: Options = { ...DEFAULTS, length: 240 }; // unsplit, fast
 
 // The pattern picks the perforation and nothing else: every pattern cuts cells out of
 // the walls, the end wall and the cover, and `solid` still blanks them all.
+//
+// The baseline has to be a wall with no cells, not a solid one. `solid: true` turns off
+// the lattice AND the recess to the 3.5 mm web, and the recess alone is ~30 % of the
+// wall: measured against solid, a wall and an end wall with zero cells came in at 0.702
+// and 0.656, under the 0.85 bar this test used. Ten of these fifteen assertions passed
+// whatever cellsOf returned. Blanking through Derived.hexR - no whole cell of radius
+// 1000 fits - leaves the recess, the borders and the ligament exactly as they were, so
+// the ratio below is the lattice and nothing else. The cover has no recess, so solid is
+// the honest baseline there, and it has its own radius that d.hexR does not touch.
 test.each([...PATTERNS])("%s cuts the walls, the end wall and the cover", (pattern) => {
   const o: Options = { ...shortLane, pattern };
   const d = solve(o);
+  const blank = { ...d, hexR: 1000 };
   const solidO: Options = { ...o, solid: true };
   const top = laneOf(o, d, "top"), bottom = laneOf(o, d, "bottom");
-  expect(buildWall(geo, o, d, top, 1).volume()).toBeLessThan(buildWall(geo, solidO, d, top, 1).volume() * 0.85);
-  expect(buildEndWall(geo, o, d, bottom).volume()).toBeLessThan(buildEndWall(geo, solidO, d, bottom).volume() * 0.85);
+  expect(buildWall(geo, o, d, top, 1).volume()).toBeLessThan(buildWall(geo, o, blank, top, 1).volume() * 0.85);
+  expect(buildEndWall(geo, o, d, bottom).volume()).toBeLessThan(buildEndWall(geo, o, blank, bottom).volume() * 0.85);
   expect(buildCover(geo, o, d)[0].volume()).toBeLessThan(buildCover(geo, solidO, d)[0].volume() * 0.85);
 });
 
@@ -45,13 +55,24 @@ test.each([...PATTERNS])("%s keeps the splice band of a long wall full thickness
 });
 
 // Three whole rows of the pattern fill the wall panel, as the hexagons' do.
+//
+// This used to assert a*hexR + b*lig against the panel, which is autoR inverted against
+// the same ROWS entry it was defined from: the value is panel - 1 by construction, for
+// every pattern, and the window allowed 3 mm. It could not fail, and it never counted a
+// row. A wrong ROWS entry - the regression the cover radius is documented as having had -
+// went straight through. Count what actually lands instead. Cluster on the cell radius:
+// kumiko's bar splits a cell into two polygons within one row.
 test.each([...PATTERNS])("%s auto radius puts three rows in the panel", (pattern) => {
-  const d = solve({ ...DEFAULTS, pattern, hexAuto: true });
-  const [a, b] = ROWS[pattern];
+  const o: Options = { ...DEFAULTS, pattern, hexAuto: true };
+  const d = solve(o);
   const lift = pattern === "hex" ? 0 : K.deckLo + K.dtCl + K.padRise - K.border;
-  const panel = d.H - 2 * K.border - lift;
+  const panel = geo.rect(-100, -d.H / 2 + K.border + lift, 100, d.H / 2 - K.border);
   expect(d.hexR).toBeGreaterThanOrEqual(8);
   expect(d.hexR).toBeLessThanOrEqual(16);
-  expect(a * d.hexR + b * d.lig).toBeLessThanOrEqual(panel);
-  expect(a * d.hexR + b * d.lig).toBeGreaterThan(panel - 3);
+
+  const field = geo.cellsOf(pattern, d.hexR, d.lig, panel, []);
+  expect(field, `${pattern} cut no cells at all`).not.toBeNull();
+  const centres = field!.decompose().map((cell) => { const b = cell.bounds(); return (b.min[1] + b.max[1]) / 2; }).sort((x, y) => x - y);
+  const rows = centres.filter((y, i) => i === 0 || y - centres[i - 1]! > d.hexR);
+  expect(rows.length, `${pattern} rows`).toBe(3);
 });
