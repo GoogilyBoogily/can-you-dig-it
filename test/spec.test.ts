@@ -32,12 +32,17 @@ test("every constant docs/gridfinity-spec.md names matches K", async () => {
   expect(checked).toContain("magnetPitch");
 });
 
-// The magnet row states the pocket as a diameter and a depth in one cell, so the table
-// parser above skips it. It is the number gridfinity.test.ts cannot see at any tolerance:
+// Rows the table parser cannot reach: the magnet pocket states a diameter and a depth in
+// one cell, and footFlat is named in prose rather than in a mapping row. Both are pinned
+// here by hand so no K constant in the doc is verified by nothing. It is the number gridfinity.test.ts cannot see at any tolerance:
 // that test measures total pocket volume, so the pattern could move anywhere.
 test("the magnet pocket is the 6.5 x 2.4 on a 26 mm square the spec draws", () => {
   expect(2 * K.magnetR).toBe(6.5);
   expect(K.magnetDepth).toBe(2.4);
   expect(K.magnetPitch).toBe(26);
   expect(K.magnetPitch).toBe(K.gridPitch - 2 * 8); // the spec's own derivation
+  expect(K.footFlat).toBe(35.6); // the foot's flat width, docs/gridfinity-spec.md
+  // and the profile the doc draws, bottom up, summing to one unit's foot
+  expect(K.footChamferLo + K.footWall + K.footChamferHi).toBeCloseTo(4.75, 10);
+  expect(K.footR - K.footChamferHi - K.footChamferLo).toBeCloseTo(0.8, 10); // derived bottom corner
 });

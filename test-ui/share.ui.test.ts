@@ -215,7 +215,17 @@ test("switching views does not leak GPU buffers", async () => {
   expect(tabs).toBeGreaterThan(2);
   const count = () => page.evaluate(() => (window as unknown as { viewerInfo: () => { geometries: number; textures: number } }).viewerInfo().geometries);
 
-  const round = async (n: number) => { for (let i = 0; i < n; i++) { await page.locator("#tabs button").nth(1).click(); await page.locator("#tabs button").nth(2).click(); } return count(); };
+  // Both paths: a part tab serves geometry from the cache, while a plate button goes
+  // through showPlate, which builds an uncached BufferGeometry per part per plate - that
+  // is the one the comment above names and the worse of the two.
+  const round = async (n: number) => {
+    for (let i = 0; i < n; i++) {
+      await page.locator("#tabs button").nth(1).click();
+      await page.locator("#plates button").first().click();
+      await page.locator("#tabs button").nth(2).click();
+    }
+    return count();
+  };
   await round(2); // first visit to each tab fills the geometry cache
   const settled = await round(6);
   const later = await round(6);
