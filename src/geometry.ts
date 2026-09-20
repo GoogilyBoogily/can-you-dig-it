@@ -90,6 +90,7 @@ export const K = {
   // IW/2 + 1.5 are 6.5 mm outside it), its bars are coverBar of the cell radius, and a
   // split cover keeps a coverSeam-wide solid band each side of x = 0
   coverInset: 14, coverBar: 0.5, coverSeam: 6,
+  riserL: 20, // a riser foot along the lane; the boss and the wall notch it goes in set nothing wider
   // the corner is a cross-lap: the end wall stands `post` in from the lane end so the
   // side wall keeps a post behind it that closes its slot, and each plate is slotted -
   // the end wall from its bottom edge up `lap`, the side wall from its top edge down to
@@ -627,11 +628,10 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
  *  inner face and the next gang 3 mm past its outer one. The boss goes into the wall's
  *  bottom notch. */
 export function buildRiser(g: Geo, o: Options, h: number): M {
-  const side = 20; // the foot's length along the lane; it was a parameter no caller set
   const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 }); // the boss is the male: clearance is the notch's
   // the boss is centred on the riser, not flush with an inner face - a riser has none
   const boss = pinJ.pin.translate([0, (o.wall - K.tabT) / 2, h]);
-  const riser = g.union([g.box(side, o.wall, h, 0, 0, h / 2), boss]);
+  const riser = g.union([g.box(K.riserL, o.wall, h, 0, 0, h / 2), boss]);
   pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete(); boss.delete();
   return riser;
 }
