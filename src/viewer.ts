@@ -23,6 +23,7 @@ export class Viewer {
   private theta = 2.45; private phi = 1.05; private dist = 600;
   private target = new THREE.Vector3();
   private geoms = new Map<string, THREE.BufferGeometry>();
+  private cached = new Set<THREE.BufferGeometry>(); // the geoms values, for an identity test in clear()
 
   constructor(private el: HTMLElement) {
     this.cam = new THREE.PerspectiveCamera(38, 1, 1, 8000);
@@ -81,6 +82,7 @@ export class Viewer {
       g.setIndex(new THREE.BufferAttribute(m.idx, 1));
       g.computeVertexNormals();
       this.geoms.set(m.name, g);
+      this.cached.add(g);
     }
     return g;
   }
@@ -90,7 +92,18 @@ export class Viewer {
   }
 
   private clear() {
-    this.scene.remove(this.group); this.group = new THREE.Group(); this.scene.add(this.group);
+    this.scene.remove(this.group);
+    // three.js holds GPU buffers until they are disposed; dropping the JS reference frees
+    // nothing. Every view change built a new group and left the old one's buffers behind,
+    // so clicking between two plate tabs leaked both plates' geometry every time. Cached
+    // geometries outlive the group on purpose - reset() owns those.
+    this.group.traverse((object) => {
+      const mesh = object as Partial<THREE.Mesh>;
+      if (!mesh.geometry) return;
+      if (!this.cached.has(mesh.geometry)) mesh.geometry.dispose();
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material!]) material?.dispose();
+    });
+    this.group = new THREE.Group(); this.scene.add(this.group);
   }
 
   private frame(pad = 1.15) {
@@ -101,7 +114,18 @@ export class Viewer {
     this.place();
   }
 
-  reset() { this.geoms.clear(); this.clear(); }
+  /** What the WebGL context still holds. The only way to see a leak from outside; the UI
+   *  test reads it through a window hook, since nothing else can observe the renderer. */
+  info(): { geometries: number; textures: number } {
+    return { geometries: this.ren.info.memory.geometries, textures: this.ren.info.memory.textures };
+  }
+
+  reset() {
+    this.clear(); // before the cache empties, or clear() disposes what it is about to lose
+    for (const geometry of this.geoms.values()) geometry.dispose();
+    this.geoms.clear();
+    this.cached.clear();
+  }
 
   /** Cans in the assembly view; the frame is taken with them in so the camera does not jump. */
   showCans(on: boolean) { this.cans.visible = on; }

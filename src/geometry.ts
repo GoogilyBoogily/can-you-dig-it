@@ -333,12 +333,24 @@ export class Geo {
     const shiftY = (y0 + y1) / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
     const blocked = holes.length ? this.CrossSection.union(holes) : null;
     const out: CS[] = [];
+    // One cross-section per candidate cell plus one per keep-out test, on a wall with a
+    // few hundred candidates, six walls a build. The dropped ones and the test results
+    // are garbage the moment they are measured, so free them here rather than leave the
+    // WASM heap holding every cell that did not make it.
     for (const [cx, cy, i, j] of centres) {
       const c = cell(cx + shiftX, cy + shiftY, i, j);
-      if (blocked && c.intersect(blocked).area() > 1e-6) continue;
+      if (blocked) {
+        const overlap = c.intersect(blocked);
+        const clipped = overlap.area() > 1e-6;
+        overlap.delete();
+        if (clipped) { c.delete(); continue; }
+      }
       out.push(c);
     }
-    return out.length ? this.CrossSection.union(out) : null;
+    const field = out.length ? this.CrossSection.union(out) : null;
+    for (const c of out) c.delete();
+    blocked?.delete();
+    return field;
   }
 
   /** The chosen pattern's holes in `panel`, radius R, ligament t, clear of `keep`. */
@@ -409,10 +421,17 @@ export class Geo {
       const z0 = top - r + (r * k) / steps, z1 = top - r + (r * (k + 1)) / steps;
       const rise = (z0 + z1) / 2 - (top - r);
       const inset = r - Math.sqrt(r * r - rise * rise);
-      keep.push(this.prismZ(plan.offset(-inset, "Round", 2, 24), z1 - z0 + 0.01, z0));
+      const shrunk = plan.offset(-inset, "Round", 2, 24);
+      keep.push(this.prismZ(shrunk, z1 - z0 + 0.01, z0));
+      shrunk.delete(); // the slab has the outline now
     }
     for (const pad of pads) keep.push(this.prismZ(pad, zMax - zMin, zMin));
-    return this.isect(body, this.union(keep));
+    // Nine slabs and their union, every time a wall or an end wall is rounded.
+    const stack = this.union(keep);
+    const rounded = this.isect(body, stack);
+    stack.delete();
+    for (const slab of keep) slab.delete();
+    return rounded;
   }
 }
 
@@ -879,6 +898,17 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole):
   return plates;
 }
 
+/** Free every mesh a PartSet holds. manifold-3d keeps them on the WASM heap, where the JS
+ *  collector sees a handle and not the megabytes behind it, so a caller that is done with
+ *  a build has to say so. Walk the set, not partList's output: that skips the plain deck
+ *  under a Gridfinity base, the riser unless the base is feet, and the covers when the
+ *  cover is off, and those are exactly the ones left behind. */
+export function freeSet(set: PartSet): void {
+  for (const lane of set.lanes) for (const plate of lane.plates) for (const mesh of [plate.whole, plate.front, plate.rear]) mesh?.delete();
+  for (const mesh of [set.lip, set.riser, set.gridDeck?.whole, set.gridDeck?.front, set.gridDeck?.rear]) mesh?.delete();
+  for (const mesh of set.cover) mesh.delete();
+}
+
 export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
   const cascade = o.cascade;
   const roles: LaneRole[] = cascade ? (o.tiers >= 3 ? ["bottom", "mid", "top"] : ["bottom", "top"]) : ["top"];
@@ -946,12 +976,19 @@ export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, densi
   const bb = m.boundingBox();
   let solid = 0;
   for (let z = bb.min[2] + dz / 2; z < bb.max[2]; z += dz) {
+    // Six cross-sections a layer, and this runs on every part of every build. manifold-3d
+    // holds them on the WASM heap and the JS collector only sees a handle, so unfreed they
+    // are what fills it: a 400 mm lane is ~270 a part. Freed here, in one place.
     const s = m.slice(z);
     const a = s.area();
-    if (a <= 0) continue;
-    const core = s.offset(-shell, "Miter").intersect(m.slice(z + skin)).intersect(m.slice(z - skin));
+    if (a <= 0) { s.delete(); continue; }
+    const shrunk = s.offset(-shell, "Miter");
+    const above = m.slice(z + skin), below = m.slice(z - skin);
+    const capped = shrunk.intersect(above);
+    const core = capped.intersect(below);
     const ia = Math.max(core.area(), 0);
     solid += a - ia + infill * ia;
+    for (const section of [s, shrunk, above, below, capped, core]) section.delete();
   }
   return (solid * dz) / 1000 * density;
 }

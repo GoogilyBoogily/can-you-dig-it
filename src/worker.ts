@@ -1,6 +1,6 @@
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
-import { DENSITY, Geo, solve, buildAll, partList, filamentGrams, type Options, type PartRole } from "./geometry";
+import { DENSITY, Geo, solve, buildAll, freeSet, partList, filamentGrams, type Options, type PartRole } from "./geometry";
 import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./export";
 
 export type Req =
@@ -37,10 +37,15 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const o = req.options;
       const d = solve(o);
       const g = new Geo(wasm);
-      const parts: PartOut[] = partList(buildAll(g, o, d), o).map((p) => ({
+      const set = buildAll(g, o, d);
+      const parts: PartOut[] = partList(set, o).map((p) => ({
         name: p.name, mesh: toMesh(p.name, p.mesh), qty: p.qty, role: p.role,
         grams: filamentGrams(p.mesh), solidGrams: p.mesh.volume() / 1000 * DENSITY,
       }));
+      // toMesh copied every vertex into plain typed arrays and `last` holds those, so no
+      // Manifold outlives this line. Builds run on a 250 ms debounce from the form, and
+      // the WASM heap does not come back on its own.
+      freeSet(set);
       const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin);
       const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
       last = { parts, placed, options: o };

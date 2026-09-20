@@ -200,3 +200,25 @@ test("a burst of edits still leaves Share copying the current numbers", async ()
   expect(new URLSearchParams(new URL(copied).hash.slice(1)).get("w")).toBe(shown);
   await page.close();
 });
+
+// three.js frees a GPU buffer only when dispose() is called; dropping the JS reference
+// does nothing. clear() built a new group on every view change and reset() emptied the
+// geometry cache, both leaving the old buffers allocated, so every rebuild and every
+// plate tab leaked a whole model's worth. renderer.info.memory counts what the context
+// still holds.
+test("switching views does not leak GPU buffers", async () => {
+  const page = await browser.newPage();
+  await page.goto(`${URL_}#w=600&d=400&h=500`);
+  await page.waitForSelector("#dl3mf:not([disabled])", { timeout: 90000 });
+  await page.waitForSelector("#tabs button");
+  const tabs = await page.locator("#tabs button").count();
+  expect(tabs).toBeGreaterThan(2);
+  const count = () => page.evaluate(() => (window as unknown as { viewerInfo: () => { geometries: number; textures: number } }).viewerInfo().geometries);
+
+  for (let i = 0; i < 3; i++) await page.locator("#tabs button").nth(1).click(), await page.locator("#tabs button").nth(2).click();
+  const settled = await count();
+  for (let i = 0; i < 8; i++) await page.locator("#tabs button").nth(1).click(), await page.locator("#tabs button").nth(2).click();
+  // Eight more round trips must not add eight more models' worth.
+  expect(await count()).toBeLessThanOrEqual(settled);
+  await page.close();
+});
