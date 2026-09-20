@@ -6,6 +6,7 @@ import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
 import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint, earJoint } from "../src/features/joints";
 import { stand, lipPose, platePose, lay } from "../src/features/pose";
+import { recessDepth } from "../src/features/pocket";
 import { geo, overhangArea } from "./geo";
 
 test("clearance is K.cl plus fit, and the overshoot is 1 mm", () => {
@@ -115,4 +116,10 @@ test("the ear joint: the wall's tab fills the ear's slot, the ear fills the notc
     // laid flat outer face up, a notched wall has nothing hanging
     expect(overhangArea(lay(notched, platePose("wall-left", 0, 0)))).toBe(0);
   }
+});
+
+test("the recess goes down to the web, and not at all on a wall no thicker than it", () => {
+  expect(recessDepth(DEFAULTS)).toBeCloseTo(DEFAULTS.wall - K.web, 9);
+  expect(recessDepth({ ...DEFAULTS, design: "minimal" })).toBeCloseTo(DEFAULTS.wall - K.ligMin, 9);
+  expect(recessDepth({ ...DEFAULTS, wall: K.web + 0.1 })).toBe(0);
 });

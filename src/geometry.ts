@@ -5,6 +5,7 @@ import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifo
 import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide, earJoint } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 import { cellsOf, ligFor, autoR, ROWS } from "./features/lattice";
+import { recessDepth, roundOver, roundTop } from "./features/pocket";
 export { ROWS, ligFor, autoR, type Lattice } from "./features/lattice";
 
 export type Vec2 = [number, number];
@@ -281,14 +282,6 @@ export class Geo {
   roundedRect(L: number, W: number, r: number): CS {
     return this.rect(-L / 2 + r, -W / 2 + r, L / 2 - r, W / 2 - r).offset(r, "Round", 2, 24);
   }
-  /** The material a radius-r fillet removes from a top edge at (u, top); `side` is +1/-1,
-   *  the direction the edge's outer face points along u. A 2D cut profile: extrude it
-   *  along the edge and subtract. */
-  roundOver(u: number, top: number, side: number, r: number): CS {
-    const inner = u - side * r;
-    const corner = this.rect(Math.min(inner, u + side), top - r, Math.max(inner, u + side), top + 1);
-    return corner.subtract(this.CrossSection.circle(r, 24).translate([inner, top - r]));
-  }
   union(parts: M[]): M {
     return parts.length === 1 ? parts[0] : this.Manifold.union(parts);
   }
@@ -306,36 +299,6 @@ export class Geo {
   }
   circle(r: number, seg = 48): CS {
     return this.CrossSection.circle(r, seg);
-  }
-
-  /**
-   * Round the outer top edges of `body` at height `top` by radius r. Manifold has no
-   * fillet, so: keep everything below top-r, and above it a stack of thin slabs of
-   * `plan` (the part's outline) shrunk by the fillet's inset at that height. A 2D
-   * offset follows the outline round its corners, which a straight cut cannot.
-   * The slabs are the stair-steps the printer lays down anyway. `pads` stay flat
-   * through the whole height: seats and tab roots.
-   */
-  roundTop(body: M, plan: CS, top: number, r: number, pads: CS[] = [], steps = 8): M {
-    const bb = body.boundingBox();
-    const zMin = bb.min[2] - 1, zMax = bb.max[2] + 1;
-    const big = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1]) + 20;
-    const keep: M[] = [this.box(big, big, top - r - zMin, 0, 0, (top - r + zMin) / 2)];
-    for (let k = 0; k < steps; k++) {
-      const z0 = top - r + (r * k) / steps, z1 = top - r + (r * (k + 1)) / steps;
-      const rise = (z0 + z1) / 2 - (top - r);
-      const inset = r - Math.sqrt(r * r - rise * rise);
-      const shrunk = plan.offset(-inset, "Round", 2, 24);
-      keep.push(this.prismZ(shrunk, z1 - z0 + 0.01, z0));
-      shrunk.delete(); // the slab has the outline now
-    }
-    for (const pad of pads) keep.push(this.prismZ(pad, zMax - zMin, zMin));
-    // Nine slabs and their union, every time the lip or the cover is rounded.
-    const stack = this.union(keep);
-    const rounded = this.isect(body, stack);
-    stack.delete();
-    for (const slab of keep) slab.delete();
-    return rounded;
   }
 }
 
@@ -503,7 +466,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const earJ = earJoint(g, { wall: o.wall, through: 0, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const sx of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
-  const cuts: M[] = [g.prismX(g.roundOver(sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
+  const cuts: M[] = [g.prismX(roundOver(g, sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
   cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH, pinJ, earJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
   const m = g.diff(g.union(adds), cuts);
@@ -545,8 +508,8 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   // notch below it, the two read as one post from the bottom edge up. The minimal web
   // is four 0.42 mm lines, the same floor as the ligament width: two perimeters a
   // side, no infill
-  const rd = o.wall - (o.design === "minimal" ? K.ligMin : K.web);
-  if (rd > 0.2) {
+  const rd = recessDepth(o);
+  if (rd) {
     const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
     const padUnion = g.cs2d(...pads); // the same union for every component; it was rebuilt per iteration
     const field = panel.subtract(g.cs2d(...keep));
@@ -578,14 +541,14 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   // the outer top edge rounds, like the side walls'. A loading lip's inner edge stays
   // square: printed outer face up it would be a round on the bed edge, and a can loaded
   // over the lip slides over the outer edge anyway
-  const cuts: M[] = [g.prismY(g.roundOver(xo, ewh, 1, K.edgeR), IW, -IW / 2)];
-  for (const sy of [1, -1]) cuts.push(g.prismY(g.roundOver(xo, H, 1, K.edgeR), o.wall, sy > 0 ? IW / 2 : -OW / 2));
+  const cuts: M[] = [g.prismY(roundOver(g, xo, ewh, 1, K.edgeR), IW, -IW / 2)];
+  for (const sy of [1, -1]) cuts.push(g.prismY(roundOver(g, xo, H, 1, K.edgeR), o.wall, sy > 0 ? IW / 2 : -OW / 2));
   if (!o.solid) {
     const gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
     const ecells = cellsOf(g, o.pattern, d.hexR, d.lig, g.rect(gy0, te + b, gy1, ewh - b), []);
     if (ecells) cuts.push(g.prismX(ecells, o.wall + 2, xe - 1));
-    const rd = o.wall - (o.design === "minimal" ? K.ligMin : K.web);
-    if (rd > 0.2) cuts.push(g.prismX(g.rect(gy0, te - 1, gy1, ewh - b), rd + 1, xo - rd));
+    const rd = recessDepth(o);
+    if (rd) cuts.push(g.prismX(g.rect(gy0, te - 1, gy1, ewh - b), rd + 1, xo - rd));
   }
   return g.diff(body, cuts);
 }
@@ -641,7 +604,7 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // The blade drops between the wall inner faces, so its width is a clearance like any
   // other and takes fit per side. It was a flat 0.5 mm however the fit was set.
   const outline = g.roundedRect(K.lipH, d.IW - 1 - 2 * o.fit, 2.4).translate([-K.lipH / 2, 0]);
-  const parts = [g.roundTop(g.prismZ(outline, t), outline, t, 2)];
+  const parts = [roundTop(g, g.prismZ(outline, t), outline, t, 2)];
   for (const sy of [1, -1]) {
     const tab = lipTab(g, tabLen);
     parts.push(tab.translate([0, sy * d.lipy, 0]));
@@ -738,7 +701,7 @@ export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M)
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   const { L, OW } = d, t = K.coverT;
   const outline = g.rect(-L / 2, -OW / 2, L / 2, OW / 2);
-  const plate = g.roundTop(g.prismZ(outline, t), outline, t, t / 2);
+  const plate = roundTop(g, g.prismZ(outline, t), outline, t, t / 2);
   const cuts: M[] = [];
   const pinJ = pinJoint(g, { wall: o.wall, clearance: clearanceOf(o) });
   for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(placeSide(pinJ.hole, sy, sx * d.px, sy * d.py, 0));
