@@ -18,12 +18,17 @@ export const ROWS: Record<Pattern, readonly [number, number]> = {
 /** Ligament grows with the cell so the bars stay in proportion; never under four 0.42 mm lines. */
 export const ligFor = (R: number) => Math.max(K.ligMin, K.ligRatio * R);
 
+/** The radius at which three rows spanning a·R + b·lig fill `panelH` with 1 mm spare, for
+ *  a ligament that is `k` of the radius: the wall's ligRatio, the cover's coverBar. */
+export const rowsRadius = (panelH: number, [a, b]: readonly [number, number], k: number) => (panelH - 1) / (a + b * k);
+
 /** The radius at which three whole rows fill a panel of height `panelH`, where three
  *  rows span a·R + b·lig (hex: 2R + 2 * 1.5P with P = R + lig / sqrt(3), so [5, √3]).
  *  1 mm spare so float noise cannot drop the top row. Same cells on every tier, sized
  *  from the upper deck. */
-export function autoR(panelH: number, [a, b]: readonly [number, number]): number {
-  let R = (panelH - 1) / (a + b * K.ligRatio);
+export function autoR(panelH: number, rows: readonly [number, number]): number {
+  const [a, b] = rows;
+  let R = rowsRadius(panelH, rows, K.ligRatio);
   if (K.ligRatio * R < K.ligMin) R = (panelH - 1 - b * K.ligMin) / a;
   return Math.min(K.hexMax, Math.max(K.hexMin, R));
 }

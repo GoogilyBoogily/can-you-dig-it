@@ -4,7 +4,7 @@
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
 import { clearanceOf, earNotchH, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide, earJoint } from "./features/joints";
 import { lay, platePose } from "./features/pose";
-import { cellsOf, ligFor, autoR, ROWS } from "./features/lattice";
+import { cellsOf, ligFor, autoR, rowsRadius, ROWS } from "./features/lattice";
 import { recessDepth, roundOver, roundTop } from "./features/pocket";
 import { gridUnit } from "./features/gridfinity";
 export { ROWS, ligFor, autoR, type Lattice } from "./features/lattice";
@@ -86,6 +86,10 @@ export const K = {
   // the lip's tab is its own shape, 5 thick by 12 wide, and its pocket is turned 90° from
   // it: the lip lies on its back to print and stands on the deck
   lipTabT: 5, lipTabW: 12,
+  // the cover's grille: the field stops coverInset in from every edge (the pin holes at
+  // IW/2 + 1.5 are 6.5 mm outside it), its bars are coverBar of the cell radius, and a
+  // split cover keeps a coverSeam-wide solid band each side of x = 0
+  coverInset: 14, coverBar: 0.5, coverSeam: 6,
   // the corner is a cross-lap: the end wall stands `post` in from the lane end so the
   // side wall keeps a post behind it that closes its slot, and each plate is slotted -
   // the end wall from its bottom edge up `lap`, the side wall from its top edge down to
@@ -670,16 +674,16 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     keep.push(window.offset(4, "Miter"));
   }
   if (!o.solid) {
-    // No keep-out round the pin holes: the field stops 14 mm in from OW/2 and the holes
-    // are at py + (tabT − wall)/2 = IW/2 + 1.5, which is 6.5 mm from that edge - the cells
-    // never reach them. The rectangles that used to be here were centred on d.py, not the
+    // No keep-out round the pin holes: the field stops coverInset in from OW/2 and the
+    // holes are at py + (tabT − wall)/2 = IW/2 + 1.5, 6.5 mm outside it - the cells never
+    // reach them. The rectangles that used to be here were centred on d.py, not the
     // holes' own y, and were 2 mm short of the field even so.
     // bigger cells and fat bars than the walls: a grille, not a lattice
-    const field = g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14);
+    const inset = K.coverInset;
+    const field = g.rect(-L / 2 + inset, -OW / 2 + inset, L / 2 - inset, OW / 2 - inset);
     // the grille has its own radius, sized like the walls' so three whole rows fill the
-    // field with bars R/2: the pattern's rows span a·R + b·lig, lig = R/2
-    const [a, bb] = ROWS[o.pattern];
-    const coverR = (OW - 28 - 1) / (a + bb / 2);
+    // field, but with bars coverBar of the radius instead of the wall's ligament rule
+    const coverR = rowsRadius(OW - 2 * inset, ROWS[o.pattern], K.coverBar);
     let cells: CS | null;
     if (o.design === "minimal" && o.pattern !== "slat") {
       // a perforated sheet: bigger cells on the ligament rule, running to the frame and
@@ -696,7 +700,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     if (cells) {
       // the seam crosses the field; clip cells at its solid band rather than dropping
       // them, so the pattern carries over the joint instead of leaving a blank
-      if (d.split) cells = cells.subtract(g.rect(-6, -OW, 6, OW));
+      if (d.split) cells = cells.subtract(g.rect(-K.coverSeam, -OW, K.coverSeam, OW));
       const pieces = cells.decompose().filter((piece) => piece.area() > 40);
       cells = pieces.length ? g.cs2d(...pieces) : null;
     }
