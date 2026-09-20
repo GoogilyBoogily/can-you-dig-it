@@ -2,7 +2,7 @@
 // three: 40 mm was kept for a hand whether the shelf had room to spare or not.
 import { test, expect } from "bun:test";
 import { DEFAULTS, laneLengthFor, solve } from "../src/geometry";
-import { fitSpace } from "../src/solver";
+import { fitSpace, laneNeeds } from "../src/solver";
 
 const SHELF = { w: 160, d: 305, h: 254, front: 0 };
 
@@ -51,4 +51,28 @@ test("laneLengthFor is the inverse of solve()'s deck count", () => {
     expect(solve(o).n).toBe(cans);
     expect(solve({ ...o, length: o.length - 1 }).n).toBe(cans - 1);
   }
+});
+
+// laneNeeds writes the "Nothing fits" message and had no test at all. It called solve()
+// with whatever shelfCells the caller carried - optionsFrom never sets one, so it was
+// always the DEFAULTS guess - and then added the side gap that lanesAcross deliberately
+// does not apply on a grid. It told a 160 mm shelf it needed 176.
+test("laneNeeds is the width the solver actually accepts, on every base", () => {
+  for (const base of ["flat", "feet", "gridfinity"] as const) for (const canL of [60, 122.5]) {
+    const options = { ...DEFAULTS, base, canL };
+    const need = laneNeeds(options);
+    const fits = (w: number) => fitSpace({ w, d: 400, h: 600, front: 0 }, options, { cascade: false }).length > 0;
+    expect(fits(need.w), `${base} canL ${canL} at the stated width`).toBe(true);
+    expect(fits(need.w - 1), `${base} canL ${canL} a millimetre under it`).toBe(false);
+  }
+});
+
+// A shelf with no whole cell across made floorCells[1] zero, so lanesAcross divided by it
+// and returned NaN. `NaN < 1` is false, so the "not even one lane" guard let it through
+// and the user was offered two layouts holding NaN cans.
+test("a grid shelf narrower than one cell offers nothing, not NaN", () => {
+  const options = { ...DEFAULTS, base: "gridfinity" as const };
+  expect(fitSpace({ w: 40, d: 400, h: 600, front: 0 }, options, { cascade: false })).toEqual([]);
+  for (const layout of fitSpace({ w: 200, d: 400, h: 600, front: 0 }, options, { cascade: false }))
+    expect(Number.isFinite(layout.cans)).toBe(true);
 });

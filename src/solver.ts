@@ -17,10 +17,16 @@ export type Style = "cascade" | "flat";
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
 
-/** The least shelf one lane needs, for the empty state: one flat tier on its base. */
+/** The least shelf one lane needs, for the empty state: one flat tier on its base. The
+ *  width has to be the rule lanesAcross() applies, or the message turns away a shelf the
+ *  solver would have accepted. A grid lane stands on its own floor with no side gap, and
+ *  its pitch bottoms out at OW + 2*gridGap however few cells the floor ends up with, so
+ *  the narrowest grid shelf is the lane's own width (or one cell, whichever is larger).
+ *  shelfCells is not read here: the caller's shelf is the one that did not fit. */
 export function laneNeeds(base: Options): { w: number; h: number } {
   const d = solve({ ...base, cascade: false, length: 200 });
-  return { w: d.gangPitch + 2 * SIDE_GAP, h: baseHeight(base) + d.H };
+  const w = base.base === "gridfinity" ? Math.max(d.OW, K.gridPitch) : d.gangPitch + 2 * SIDE_GAP;
+  return { w, h: baseHeight(base) + d.H };
 }
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {
@@ -49,6 +55,7 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
 function lanesAcross(space: Space, seed: Options): number {
   const seedD = solve(seed);
   if (seed.base !== "gridfinity") return Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+  if (seedD.floorCells[1] < 1) return 0; // the shelf has no whole cell across: floor(0/0) is NaN, and NaN < 1 is false
   let lanes = Math.floor(seed.shelfCells[1] / seedD.floorCells[1]);
   while (lanes > 0 && lanes * seedD.gangPitch - 2 * K.gridGap > space.w) lanes--; // a lane wider than its cells
   return lanes;
