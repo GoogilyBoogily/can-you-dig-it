@@ -2,7 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide, earJoint } from "./features/joints";
+import { clearanceOf, earNotchH, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide, earJoint } from "./features/joints";
 import { lay, platePose } from "./features/pose";
 import { cellsOf, ligFor, autoR, ROWS } from "./features/lattice";
 import { recessDepth, roundOver, roundTop } from "./features/pocket";
@@ -133,7 +133,7 @@ export interface Derived {
   L: number; IW: number; OW: number; H: number; Hb: number;
   run: number; dhi: number; dhiB: number; tan: number; inset: number;
   hexR: number; lig: number;
-  xd: number; px: number; py: number; piny: number; lipy: number; railHy: number;
+  xd: number; px: number; py: number; lipy: number; railHy: number;
   gangPitch: number; plateX: number; plateY: number; plateZ: number; usableX: number; usableY: number; usableZ: number;
   floorCells: [number, number]; // the lane's cells along and across: what covers it, or what the shelf has
   floor: [number, number, number, number]; // the floor of feet, x0 y0 x1 y1 in the lane frame
@@ -144,7 +144,7 @@ export interface Derived {
  *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
  *  across 12.5 mm, so every other pattern starts above the recess pads that guard the
  *  tab roots (notchH + padRise). Hex keeps the border so its snapshot does not move. */
-const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + clearanceOf(o) + K.padRise);
+const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : earNotchH(clearanceOf(o)) + K.padRise);
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
@@ -208,7 +208,7 @@ export function solve(o: Options): Derived {
   const wallPlateZ = o.wall;
   return {
     n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
-    xd: -L / 2 + inset, px: L / 2 - pinIn(o), py: IW / 2 + o.wall / 2, piny: IW / 2 + K.tabT / 2,
+    xd: -L / 2 + inset, px: L / 2 - pinIn(o), py: IW / 2 + o.wall / 2,
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
     plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
@@ -326,6 +326,7 @@ export interface Lane {
   xd: number; // where the deck starts (-L/2 on the bottom lane)
   xe: number; // inner face of the end wall; the deck top is flat from here to L/2
   dhi: number; te: number; H: number; ewh: number;
+  lapZ: number; // the corner cross-lap line: the end wall is slotted up to it, the side wall down to it
   tabs: number[]; // x of every wall tab and deck slot
   edges: number[]; // pairs: the open deck bands between ties
   lipx: number;
@@ -379,7 +380,7 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
     } else edges.push(t - half, t + half);
   }
   edges.push(x1);
-  return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, tabs, edges, lipx };
+  return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, edges, lipx };
 }
 
 /** Whether the deck carries the gang joint: more than one lane, and not on a grid,
@@ -416,8 +417,9 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     adds.push(gang.male.translate([tx, inner, 0]));
     cuts.push(gang.female.translate([tx, -IW / 2, 0]));
     gang.male.delete(); gang.female.delete();
-    // the neighbour wall's inner face is at `inner`, its tab flush inside it
-    cuts.push(earJ.slot.translate([tx, inner + (o.wall - 2 * K.tabT) / 2, 0]));
+    // the neighbour wall's tab hole, through the tongue: that wall's centreline is
+    // inner - wall/2 and its inner face is toward -y, so the slot goes on as a -Y piece
+    cuts.push(placeSide(earJ.slot, -1, tx, inner - o.wall / 2, 0));
   }
   if (!o.solid) {
     // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
@@ -462,13 +464,13 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const c = clearanceOf(o);
-  const notchH = K.deckLo + c;
+  const notchH = earNotchH(c);
   const pinJ = pinJoint(g, { wall: o.wall, clearance: c });
   const earJ = earJoint(g, { wall: o.wall, through: 0, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const sx of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
   const cuts: M[] = [g.prismX(roundOver(g, sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
-  cuts.push(...wallNotches(g, o, d, ln, sy, c, notchH, pinJ, earJ));
+  cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
   const m = g.diff(g.union(adds), cuts);
   pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
@@ -480,9 +482,9 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
  *  it (so the ear's slot stays), the corner slot the end wall drops into from the top
  *  edge down to the lap line, and the notches for the tier below's pins or the risers'
  *  bosses. */
-function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>): M[] {
+function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>): M[] {
   const cuts = ln.tabs.map((tx) => placeSide(earJ.notch, sy, tx, sy * d.py, 0));
-  const lap = crossLap(g, { wall: o.wall, lapZ: ln.te + K.lap, H: ln.H, clearance: c });
+  const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H: ln.H, clearance: c });
   cuts.push(lap.female.translate([ln.xe, sy * d.py, 0])); lap.male.delete(); lap.female.delete();
   for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
   return cuts;
@@ -534,7 +536,7 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { IW, OW } = d;
   const { xe, te, ewh, H } = ln;
   const b = K.border, xo = xe + o.wall;
-  const lap = crossLap(g, { wall: o.wall, lapZ: te + K.lap, H, clearance: clearanceOf(o) });
+  const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H, clearance: clearanceOf(o) });
   const adds = [g.box(o.wall, IW, ewh - te, xe + o.wall / 2, 0, (ewh + te) / 2)];
   for (const sy of [1, -1]) adds.push(lap.male.translate([xe, sy * d.py, 0]));
   lap.male.delete(); lap.female.delete();
@@ -600,7 +602,8 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // The tab is as long as the deck is thick where it drops through, so it ends flush with
   // the underside at every slope. The viewer stands the lip up with ry = 90 degrees, which
   // maps (x, y, z) to (z, y, -x): this x is the insertion depth, and the t is what has to
-  // fit the 5.4 mm pocket. A fixed 6 protruded by 2 - 8*tan - up to a 2 mm stud at slope 0.
+  // fit the pocket, lipTabT plus the clearance a side. A fixed 6 protruded by 2 - 8*tan -
+  // up to a 2 mm stud at slope 0.
   const tabLen = K.deckLo + K.lipInset * d.tan;
   // The blade drops between the wall inner faces, so its width is a clearance like any
   // other and takes fit per side. It was a flat 0.5 mm however the fit was set.
@@ -667,9 +670,9 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   }
   if (!o.solid) {
     // No keep-out round the pin holes: the field stops 14 mm in from OW/2 and the holes
-    // are at d.piny = IW/2 + 1.5, which is 6.5 mm from that edge - the cells never reach
-    // them. The rectangles that used to be here were centred on d.py, not the piny the
-    // holes are cut at, and were 2 mm short of the field even so.
+    // are at py + (tabT − wall)/2 = IW/2 + 1.5, which is 6.5 mm from that edge - the cells
+    // never reach them. The rectangles that used to be here were centred on d.py, not the
+    // holes' own y, and were 2 mm short of the field even so.
     // bigger cells and fat bars than the walls: a grille, not a lattice
     const field = g.rect(-L / 2 + 14, -OW / 2 + 14, L / 2 - 14, OW / 2 - 14);
     // the grille has its own radius, sized like the walls' so three whole rows fill the

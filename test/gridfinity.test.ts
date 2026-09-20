@@ -53,7 +53,8 @@ test("the unit hangs 7 mm below the deck; a foot protrudes with the profile, 35.
 
 test("the wall stands on the floor and its notch at ±px takes the boss; no gang rib on a grid", () => {
   const wall = buildLanePlates(geo, grid, d, "bottom").find((p) => p.name === "wall-left")!;
-  const boss = geo.isect(whole, geo.box(K.tabW + 4, 3, 2.4, d.px, d.piny, 1.2));
+  // the boss is flush with the wall's inner face: py less half the wall, plus half the tab
+  const boss = geo.isect(whole, geo.box(K.tabW + 4, 3, 2.4, d.px, d.py + (K.tabT - grid.wall) / 2, 1.2));
   expect(boss.volume()).toBeCloseTo(K.tabW * K.tabT * K.pinH, 0);
   const laid = wall.rear!.boundingBox();
   expect(laid.max[2] - laid.min[2]).toBeCloseTo(DEFAULTS.wall, 3);

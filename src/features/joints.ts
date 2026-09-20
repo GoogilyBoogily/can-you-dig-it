@@ -10,6 +10,11 @@ import { K, type Geo, type Options } from "../geometry";
 /** Every joint's clearance a side: the design's, plus the user's fit. */
 export const clearanceOf = (o: Options) => K.cl + o.fit;
 
+/** How tall the ear notch is, and so how far the tab it leaves standing reaches: the
+ *  deck's low end plus the clearance. The recess pads and the lattice field start
+ *  from the same line, so it lives here once. */
+export const earNotchH = (clearance: number) => K.deckLo + clearance;
+
 /** How far a cut runs past the face it opens on, and a fuse past the face it grows from.
  *  A union with extra inside the host, or a difference with extra outside it, is the same
  *  solid - so the number is free, and 1 mm keeps every boolean off a coplanar face. */
@@ -89,7 +94,7 @@ export function earJoint(g: Geo, spec: { wall: number; through: number; clearanc
   const { wall, through, clearance: c } = spec;
   const ear = g.box(K.earW, wall + OVER, K.deckLo, 0, -OVER / 2, K.deckLo / 2);
   const slot = g.box(K.tabW + 2 * c, K.tabT + 2 * c, through + 2 * OVER, 0, (K.tabT - wall) / 2, through / 2);
-  const notchH = K.deckLo + c;
+  const notchH = earNotchH(c);
   const pocket = g.box(K.earW + 2 * c, wall + 2 * OVER, notchH + OVER, 0, 0, (notchH - OVER) / 2);
   const tab = tabBox(g, notchH + 2 * OVER, wall, -OVER);
   const notch = g.diff(pocket, [tab]);
