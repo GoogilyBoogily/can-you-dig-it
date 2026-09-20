@@ -124,7 +124,7 @@ test("the ear joint: the wall's tab fills the ear's slot, the ear fills the notc
     // into the deck, past where a finite slab of the wall alone would clip it away
     const earFinal = geo.diff(j.ear, [j.slot]);
     expect(geo.isect(earFinal, j.notch).volume()).toBeCloseTo(earFinal.volume(), 3);
-    expect(j.ear.boundingBox().min[1]).toBeCloseTo(-wall / 2 - 1, 6); // rooted 1 mm into the deck
+    expect(j.ear.boundingBox().min[1]).toBeCloseTo(-wall / 2 - K.earRoot, 6); // rooted into the deck
     expect(grownBy(j.ear, j.notch)[0]).toBeCloseTo(clearance, 6); // the notch is the ear plus the clearance in x
     // laid flat outer face up, a notched wall has nothing hanging
     expect(overhangArea(lay(notched, platePose("wall-left", 0, 0)))).toBe(0);

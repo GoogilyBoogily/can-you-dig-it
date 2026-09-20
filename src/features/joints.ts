@@ -91,10 +91,10 @@ export function placeSide(m: M, sy: number, x: number, y: number, z: number): M 
 /** The joint that carries a deck on a wall: the deck puts an ear out under the wall with
  *  a slot through it; the wall notches over the ear and leaves its tab standing in the
  *  notch to drop through the slot to the wall top below. Origin at the tab's x on the
- *  wall's centreline; +y is out through the wall. The ear roots OVER into the deck. */
+ *  wall's centreline; +y is out through the wall. The ear roots earRoot into the deck. */
 export function earJoint(g: Geo, spec: { wall: number; through: number; clearance: number }): { ear: M; slot: M; notch: M } {
   const { wall, through, clearance: c } = spec;
-  const ear = g.box(K.earW, wall + OVER, K.deckLo, 0, -OVER / 2, K.deckLo / 2);
+  const ear = g.box(K.earW, wall + K.earRoot, K.deckLo, 0, -K.earRoot / 2, K.deckLo / 2);
   const slot = g.box(K.tabW + 2 * c, K.tabT + 2 * c, through + 2 * OVER, 0, (K.tabT - wall) / 2, through / 2);
   const notchH = earNotchH(c);
   const pocket = g.box(K.earW + 2 * c, wall + 2 * OVER, notchH + OVER, 0, 0, (notchH - OVER) / 2);

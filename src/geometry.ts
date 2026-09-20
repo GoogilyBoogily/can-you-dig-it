@@ -83,6 +83,7 @@ export const K = {
   // the deck end (laneOf's tabIn), and the two rules that keep an ear clear of a pin
   // (laneOf's clear, check) derive from these, so they move together
   tabW: 16, tabT: 3, pinH: 2.4, coverT: 2.4, earW: 24,
+  earRoot: 1, // an ear runs this far into the deck past the wall's inner face, so it is rooted and not a coplanar butt
   // the lip's tab is its own shape, 5 thick by 12 wide, and its pocket is turned 90° from
   // it: the lip lies on its back to print and stands on the deck
   lipTabT: 5, lipTabW: 12,
@@ -433,7 +434,7 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     // at IW/2 - 15.5, still over the fin. It stands on the bed: compression, no bridging.
     const strip = IW / 2 - d.railHy - K.minimalT;
     // under each ear the strip keeps an ear-high plinth out to the fin, 3 mm past a
-    // socket head: an ear is rooted in the deck by 1 mm, and inside a 2.5 mm tie the tab
+    // socket head: an ear is rooted in the deck by earRoot, and inside a 2.5 mm tie the tab
     // hole takes all of it. Six loose 12 × 6 × 4 chips a lane, once
     const plinth = Math.max(K.earW, K.gangHead) / 2 + 3;
     const earPads = ln.tabs.map((tx) => g.rect(tx - plinth, -IW, tx + plinth, IW));
