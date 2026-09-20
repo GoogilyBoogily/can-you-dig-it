@@ -75,3 +75,29 @@ The first cut kept a rectangular rib and groove on the walls and added a dogbone
 dropped into pockets on the two wall tops to hold Y. That is two parts sliding into a
 third; the ask was one part's tongue into the other's socket, and the deck is the only
 plate that can carry it.
+
+## Status, 2026-09-20
+
+Branch `sliding-slots`, three commits on main at f5bf027:
+
+1. `87d6a3d` this spec.
+2. `74871c5` splice trapezoid → T-slot; gang dovetail → rectangular rib, groove and a
+   `gang-clip`. Superseded on the gang by 3, kept in history for the splice and the
+   `K` renames.
+3. `fd4345e` gang joint moves to the deck: T tongue into the neighbour's rail, clip
+   gone, walls plain, `wall-tongue` / `wall-socket` → `wall-left` / `wall-right`,
+   default gang 19 plates.
+
+Verified at 3: `bun run check` clean, `bun test test/` 825 pass, `bun run test:ui` 29
+pass, `ref.json` diff read (ganged decks, minimal decks and walls move; single-lane and
+grid decks do not).
+
+Not done:
+
+- Nothing printed yet. First print: two `length` 240, `lanesWide` 2 top decks, mate
+  them. If the head binds, `gangHead` 18 → 16 buys side clearance without touching the
+  neck, which has to stay ear-wide.
+- The last lane's tongues hang free on the gang's outer edge, as the old rib did. A
+  rightmost deck variant without them would cost one more deck part per role; not
+  decided.
+- Not merged. `git checkout main && git merge sliding-slots && git push`, then CI.
