@@ -1,5 +1,9 @@
 # Top surface pattern in the 3MF
 
+> **Not built.** This design was written and never implemented: nothing in `src/`,
+> `index.html` or `test/` refers to it. Read it as a proposal, not as a description of
+> the app. (Noted 2026-09-19, during the correctness audit.)
+
 A "Top surface" select next to the print settings. Its value is written on every object
 in `Metadata/model_settings.config` as `top_surface_pattern`. The default writes nothing.
 

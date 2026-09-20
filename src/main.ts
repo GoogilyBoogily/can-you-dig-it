@@ -2,8 +2,8 @@ import { K, DENSITY, type Options } from "./geometry";
 import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
-import { extractProfile, plateSummary, stripCopy, type Placement } from "./export";
-import { loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
+import { extractProfile, plateSummary, type Placement } from "./export";
+import { hasStoredProfile, loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { optionsFrom, type FormValues } from "./validate";
 import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
@@ -63,7 +63,7 @@ form.addEventListener("input", (e) => {
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
   if (t.name === "lipGap") (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = t.value;
   refit(); // first: it resets the chosen layout, which the hash carries
-  syncHash();
+  queueHash();
 });
 form.addEventListener("submit", (e) => e.preventDefault());
 
@@ -85,7 +85,7 @@ function refit(want = 0) {
   const box = $("layouts");
   box.innerHTML = "";
   if (!layouts.length) {
-    const need = laneNeeds(base);
+    const need = laneNeeds(base, space);
     const nothing = `Nothing fits. A single lane needs ${need.w.toFixed(0)} mm of width and ${need.h.toFixed(0)} mm of height.`;
     box.innerHTML = `<p class="empty">${nothing}</p>`;
     setStatus(nothing);
@@ -111,6 +111,10 @@ function refit(want = 0) {
 function choose(i: number) {
   chosen = layouts[i];
   chosenIndex = i;
+  // Retire the in-flight build here, not when the debounce fires. chosen has already
+  // moved on, so a result still carrying the old id would be welded to the new layout:
+  // new capacity over old geometry, and the downloads unlocked on top of it.
+  buildId++;
   clearTimeout(buildTimer);
   setBuildPending(true);
   buildTimer = window.setTimeout(build, 250);
@@ -120,6 +124,7 @@ function choose(i: number) {
  *  downloads cannot hand out geometry for numbers that are gone. */
 function dropBuild() {
   chosen = null; chosenIndex = 0; built = null;
+  for (const id of ["dl3mf", "dlstl"]) $<HTMLButtonElement>(id).disabled = true; // nothing to export
   $("results").hidden = true;
   $("tabs").innerHTML = "";
   for (const id of ["showCans", "explode", "showGrid", "showBed"]) $(id).hidden = true;
@@ -136,7 +141,7 @@ function setBuildPending(pending: boolean) {
 function build() {
   if (!chosen) return;
   if (workerDead) { setStatus(workerDead); return; } // posting to a dead worker would only overwrite the message
-  const id = ++buildId;
+  const id = buildId; // choose() already claimed it
   setBuildPending(true);
   setStatus("Building parts…", true);
   const req: Req = { type: "build", id, options: chosen.options };
@@ -148,11 +153,23 @@ worker.onmessage = (e: MessageEvent<Res>) => {
   if (r.type === "error") {
     // Only the build on screen may re-enable downloads: a superseded build's error, or an
     // export's, must not unlock an export of whatever the worker built before it.
-    if (r.of === "build" && r.id === buildId) setBuildPending(false);
+    // The build on screen failed, so take it off: leaving it up re-enables the downloads
+    // over the previous build's geometry, under an error about this one.
+    if (r.of === "build" && r.id === buildId) { setBuildPending(false); dropBuild(); }
     fail(`Something went wrong: ${r.message}`);
     return;
   }
-  if (r.type === "file") { if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); } return; }
+  if (r.type === "file") {
+    // A second download click supersedes the first, and the worker is serial: the first
+    // still finishes and arrives here. Dropping it silently means the user asked for a
+    // 3MF, waited, and never got one or a word about it.
+    if (r.id === exportId) { download(r.name, r.bytes); setStatus("Download ready."); }
+    else {
+      console.info(`dropped a superseded ${r.name} export (#${r.id}, now on #${exportId})`);
+      setStatus(`Skipped the earlier ${r.name} - a newer download replaced it.`);
+    }
+    return;
+  }
   if (r.id !== buildId || !chosen) return; // a newer build is already on its way
   setBuildPending(false);
   built = { parts: r.parts, placed: r.placed, nplates: r.nplates, layout: chosen };
@@ -206,6 +223,16 @@ function translucentHours(parts: PartOut[]) {
   return `, about ${(mm3 / translucentFeed(Number(machine.nozzle)) / 3600).toFixed(0)} h at 20 mm/s`;
 }
 
+/** What the weight is made of. DENSITY is PETG's, so a picked filament that is not PETG
+ *  is named with the estimate rather than silently reported as PETG: the mass is right to
+ *  within the density difference, and the label no longer contradicts the picker. */
+function filamentNote(): string {
+  const picked = pick.filament.value;
+  if (!picked) return " PETG";
+  const family = /PETG|PLA|ABS|ASA|PC|PA|TPU|PVA|HIPS/i.exec(picked)?.[0].toUpperCase();
+  return family === "PETG" || !family ? " PETG" : ` ${family} (weighed at PETG's density)`;
+}
+
 function renderResults() {
   const { parts, placed, nplates, layout } = built!;
   const d = layout.derived, o = layout.options;
@@ -219,17 +246,17 @@ function renderResults() {
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${K.lipH} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}; ${(d.Hb - K.deckLo - K.lipH - K.lipInset * d.tan - o.canD).toFixed(0)} mm over the can as it clears the lip</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
-    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg PETG${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
+    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg${filamentNote()}${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
     ${layout.warnings.length ? `<p class="warn">${layout.warnings.join("<br>")}</p>` : ""}`;
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";
   const byPlate = new Map<number, Placement[]>();
   for (const p of placed) { if (!byPlate.has(p.plate)) byPlate.set(p.plate, []); byPlate.get(p.plate)!.push(p); }
-  const gramsOf = (name: string) => { const p = parts.find((p) => p.name === stripCopy(name)); return p ? partGrams(p) : 0; };
+  const gramsOf = (part: string) => { const p = parts.find((p) => p.name === part); return p ? partGrams(p) : 0; };
   for (const [n, items] of [...byPlate.entries()].sort((a, b) => a[0] - b[0])) {
     const b = document.createElement("button"); b.type = "button"; b.className = "plate"; b.setAttribute("data-key", `plate:${n}`);
     const summary = plateSummary(items);
-    b.innerHTML = `<span class="n">${n + 1}</span><span>${summary}</span><span class="g">${g(items.reduce((a, i) => a + gramsOf(i.name), 0))}</span>`;
+    b.innerHTML = `<span class="n">${n + 1}</span><span>${summary}</span><span class="g">${g(items.reduce((a, i) => a + gramsOf(i.part), 0))}</span>`;
     b.addEventListener("click", () => showTab(`plate:${n}`));
     pl.appendChild(b);
   }
@@ -262,9 +289,10 @@ function showProfile() {
 $("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
 
 /** State and label move together, so the two can never disagree. */
-function adoptProfile(loaded: StoredProfile) {
+function adoptProfile(loaded: StoredProfile, persist = true) {
   profile = loaded;
   showProfile();
+  if (!persist) return; // applied from a link: this session only, the stored profile stands
   const failure = saveStoredProfile(loaded);
   setStatus(failure
     ? `Using ${loaded.name} for this session; couldn't save it for next time: ${failure}`
@@ -273,7 +301,10 @@ function adoptProfile(loaded: StoredProfile) {
 
 function loadProfile() {
   profile = loadStoredProfile();
-  if (!profile) clearStoredProfile(); // don't re-read a value we already rejected
+  // Only when something was there to reject. loadStoredProfile returns null for an absent
+  // value and for a localStorage that threw, and clearing the second logs "could not clear
+  // the saved profile" at a browser that never had one.
+  if (!profile && hasStoredProfile()) clearStoredProfile(); // don't re-read a value we already rejected
   showProfile();
 }
 
@@ -281,6 +312,7 @@ function loadProfile() {
 // Printer → nozzle → process → filament, out of Bambu Studio's own preset catalogue.
 // The lower selects only ever list what fits the chosen machine.
 let index: ProfileIndex | null = null;
+let hashPicks: Picks | null = null; // print settings a shared link carried, waiting for the index
 const pick = {
   printer: $<HTMLSelectElement>("pickPrinter"), nozzle: $<HTMLSelectElement>("pickNozzle"),
   process: $<HTMLSelectElement>("pickProcess"), filament: $<HTMLSelectElement>("pickFilament"),
@@ -315,9 +347,9 @@ function showPicks(picks: Picks | null) {
     filaments.filter((f) => f.vendor === vendor).map((f) => ({ value: f.name, label: f.label, group: vendor }))), picks.filament);
 }
 
-function applyPicks(picks: Picks) {
+function applyPicks(picks: Picks, persist = true) {
   const config = composeProfile(index!, picks);
-  adoptProfile({ name: describePicks(index!, picks), config });
+  adoptProfile({ name: describePicks(index!, picks), config }, persist);
   // The printer picked is the bed the parts must fit, so the form follows.
   const bed = bedFromConfig(config);
   let changed = false;
@@ -326,7 +358,10 @@ function applyPicks(picks: Picks) {
     if (Number(input.value) === bed[axis]) return;
     input.value = String(bed[axis]); changed = true;
   });
-  if (changed) { refit(); syncHash(); }
+  // refit(chosenIndex), not refit(): the default resets the choice to 0, and a shared link
+  // carrying both a layout and a printer had its layout dropped when the catalogue landed.
+  if (changed) refit(chosenIndex);
+  queueHash(); // the picks are in the link now, and only the bed change needs a refit
 }
 
 pick.printer.addEventListener("change", () => {
@@ -341,7 +376,24 @@ pick.translucent.addEventListener("change", () => { if (built) renderResults(); 
 
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
-  .then((loaded: ProfileIndex) => { index = loaded; showProfile(); })
+  .then((loaded: ProfileIndex) => {
+    index = loaded;
+    // loadHash ran long before this resolved, so a link's picks are applied here. An
+    // unknown machine (a catalogue that moved on) falls through to the stored profile.
+    // A link's picks apply for the session but are not written to storage: the recipient
+    // may have imported their own 3MF, and that is the one thing a link cannot rebuild.
+    // composeProfile throws when a preset name has moved on between Bambu releases, and
+    // an uncaught throw here lands in the fetch's catch - which reports the catalogue as
+    // unloadable and leaves every select empty, with no way to pick a printer.
+    try {
+      if (hashPicks && index.machines.some((machine) => machine.name === hashPicks!.machine)) applyPicks(hashPicks, false);
+      else showProfile();
+    } catch (err) {
+      hashPicks = null;
+      showProfile();
+      setStatus(`That link's print settings are no longer in the catalogue, so your own are in use: ${reason(err)}`);
+    }
+  })
   .catch((err) => {
     // On the print-settings label, not the status line: the first build lands ~250 ms
     // later and would wipe it before anyone read it.
@@ -373,13 +425,38 @@ loadProfile();
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
 const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
+// replaceState is rate limited - Chrome drops past ~100 in 30 s, Safari throws - and the
+// hash write used to run once per input event while the build was debounced. Holding an
+// arrow key in a number field is ~30 events a second, and the writes the browser dropped
+// included the one Share makes, so Share copied a stale link and said "Link copied."
+let hashTimer = 0;
+function queueHash() {
+  clearTimeout(hashTimer);
+  hashTimer = window.setTimeout(syncHash, 250);
+}
 function syncHash() {
+  clearTimeout(hashTimer); // a queued write would only repeat this one
   const q = new URLSearchParams();
   for (const k of KEYS) {
     const el = form.elements.namedItem(k) as HTMLInputElement;
     q.set(k, el.type === "checkbox" ? (el.checked ? "on" : "off") : el.value);
   }
   if (chosenIndex > 0) q.set("layout", String(chosenIndex));
+  // Not the imported 3MF - that is tens of KB - but the built-in picks are four short
+  // strings, and translucent changes the filament and time estimates and the exported
+  // settings. Without them the recipient reads different numbers off the same link.
+  // hashPicks until the catalogue lands: the selects are empty for the first few hundred
+  // ms of a page load, and writing the hash from them in that window strips these four
+  // keys out of the link that carried them. Permanently, if the fetch then fails.
+  const picks = pick.nozzle.value
+    ? { machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value, translucent: pick.translucent.checked }
+    : hashPicks;
+  if (picks) {
+    q.set("machine", picks.machine);
+    q.set("process", picks.process);
+    q.set("filament", picks.filament);
+    if (picks.translucent) q.set("translucent", "on");
+  }
   history.replaceState(null, "", "#" + q.toString());
 }
 function loadHash() {
@@ -389,6 +466,9 @@ function loadHash() {
     const el = form.elements.namedItem(k) as HTMLInputElement | null; if (!el || !q.has(k)) continue;
     if (el.type === "checkbox") el.checked = q.get(k) === "on"; else el.value = q.get(k)!;
   }
+  hashPicks = q.has("machine")
+    ? { machine: q.get("machine")!, process: q.get("process") ?? "", filament: q.get("filament") ?? "", translucent: q.get("translucent") === "on" }
+    : null;
   (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number((form.elements.namedItem("fit") as HTMLInputElement).value).toFixed(2);
   (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = (form.elements.namedItem("lipGap") as HTMLInputElement).value;
@@ -405,4 +485,12 @@ $("share").addEventListener("click", async () => {
   }
 });
 
+// What the WebGL context holds, for the UI test that watches for a leak.
+(window as unknown as { viewerInfo: () => ReturnType<Viewer["info"]> }).viewerInfo = () => viewer.info();
+
+// A range input clamps and step-snaps whatever the hash carried, so the form can end up
+// holding different numbers than the link that opened it. Rewrite the hash from the form:
+// sender and recipient then see the same design, and Share copies what is on screen.
+const arrivedWithHash = location.hash.length > 0;
 refit(loadHash());
+if (arrivedWithHash) syncHash();

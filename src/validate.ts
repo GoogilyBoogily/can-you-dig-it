@@ -19,16 +19,23 @@ export const LIMITS: Record<string, Limit> = {
   bedZ: { min: 50, max: 1000, label: "bed Z" },
   hexR: { min: 6, max: 20, label: "cell size" },
   slope: { min: 0, max: 10, label: "deck slope" },
-  lipGap: { min: 0, max: 30, label: "lip headroom" },
+  lipGap: { min: 0, max: 20, label: "lip headroom" },
   // fit is a tolerance offset, not a dimension: 0 is the default and negative is valid.
-  fit: { min: -2, max: 2, label: "fit" },
+  // These are the range input's own bounds, and they have to stay that way. The geometry
+  // does not survive the old -2: K.tabT + 2*(dtCl + fit) goes negative below -1.75, which
+  // makes g.box() return an InvalidConstruction with no vertices, and nothing throws.
+  fit: { min: -0.2, max: 0.3, label: "fit" },
 };
 
 /** Check each number against its limit. Throws naming the first bad field. */
 export function readNumbers(values: Record<string, number>): Record<string, number> {
   for (const [key, value] of Object.entries(values)) {
-    const limit = LIMITS[key];
-    if (!limit) continue; // not a dimension we police
+    // hasOwn, not a plain lookup: LIMITS is an object literal, so LIMITS["toString"] and
+    // LIMITS["constructor"] are truthy inherited values whose min and max are undefined,
+    // and every comparison against undefined is false. A key like that walked straight
+    // through the one gate the app has.
+    if (!Object.hasOwn(LIMITS, key)) continue; // not a dimension we police
+    const limit = LIMITS[key]!;
     if (!Number.isFinite(value)) throw new Error(`${limit.label} needs a number`);
     if (value < limit.min || value > limit.max)
       throw new Error(`${limit.label} must be between ${limit.min} and ${limit.max} mm`);

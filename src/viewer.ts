@@ -23,6 +23,7 @@ export class Viewer {
   private theta = 2.45; private phi = 1.05; private dist = 600;
   private target = new THREE.Vector3();
   private geoms = new Map<string, THREE.BufferGeometry>();
+  private cached = new Set<THREE.BufferGeometry>(); // the geoms values, for an identity test in clear()
 
   constructor(private el: HTMLElement) {
     this.cam = new THREE.PerspectiveCamera(38, 1, 1, 8000);
@@ -56,7 +57,10 @@ export class Viewer {
     const c = this.ren.domElement;
     let drag = false, lx = 0, ly = 0, btn = 0;
     c.addEventListener("pointerdown", (e) => { drag = true; lx = e.clientX; ly = e.clientY; btn = e.button; c.setPointerCapture(e.pointerId); });
-    c.addEventListener("pointerup", () => (drag = false));
+    // pointercancel too: a touch the browser reinterprets as a scroll or a back gesture
+    // fires no pointerup, and the drag stayed live afterwards - the model then rotated
+    // under a pointer with no button held.
+    for (const end of ["pointerup", "pointercancel"]) c.addEventListener(end, () => (drag = false));
     c.addEventListener("pointermove", (e) => {
       if (!drag) return;
       const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
@@ -81,6 +85,7 @@ export class Viewer {
       g.setIndex(new THREE.BufferAttribute(m.idx, 1));
       g.computeVertexNormals();
       this.geoms.set(m.name, g);
+      this.cached.add(g);
     }
     return g;
   }
@@ -90,20 +95,48 @@ export class Viewer {
   }
 
   private clear() {
-    this.scene.remove(this.group); this.group = new THREE.Group(); this.scene.add(this.group);
+    this.scene.remove(this.group);
+    // three.js holds GPU buffers until they are disposed; dropping the JS reference frees
+    // nothing. Every view change built a new group and left the old one's buffers behind,
+    // so clicking between two plate tabs leaked both plates' geometry every time. Cached
+    // geometries outlive the group on purpose - reset() owns those.
+    this.group.traverse((object) => {
+      const mesh = object as Partial<THREE.Mesh>;
+      if (!mesh.geometry) return;
+      if (!this.cached.has(mesh.geometry)) mesh.geometry.dispose();
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material!]) material?.dispose();
+    });
+    this.group = new THREE.Group(); this.scene.add(this.group);
   }
 
   private frame(pad = 1.15) {
-    const b = new THREE.Box3().setFromObject(this.group);
+    // Frame what is on screen. Box3.setFromObject counts invisible objects, and both the
+    // bed and the grid are added hidden by default: a 400 mm bed framed the camera for a
+    // 400 mm object while a 45 mm part was showing, so the part rendered tiny. Turning
+    // the bed on still frames it, which is the point of turning it on.
+    const b = new THREE.Box3();
+    for (const child of this.group.children) if (child.visible) b.expandByObject(child);
     if (b.isEmpty()) return;
     b.getCenter(this.target);
     this.dist = (b.getSize(new THREE.Vector3()).length() * pad) / (2 * Math.tan((this.cam.fov * Math.PI) / 360));
     this.place();
   }
 
-  reset() { this.geoms.clear(); this.clear(); }
+  /** What the WebGL context still holds. The only way to see a leak from outside; the UI
+   *  test reads it through a window hook, since nothing else can observe the renderer. */
+  info(): { geometries: number; textures: number } {
+    return { geometries: this.ren.info.memory.geometries, textures: this.ren.info.memory.textures };
+  }
 
-  /** Cans in the assembly view; the frame is taken with them in so the camera does not jump. */
+  reset() {
+    this.clear(); // before the cache empties, or clear() disposes what it is about to lose
+    for (const geometry of this.geoms.values()) geometry.dispose();
+    this.geoms.clear();
+    this.cached.clear();
+  }
+
+  /** Cans in the assembly view. They sit inside the lanes, so framing on the visible
+   *  objects alone still covers them and the camera does not jump when they come on. */
   showCans(on: boolean) { this.cans.visible = on; }
 
   showGrid(on: boolean) { this.gridOn = on; this.grid.visible = on; }

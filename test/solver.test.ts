@@ -2,7 +2,7 @@
 // three: 40 mm was kept for a hand whether the shelf had room to spare or not.
 import { test, expect } from "bun:test";
 import { DEFAULTS, laneLengthFor, solve } from "../src/geometry";
-import { fitSpace } from "../src/solver";
+import { fitSpace, laneNeeds } from "../src/solver";
 
 const SHELF = { w: 160, d: 305, h: 254, front: 0 };
 
@@ -51,4 +51,44 @@ test("laneLengthFor is the inverse of solve()'s deck count", () => {
     expect(solve(o).n).toBe(cans);
     expect(solve({ ...o, length: o.length - 1 }).n).toBe(cans - 1);
   }
+});
+
+// laneNeeds writes the "Nothing fits" message and had no test at all. It called solve()
+// with whatever shelfCells the caller carried - optionsFrom never sets one, so it was
+// always the DEFAULTS guess - and then added the side gap that lanesAcross deliberately
+// does not apply on a grid. It told a 160 mm shelf it needed 176.
+test("laneNeeds is the shelf the solver actually accepts, on every base", () => {
+  for (const base of ["flat", "feet", "gridfinity"] as const) for (const canL of [60, 122.5]) {
+    const options = { ...DEFAULTS, base, canL };
+    const space = { w: 900, d: 400, h: 600, front: 0 };
+    const need = laneNeeds(options, space);
+    const fits = (over: Partial<typeof space>) => fitSpace({ ...space, ...over }, options, { cascade: false }).length > 0;
+    expect(fits({ w: need.w }), `${base} canL ${canL} at the stated width`).toBe(true);
+    expect(fits({ w: need.w - 1 }), `${base} canL ${canL} a millimetre under it`).toBe(false);
+  }
+});
+
+// The height was pinned to a 200 mm lane while H grows with the length the depth allows,
+// so at slope 10 it was out by 10 mm in both directions: it turned away shelves that fit,
+// and told a user a height was enough when the same message came back at it.
+test("laneNeeds states the height the solver accepts, at every slope", () => {
+  for (const base of ["flat", "gridfinity"] as const) for (const canD of [40, 66, 100]) for (const slope of [0, 3, 10]) {
+    const options = { ...DEFAULTS, base, canD, slope };
+    const space = { w: 900, d: 520, h: 600, front: 0 };
+    const need = laneNeeds(options, space);
+    const fits = (h: number) => fitSpace({ ...space, h }, options, { cascade: false }).length > 0;
+    const at = `${base} canD ${canD} slope ${slope}`;
+    expect(fits(need.h), `${at} at the stated height`).toBe(true);
+    expect(fits(need.h - 1), `${at} a millimetre under it`).toBe(false);
+  }
+});
+
+// A shelf with no whole cell across made floorCells[1] zero, so lanesAcross divided by it
+// and returned NaN. `NaN < 1` is false, so the "not even one lane" guard let it through
+// and the user was offered two layouts holding NaN cans.
+test("a grid shelf narrower than one cell offers nothing, not NaN", () => {
+  const options = { ...DEFAULTS, base: "gridfinity" as const };
+  expect(fitSpace({ w: 40, d: 400, h: 600, front: 0 }, options, { cascade: false })).toEqual([]);
+  for (const layout of fitSpace({ w: 200, d: 400, h: 600, front: 0 }, options, { cascade: false }))
+    expect(Number.isFinite(layout.cans)).toBe(true);
 });

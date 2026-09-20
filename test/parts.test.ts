@@ -3,7 +3,7 @@
 // without a geometry build: the manifolds are stand-ins, only names and counts matter.
 import { test, expect } from "bun:test";
 import type { Manifold } from "manifold-3d";
-import { DEFAULTS, partList, type Options, type PartSet, type Plate, type PlateName } from "../src/geometry";
+import { DEFAULTS, PATTERNS, partList, solve, type Options, type PartSet, type Plate, type PlateName } from "../src/geometry";
 
 const m = {} as Manifold;
 const PLATES: PlateName[] = ["deck", "wall-tongue", "wall-socket", "end-wall"];
@@ -75,4 +75,26 @@ test("feet add four risers per lane across; no other base prints them; no cover 
   expect(names({ ...DEFAULTS, base: "feet" })).toContainEqual(["riser-24", 8, "riser"]);
   expect(names(DEFAULTS).some(([, , role]) => role === "riser")).toBe(false);
   expect(names({ ...DEFAULTS, cover: false }).some(([, , role]) => role === "cover")).toBe(false);
+});
+
+// CLAUDE.md states both of these as load-bearing and nothing checked either.
+//
+// "Minimal keeps every joint and solve() - same gangPitch, same layouts, gangs with
+// standard lanes - and changes only the !o.solid block." If solve() ever diverged, a
+// minimal lane would not gang with a standard one and the solver would rank two designs
+// differently for the same shelf.
+test("the minimal design changes nothing solve() derives", () => {
+  expect(solve({ ...DEFAULTS, design: "minimal" })).toEqual(solve(DEFAULTS));
+});
+
+// "o.pattern picks the cell shape and nothing else." The one thing it is allowed to move
+// is the auto radius, and the ligament that follows it.
+test("a pattern changes the cell radius and nothing else solve() derives", () => {
+  const { hexR: _r, lig: _l, ...base } = solve(DEFAULTS);
+  for (const pattern of PATTERNS) {
+    const { hexR, lig, ...rest } = solve({ ...DEFAULTS, pattern });
+    expect(rest, pattern).toEqual(base);
+    expect(hexR, `${pattern} radius`).toBeGreaterThan(0);
+    expect(lig, `${pattern} ligament`).toBeGreaterThan(0);
+  }
 });

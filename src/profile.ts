@@ -45,6 +45,17 @@ export function readStoredProfile(raw: string | null): StoredProfile | null {
   return null;
 }
 
+/** Whether anything is stored under our key. loadStoredProfile returns null both for an
+ *  absent value and for a corrupt or unreadable one, and only the second is worth
+ *  clearing - clearing the first logs a failure about a profile that never existed. */
+export function hasStoredProfile(): boolean {
+  try {
+    return localStorage.getItem(PROFILE_KEY) !== null;
+  } catch {
+    return false; // Safari private browsing and sandboxed iframes throw on read
+  }
+}
+
 export function loadStoredProfile(): StoredProfile | null {
   try {
     return readStoredProfile(localStorage.getItem(PROFILE_KEY));
