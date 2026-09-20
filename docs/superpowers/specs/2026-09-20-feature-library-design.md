@@ -46,16 +46,19 @@ a fixed joint set; boxes.py's settings-object idiom is the battle-tested match.
 
 ## Design
 
-### `src/features/frame.ts`
+### Placement (as built: no `frame.ts`)
 ```ts
-export interface Frame { x: number; y: number; z?: number; sy?: 1 | -1; along?: "x" | "y" }
-export const place = (m: M, f: Frame): M            // rotate 90° about Z if along === "y", mirror Y if sy === -1, translate
-export const clearanceOf = (o: Options) => K.cl + o.fit
-export const OVER = 1                                // fuse/overshoot margin, see "snapshot safety"
+export const clearanceOf = (o: Options) => K.cl + o.fit   // joints.ts
+export const OVER = 1                                      // fuse/overshoot margin, see "snapshot safety"
+export function placeSide(m: M, sy: number, x: number, y: number, z: number): M   // mirror across y for the -Y wall, then move
 ```
-Local frame of every feature: x along the edge, y into the plate (+y = toward the
-plate's inside), z up from the print face, origin on the plate's inner face line.
-`place` is the only transform; no anchor tables, no general rotation.
+Local frame of the wall joints (`earJoint`, `pinJoint`, `crossLap`): x along the lane,
+y the wall's centreline with +y toward the wall's outer face, z = 0 at the deck
+underside / wall bottom. `tSlotJoint` sits at the seam, `gangJoint` at the tongue's
+root, and `lipTab`/`lipPocket` in the lip's and the deck's own frames. A side-dependent
+piece goes on with `placeSide` (its y offset to the inner face is signed), a symmetric
+one with `.translate()`. The plan's `Frame`/`place()` was dropped: no feature needs a
+rotation.
 
 ### `src/features/joints.ts` — one spec, two halves
 ```ts
@@ -180,9 +183,9 @@ Per joint, with `spec.clearance = K.cl` and again at `K.cl + 0.3`:
    or document why the cover's ligament is `R/2`.
 3. Cover field inset bare `14` and seam band `6` (`914`, `935`) → `K`.
 4. Riser `side = 20` (`824`) → `K`.
-5. Pin notch anchored at `d.py` while pin is at `d.piny`: one anchor.
+5. ~~Pin notch anchored at `d.py` while pin is at `d.piny`: one anchor.~~ Done: `d.piny` is gone; every pin piece is placed at `d.py` with its own offset.
 6. Ear `root = 1` and `plinth = max(earW, gangHead)/2 + 3` (`630`) → `K` and derived.
-7. Spec drift: `2026-09-18-flat-pack-design.md:25` still names the 56° dovetail.
+7. ~~Spec drift: `2026-09-18-flat-pack-design.md:25` still names the 56° dovetail.~~ Done.
 
 ## Verification
 

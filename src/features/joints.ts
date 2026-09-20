@@ -1,6 +1,8 @@
 // Joints as pieces: every function here builds both halves of one joint from one spec at
-// a local origin - x along the lane, y the wall's centreline (+y toward the wall's outer
-// face), z = 0 at the deck underside and the wall bottom - and geometry.ts places them.
+// a local origin, and geometry.ts places them. The wall joints (ear, pin, cross-lap) share
+// one frame - x along the lane, y the wall's centreline (+y toward the wall's outer face),
+// z = 0 at the deck underside and the wall bottom; the T splice sits at the seam, the gang
+// joint at its tongue's root, and the lip tab and pocket in the lip's and the deck's own.
 // The female is the male grown by `clearance` in-plane and run OVER past the faces it
 // cuts through; the male is the exact shape. That is the whole guarantee: a slot cannot
 // drift from its tab because there is no second copy of the numbers.
