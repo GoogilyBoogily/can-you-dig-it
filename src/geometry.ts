@@ -2,6 +2,7 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
+import { clearanceOf } from "./features/joints";
 
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
@@ -157,7 +158,7 @@ function autoR(panelH: number, [a, b]: readonly [number, number]): number {
  *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
  *  across 12.5 mm, so every other pattern starts above the recess pads that guard the
  *  tab roots (notchH + padRise). Hex keeps the border so its snapshot does not move. */
-const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + K.cl + o.fit + K.padRise);
+const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : K.deckLo + clearanceOf(o) + K.padRise);
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
 const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
@@ -553,7 +554,7 @@ function tab(g: Geo, along: "x" | "y", len: number, cx: number, cy: number, z0: 
 }
 /** The hole a tab enters, through the full height given. */
 function tabHole(g: Geo, o: Options, along: "x" | "y", len: number, cx: number, cy: number, z0: number): M {
-  const c = 2 * (K.cl + o.fit);
+  const c = 2 * clearanceOf(o);
   const [sx, sy] = along === "x" ? [K.tabW + c, K.tabT + c] : [K.tabT + c, K.tabW + c];
   return g.box(sx, sy, len, cx, cy, z0 + len / 2);
 }
@@ -578,7 +579,7 @@ const lipPocket = (g: Geo, o: Options, x: number, y: number, h: number, z0: numb
   // K.cl + o.fit per side, the same form as tabHole. A bare 2 * o.fit on the old magic
   // 5.4 put the clearance at exactly zero at fit -0.2, which the narrowed LIMITS.fit makes
   // one drag away; every other joint still holds 0.05 mm a side there.
-  g.box(5 + 2 * (K.cl + o.fit), 12 + 2 * (K.cl + o.fit), h, x, y, z0);
+  g.box(5 + 2 * clearanceOf(o), 12 + 2 * clearanceOf(o), h, x, y, z0);
 
 /** The T, pointing +Y from `y0` at `tx`, that ends a gang tongue and, grown by the
  *  clearance, is the socket it drops into. */
@@ -597,7 +598,7 @@ function gangTongue(g: Geo, o: Options, d: Derived, tx: number): M {
  *  open at the wall face and through the deck, like a tab hole - a pocket from below
  *  would be a ceiling. It sits in the outer 8 mm of the rail, under the can's neck. */
 const gangSocket = (g: Geo, o: Options, d: Derived, ln: Lane, tx: number): M =>
-  g.prismZ(gangT(g, tx, -d.IW / 2, K.cl + o.fit), ln.dhi + 4, -1);
+  g.prismZ(gangT(g, tx, -d.IW / 2, clearanceOf(o)), ln.dhi + 4, -1);
 
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const { L, IW } = d;
@@ -656,7 +657,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const { L, IW, OW } = d;
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
-  const c = K.cl + o.fit;
+  const c = clearanceOf(o);
   const piny = sy * d.piny;
   const notchH = K.deckLo + c;
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
@@ -780,7 +781,7 @@ const tSlot = (g: Geo, neck: number, head: number, vc: number, grow = 0): CS => 
  *  `zb` is the deck's underside: a grid deck's floor and feet hang below the pan, and
  *  the tongue takes them too, so it stands on the bed instead of over the socket. */
 export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): [M, M] {
-  const cl = K.cl + o.fit;
+  const cl = clearanceOf(o);
   const w = d.plateY; // wider than any tongue; the floor of a grid deck is this wide
   const wedge = g.prismY(deckProfile(g, d, ln, zb), w, -w / 2);
   const tongue = g.isect(wedge, g.prismZ(tSlot(g, K.spliceBase, K.spliceTip, 0), ln.H - zb, zb - 1));
