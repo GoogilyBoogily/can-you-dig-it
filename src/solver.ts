@@ -106,13 +106,15 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const perLane = cascade ? d.nBottom + (tiers - 1) * d.n : d.n * tiers;
   const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H);
   const lanes = lanesMax * tiers;
-  // per 480 mm lane and per cover, from filamentGrams on the default parts; the lip is ~9 g
-  const laneGrams = o.design === "minimal" ? 250 : 325;
-  const coverGrams = o.cover ? (o.design === "minimal" ? 90 : 130) : 0;
+  // per 480 mm lane (the mean of the default top and bottom lanes) and per cover, from
+  // filamentGrams on the default parts; the lip is ~8 g. Remeasured 2026-09-22, when the
+  // sampling fix took the cover from 130 to 84
+  const laneGrams = o.design === "minimal" ? 260 : 315;
+  const coverGrams = o.cover ? (o.design === "minimal" ? 60 : 85) : 0;
   return {
     options: o, derived: d, cans: perLane * lanesMax,
     footprint: [grid ? (lanesMax - 1) * d.gangPitch + d.foot[3] - d.foot[1] : lanesMax * d.gangPitch, grid ? d.foot[2] - d.foot[0] : d.L, height],
-    gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 9,
+    gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 8,
     warnings: w, style,
   };
 }

@@ -160,14 +160,22 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
   tongue's whole root (`test/splice.test.ts`).
 - Gang joint (2026-09-20, was a 56° dovetail rib on the walls): the deck carries it, since
-  nothing on a wall face can lock Y without an undercut. Every +Y ear but the lip-end one
-  runs on as a tongue under both walls into a T socket cut through the neighbour's rail
-  (`gangTongue`, `gangSocket`; ear-wide neck, `gangHead` 18 head, the splice depths). The
-  tongue is the neighbour's ear too and carries that wall's tab slot. The −Y side of the
-  same tab has the socket instead of an ear. Decks set down onto each other; head locks
-  Y, neck locks X, at every tie. Walls are one part whatever the lane count
-  (`wall-left` / `wall-right`). A ganged deck is `gangReach` (gap + wall + 8) wider on its
-  +Y side; `plateY` charges it, and the default gang packs on 19 plates, not 16. Only when
+  nothing on a wall face can lock Y without an undercut. Tongues run out of the +Y rail
+  under both walls into T sockets cut through the neighbour's rail (`gangJoint`: ear-wide
+  run and neck, `gangHead` 30 head, the splice depths). They go *between* the ears
+  (`laneOf`'s `tongues`, from `tonguesOf`): one in the middle of every stretch of rail
+  clear of the ears (an ear width + 4 mm), the pins, the seam and the lip pockets. Both
+  walls notch over a tongue (`gangJoint`'s `notch`, the ear's pocket without the tab) and
+  it stands on both wall tops below. Every deck keeps an ear under both walls at every
+  tab. Until 2026-09-22 the tongue took the +Y ear's place and the −Y ear became the
+  socket: every deck's −Y edge hung off the one lip-end ear, and the row's end lane had
+  nothing under its −Y wall at four tabs of five. Decks set down onto each other; head
+  locks Y, neck locks X. Walls are one part whatever the lane count (`wall-left` /
+  `wall-right`). A ganged deck is `gangReach` (gap + wall + 8) wider on its +Y side;
+  `plateY` charges it, and the default gang packs on 18 plates (`test/pack.test.ts`). The
+  row's +Y end lane keeps a stub of tongue out of its side; a separate end deck to trim
+  it costs a fifth plate name and was judged not worth it. Below about 260 mm a lane
+  can have no clear stretch; `check()` warns that such lanes stand loose. Only when
   `gangs(o)`: `lanesWide > 1` and not on a grid (`test/gang.test.ts`). Spec in
   `docs/superpowers/specs/2026-09-20-sliding-slot-joints-design.md`.
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
@@ -175,10 +183,14 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
   standard rail with the strip to the wall open, 2.5 mm ties and end ties, the cover a
   perforated sheet (1.5× the grille radius, ligament bars, clipped at the frame). Solid
-  volume is about half; the filament model says −23 % on lanes because what is left is
-  thin and prints dense. Spec in `docs/superpowers/specs/2026-09-18-minimal-design.md`.
+  volume is 0.54–0.58 of standard on lanes; the filament model says about −17 % because
+  what is left is thin and prints dense. Spec in `docs/superpowers/specs/2026-09-18-minimal-design.md`.
 - `filamentGrams` has skins: the core is what sits inside the perimeters with 1 mm of
-  material above and below. Without them a 2.4 mm plate read as 6 % infill.
+  material above and below. Without them a 2.4 mm plate read as 6 % infill. It samples a
+  part's height in whole steps of at most 0.5 mm, never fewer than eight: stepping 1.5
+  from the bottom sampled a 2.4 mm cover twice, both skin probes fell off its faces and
+  it read 43 % heavy. The solver's `laneGrams` / `coverGrams` come from it on the default
+  parts; remeasure them when it moves.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
   slabs of its outline shrunk by the fillet inset, which follows the plan corners. Walls
   and end walls round the outer top edge only (`Geo.roundOver`), so the 3 mm seat the

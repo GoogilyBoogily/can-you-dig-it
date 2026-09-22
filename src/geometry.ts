@@ -249,6 +249,10 @@ export function check(o: Options, d: Derived): string[] {
   if (d.inset && Math.abs(d.inset + tabIn - pinIn(o)) < tabClear)
     w.push(`FAIL a ${o.canD} mm can puts the deck's front ear on the pin below - the tier will not seat`);
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
+  // a short lane's ears, pins and lip pockets leave no stretch of rail for a gang tongue.
+  // It still stands on every ear; it just is not keyed to its neighbour
+  if (gangs(o) && (["bottom", "top"] as const).some((role) => !laneOf(o, d, role).tongues.length))
+    w.push("Lanes this short have no room for the joint that keys them together - they stand side by side, loose");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
   return w;
 }
@@ -339,6 +343,7 @@ export interface Lane {
   dhi: number; te: number; H: number; ewh: number;
   lapZ: number; // the corner cross-lap line: the end wall is slotted up to it, the side wall down to it
   tabs: number[]; // x of every wall tab and deck slot
+  tongues: number[]; // x of every gang tongue, when the lanes gang
   edges: number[]; // pairs: the open deck bands between ties
   lipx: number;
 }
@@ -349,6 +354,31 @@ const round1 = (v: number) => Math.round(v * 10) / 10;
  *  keeps a post behind it and its slot is closed on both sides. The viewer stands the
  *  end wall here too. */
 export const laneXe = (o: Options, d: Derived) => d.L / 2 - o.wall - K.post;
+
+/** Where the gang tongues go: one in the middle of every stretch of rail between the end
+ *  ears that is clear of everything else under a wall - an ear's width and a 4 mm web from
+ *  each ear (both walls notch over a tongue), the ears' own margin from the pins at ±px
+ *  and from a seam, and off the lip pockets. The ears keep their places, so every ear is
+ *  an ear on both sides: a tongue in an ear's place left the -Y wall of the row's end
+ *  lane with nothing under it, and every deck's -Y edge hanging off one ear. */
+function tonguesOf(d: Derived, tabs: number[], lipx: number): number[] {
+  const blocked: [number, number][] = [
+    ...tabs.map((t): [number, number] => [t - K.earW - 4, t + K.earW + 4]),
+    [d.px - tabClear, d.px + tabClear], [-d.px - tabClear, -d.px + tabClear],
+    [lipx - 20, lipx + 20],
+  ];
+  if (d.split) blocked.push([-tabClear, tabClear]);
+  blocked.sort((a, b) => a[0] - b[0]);
+  const tongues: number[] = [];
+  let from = Math.min(...tabs);
+  const to = Math.max(...tabs);
+  for (const [lo, hi] of blocked) {
+    if (lo > from && from < to) tongues.push(round1((from + Math.min(lo, to)) / 2));
+    from = Math.max(from, hi);
+  }
+  if (from < to) tongues.push(round1((from + to) / 2));
+  return tongues;
+}
 
 export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   const bottom = role === "bottom", top = role === "top";
@@ -372,6 +402,7 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   // at ±px
   const clear = (t: number) => Math.abs(t) >= tabClear && Math.abs(Math.abs(t) - d.px) >= tabClear;
   const tabs = [xd + tabIn, xe - tabIn, ...interior.filter(clear)];
+  const tongues = gangs(o) ? tonguesOf(d, tabs, lipx) : [];
   const ties = new Set<number>([round1(lipx), ...interior]);
   if (d.split) ties.add(round1(-K.spliceDepth / 2));
   const tw = minimal ? K.minimalT : 8;
@@ -391,7 +422,7 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
     } else edges.push(t - half, t + half);
   }
   edges.push(x1);
-  return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, edges, lipx };
+  return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, tongues, edges, lipx };
 }
 
 /** Whether the deck carries the gang joint: more than one lane, and not on a grid,
@@ -413,24 +444,21 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const minimal = o.design === "minimal";
   // the wedge sits between the walls. Under each wall it puts out an ear as tall as the
   // deck's low end, with the slot the wall's tab drops through: that is what holds the
-  // deck up on the tier below, and the wall to the deck. Ganged, a +Y ear runs on as a
-  // tongue under both walls into a T socket in the neighbour's rail, and is that lane's
-  // ear too; the -Y ear at the same tab is the socket instead. The lip-end ear stays an
-  // ear on both sides: the lip pockets sit where its socket head would go
+  // deck up on the tier below, and the wall to the deck. Ganged, a tongue between the
+  // ears runs out under both walls into a T socket in the neighbour's rail; both walls
+  // notch over it and it stands on both wall tops below
   const adds = [g.prismY(deckProfile(g, d, ln), IW, -IW / 2)];
   const earJ = earJoint(g, { wall: o.wall, through: ln.dhi, clearance: clearanceOf(o) });
-  const keyed = (tx: number) => gangs(o) && Math.abs(tx - ln.lipx) > 20;
   const cuts: M[] = [];
-  for (const tx of ln.tabs) {
-    if (!keyed(tx)) { adds.push(placeSide(earJ.ear, 1, tx, d.py, 0), placeSide(earJ.ear, -1, tx, -d.py, 0)); continue; }
+  for (const tx of ln.tabs) adds.push(placeSide(earJ.ear, 1, tx, d.py, 0), placeSide(earJ.ear, -1, tx, -d.py, 0));
+  if (ln.tongues.length) {
     const inner = gangInner(o, d);
-    const gang = gangJoint(g, { run: inner - (IW / 2 - 1), clearance: clearanceOf(o), through: ln.dhi });
-    adds.push(gang.male.translate([tx, inner, 0]));
-    cuts.push(gang.female.translate([tx, -IW / 2, 0]));
-    gang.male.delete(); gang.female.delete();
-    // the neighbour wall's tab hole, through the tongue: that wall's centreline is
-    // inner - wall/2 and its inner face is toward -y, so the slot goes on as a -Y piece
-    cuts.push(placeSide(earJ.slot, -1, tx, inner - o.wall / 2, 0));
+    const gang = gangJoint(g, { run: inner - (IW / 2 - 1), clearance: clearanceOf(o), through: ln.dhi, wall: o.wall });
+    for (const gx of ln.tongues) {
+      adds.push(gang.male.translate([gx, inner, 0]));
+      cuts.push(gang.female.translate([gx, -IW / 2, 0]));
+    }
+    gang.male.delete(); gang.female.delete(); gang.notch.delete();
   }
   if (!o.solid) {
     // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
@@ -442,7 +470,7 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     // socket head: an ear is rooted in the deck by earRoot, and inside a 2.5 mm tie the tab
     // hole takes all of it. Six loose 12 × 6 × 4 chips a lane, once
     const plinth = Math.max(K.earW, K.gangHead) / 2 + 3;
-    const earPads = ln.tabs.map((tx) => g.rect(tx - plinth, -IW, tx + plinth, IW));
+    const earPads = [...ln.tabs, ...ln.tongues].map((tx) => g.rect(tx - plinth, -IW, tx + plinth, IW));
     const earPadUnion = g.cs2d(...earPads);
     for (let i = 0; i + 1 < ln.edges.length; i += 2) {
       const a = ln.edges[i], b = ln.edges[i + 1];
@@ -451,7 +479,8 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
       if (minimal) for (const sy of [1, -1]) {
         const face = g.rect(a, sy * (IW / 2 - strip), b, sy * IW / 2);
         cuts.push(g.prismZ(face, ln.dhi + 4, K.deckLo));
-        cuts.push(g.prismZ(face.subtract(earPadUnion), K.deckLo + 1, -1)); // hoisted: five bands x two sides rebuilt it
+        const open = face.subtract(earPadUnion); // hoisted: five bands x two sides rebuilt it
+        if (!open.isEmpty()) cuts.push(g.prismZ(open, K.deckLo + 1, -1)); // a band a plinth covers whole extrudes to an invalid solid
       }
     }
     earPadUnion.delete();
@@ -495,6 +524,11 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
  *  bosses. */
 function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>): M[] {
   const cuts = ln.tabs.map((tx) => placeSide(earJ.notch, sy, tx, sy * d.py, 0));
+  if (ln.tongues.length) {
+    const gang = gangJoint(g, { run: 1, clearance: c, through: 1, wall: o.wall });
+    for (const gx of ln.tongues) cuts.push(gang.notch.translate([gx, sy * d.py, 0]));
+    gang.male.delete(); gang.female.delete(); gang.notch.delete();
+  }
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H: ln.H, clearance: c });
   cuts.push(lap.female.translate([ln.xe, sy * d.py, 0])); lap.male.delete(); lap.female.delete();
   for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
@@ -524,7 +558,7 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   // side, no infill
   const rd = recessDepth(o);
   if (rd) {
-    const pads = [endNotch, ...ln.tabs.map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
+    const pads = [endNotch, ...[...ln.tabs, ...ln.tongues].map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
     const padUnion = g.cs2d(...pads); // the same union for every component; it was rebuilt per iteration
     const field = panel.subtract(g.cs2d(...keep));
     for (const comp of field.decompose()) {
@@ -817,11 +851,21 @@ export function partList(set: PartSet, o: Options): Part[] {
 /** Filament estimate: layer-sum of (shell + infill * core), like cansys.py, with skins:
  *  the core is what sits inside the perimeters with `skin` of material above and below.
  *  A slicer prints the rest solid, so a plate thinner than two skins has no core at all
- *  and a sloped deck top is solid along the whole slope, not only at its edge. */
-export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, density = DENSITY, skin = 1): number {
+ *  and a sloped deck top is solid along the whole slope, not only at its edge.
+ *  The part's height is cut into whole steps of at most `dz`, sampled at their middles,
+ *  and never fewer than eight: stepping by `dz` from the bottom weighed the last sample
+ *  a whole `dz` however little of the part was left, and a 2.4 mm cover sampled twice
+ *  had its skin probes off both faces and counted solid - +43 % on the cover. At 0.5 no
+ *  default part is more than 7.3 % off a 0.1 mm sampling and the set is within 3 %; 1.5
+ *  was 15 % on the lip and the decks, for 20 ms a build saved. */
+export function filamentGrams(m: M, dz = 0.5, shell = 1.26, infill = 0.06, density = DENSITY, skin = 1): number {
   const bb = m.boundingBox();
+  const h = bb.max[2] - bb.min[2];
+  const steps = Math.max(Math.ceil(h / dz), 8);
+  const step = h / steps;
   let solid = 0;
-  for (let z = bb.min[2] + dz / 2; z < bb.max[2]; z += dz) {
+  for (let i = 0; i < steps; i++) {
+    const z = bb.min[2] + (i + 0.5) * step;
     // Six cross-sections a layer, and this runs on every part of every build. manifold-3d
     // holds them on the WASM heap and the JS collector only sees a handle, so unfreed they
     // are what fills it: a 400 mm lane is ~270 a part. Freed here, in one place.
@@ -836,5 +880,5 @@ export function filamentGrams(m: M, dz = 1.5, shell = 1.26, infill = 0.06, densi
     solid += a - ia + infill * ia;
     for (const section of [s, shrunk, above, below, capped, core]) section.delete();
   }
-  return (solid * dz) / 1000 * density;
+  return (solid * step) / 1000 * density;
 }

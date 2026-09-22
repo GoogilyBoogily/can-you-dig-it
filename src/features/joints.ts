@@ -97,12 +97,17 @@ export function earJoint(g: Geo, spec: { wall: number; through: number; clearanc
   const ear = g.box(K.earW, wall + K.earRoot, K.deckLo, 0, -K.earRoot / 2, K.deckLo / 2);
   const slot = g.box(K.tabW + 2 * c, K.tabT + 2 * c, through + 2 * OVER, 0, (K.tabT - wall) / 2, through / 2);
   const notchH = earNotchH(c);
-  const pocket = g.box(K.earW + 2 * c, wall + 2 * OVER, notchH + OVER, 0, 0, (notchH - OVER) / 2);
+  const pocket = earPocket(g, wall, c);
   const tab = tabBox(g, notchH + 2 * OVER, wall, -OVER);
   const notch = g.diff(pocket, [tab]);
   pocket.delete(); tab.delete();
   return { ear, slot, notch };
 }
+
+/** The notch in a wall's bottom edge that an ear-wide piece at deck level passes under:
+ *  the ear's own (less the tab it leaves standing), and a gang tongue's. */
+const earPocket = (g: Geo, wall: number, c: number): M =>
+  g.box(K.earW + 2 * c, wall + 2 * OVER, earNotchH(c) + OVER, 0, 0, (earNotchH(c) - OVER) / 2);
 
 /** The corner: the end wall keeps a wall-square post from the lap line to the tier top,
  *  and the side wall is slotted from its top edge down to that line to take it. The
@@ -116,14 +121,16 @@ export function crossLap(g: Geo, spec: { wall: number; lapZ: number; H: number; 
 
 /** The gang joint the deck carries: an ear-wide run back to the ear root, then a T
  *  (ear-wide neck, gangHead head, the splice depths) pointing +Y from the origin. The
- *  socket is the grown T cut through the neighbour's rail from below the deck. */
-export function gangJoint(g: Geo, spec: { run: number; clearance: number; through: number }): Pair {
-  const { run, clearance, through } = spec;
+ *  socket is the grown T cut through the neighbour's rail from below the deck; `notch` is
+ *  what each wall the run passes under has cut from its bottom edge, at the wall's
+ *  centreline. */
+export function gangJoint(g: Geo, spec: { run: number; clearance: number; through: number; wall: number }): Pair & { notch: M } {
+  const { run, clearance, through, wall } = spec;
   const t = (grow = 0) => tProfile(g, K.earW, K.gangHead, grow).rotate(-90);
   const runBox = g.box(K.earW, run, K.deckLo, 0, -run / 2, K.deckLo / 2);
   const head = g.prismZ(t(), K.deckLo);
   const male = g.union([runBox, head]);
   runBox.delete(); head.delete();
   const female = g.prismZ(t(clearance), through + 2 * OVER, -OVER);
-  return { male, female };
+  return { male, female, notch: earPocket(g, wall, clearance) };
 }

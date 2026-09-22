@@ -49,18 +49,30 @@ for (const [name, mesh] of Object.entries(parts)) {
 const laneVolume = (prefix: string) => Object.entries(parts).filter(([name]) => name.startsWith(prefix + "-")).reduce((sum, [, m]) => sum + m.volume(), 0);
 const laneGrams = (prefix: string) => Object.entries(parts).filter(([name]) => name.startsWith(prefix + "-")).reduce((sum, [, m]) => sum + filamentGrams(m), 0);
 
-// 331 g for the four plates of a top lane (305 g as one print, before the flat-pack: the
-// wall keeps a solid band along the deck now); the window is a sanity check, not a pin
+// 288 g for the four plates of a top lane (331 g before the sampling fix and the gang
+// tongues moved between the ears; 305 g as one print, before the flat-pack); the window
+// is a sanity check, not a pin
 test("filament estimate is sane", () => {
   const grams = laneGrams("lane-top");
   expect(grams).toBeGreaterThan(250);
   expect(grams).toBeLessThan(400);
 });
 
+// The estimate samples a part's height in whole steps, at least eight. Stepping 1.5 mm
+// from the bottom sampled a 2.4 mm cover twice, both skin probes fell off its faces and
+// it counted solid: 43 % over a fine sampling. Every snapshot part holds to 8 %.
+test("filament estimate holds on thin parts: within 8 % of a fine sampling", () => {
+  for (const name of ["cover-front", "minimal-cover-front", "end-lip", "lane-top-wall-left-rear", "lane-top-deck-rear"]) {
+    const fine = filamentGrams(parts[name], 0.1);
+    expect(Math.abs(filamentGrams(parts[name]) / fine - 1)).toBeLessThan(0.08);
+  }
+});
+
 // The minimal design keeps every joint and takes out the material that carried nothing.
 // Solid volume, not the filament model, so the check does not move with print settings.
-// Measured when it landed: top 0.51, bottom 0.46, cover 0.69; flat-pack 0.50, 0.47, 0.70 -
-// fails when something creeps back.
+// Measured when it landed: top 0.51, bottom 0.46, cover 0.69; flat-pack 0.50, 0.47, 0.70;
+// 0.575, 0.540, 0.705 since the gang tongues moved between the ears (2026-09-22), each
+// with a plinth under it both sides - fails when something creeps back.
 test("the minimal design is about half the material", () => {
   expect(laneVolume("minimal-lane-top") / laneVolume("lane-top")).toBeLessThan(0.6);
   expect(laneVolume("minimal-lane-bottom") / laneVolume("lane-bottom")).toBeLessThan(0.55);

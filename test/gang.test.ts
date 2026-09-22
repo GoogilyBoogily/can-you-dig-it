@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { K, DEFAULTS, solve, laneOf, buildDeck, buildWall, buildLanePlates, type Options } from "../src/geometry";
+import { K, DEFAULTS, solve, check, laneOf, buildDeck, buildWall, buildLanePlates, type Options } from "../src/geometry";
 
 import { geo } from "./geo";
 
@@ -13,8 +13,8 @@ function wallThickness(o: Options, name: "wall-left" | "wall-right"): number {
   return box.max[2] - box.min[2];
 }
 
-// The gang joint lives on the deck: a T tongue out of every +Y ear into a socket in the
-// neighbour's rail. A lane that stands alone has nothing to mate with, so its deck ends
+// The gang joint lives on the deck: T tongues out of the +Y rail, between the ears, into
+// sockets in the neighbour's rail. A lane that stands alone has nothing to mate with, so its deck ends
 // at its ears and both walls are plain, whatever the lane count.
 test("a single lane's deck ends at its ears; walls are plain either way", () => {
   const d = solve(single);
@@ -46,8 +46,9 @@ test("the deck tongue clears its socket and locks the neighbour in X and Y", () 
   const nearWall = buildWall(geo, ganged, d, ln, 1);
   const farWall = buildWall(geo, ganged, d, ln, -1).translate([0, d.gangPitch, 0]);
   expect(geo.isect(nearWall, farWall).volume()).toBeCloseTo(0, 6);
-  // the tongue is also the far lane's ear: that wall notches over it and drops its tab through
+  // both walls the tongue passes under notch over it
   expect(geo.isect(farWall, near).volume()).toBeCloseTo(0, 6);
+  expect(geo.isect(nearWall, near).volume()).toBeCloseTo(0, 6);
 });
 
 // The lip pockets sit where a socket head would go, so the lip-end ear stays an ear on
@@ -60,4 +61,39 @@ test("no tongue at the lip end; plateY charges the tongue reach", () => {
   expect(lipEar.volume()).toBeCloseTo(0, 6);
   expect(deck.boundingBox().max[1]).toBeCloseTo(d.OW / 2 + DEFAULTS.wall + K.gangGap + K.spliceDepth, 3);
   expect(d.plateY).toBeGreaterThanOrEqual(d.OW + DEFAULTS.wall + K.gangGap + K.spliceDepth);
+});
+
+// The tongues go between the ears, not in their place: ganged, every deck still has an
+// ear under both walls at every tab, the same ear a lane standing alone has. In an ear's
+// place a tongue left the -Y wall of the row's end lane on one ear of five and every
+// deck's -Y edge hanging off that one.
+test("a ganged deck keeps an ear under both walls at every tab", () => {
+  for (const role of ["top", "bottom"] as const) {
+    const earsAt = (o: Options) => {
+      const d = solve(o), ln = laneOf(o, d, role);
+      const deck = buildDeck(geo, o, d, ln);
+      return ln.tabs.map((tx) => [1, -1].map((sy) => geo.isect(deck, geo.box(K.earW + 2, DEFAULTS.wall, K.deckLo, tx, sy * d.py, K.deckLo / 2)).volume()));
+    };
+    const alone = earsAt(single), ganged_ = earsAt(ganged);
+    expect(ganged_.length).toBe(alone.length);
+    ganged_.forEach((pair, i) => pair.forEach((vol, j) => expect(vol).toBeCloseTo(alone[i][j], 1)));
+  }
+});
+
+// A lane from 260 mm gangs, with a tongue on each half from 290 mm when it splits.
+// Shorter, its ears, pins and lip pockets can leave no stretch of rail for a tongue, and
+// check() says so whenever that happens rather than handing over lanes that stand loose.
+test("a lane from 260 mm keys to its neighbour; one that cannot says so", () => {
+  for (let length = 150; length <= 520; length += 1) {
+    const o: Options = { ...ganged, length };
+    const d = solve(o);
+    const warnings = check(o, d);
+    if (warnings.some((w) => w.startsWith("FAIL"))) continue;
+    const tongues = (["top", "bottom"] as const).map((role) => laneOf(o, d, role).tongues);
+    expect(warnings.some((w) => w.includes("stand side by side"))).toBe(tongues.some((t) => !t.length));
+    if (length >= 260) for (const t of tongues) expect(t.length).toBeGreaterThan(0);
+    if (length >= 290 && d.split) for (const t of tongues) expect(t.some((x) => x < 0) && t.some((x) => x > 0)).toBe(true);
+  }
+  const short: Options = { ...single, length: 220 };
+  expect(check(short, solve(short)).some((w) => w.includes("stand side by side"))).toBe(false);
 });

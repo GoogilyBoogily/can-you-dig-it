@@ -42,7 +42,7 @@ test("the splice T: tongue inside socket, socket wider by the clearance", () => 
 
 test("the gang T: tongue inside socket at every clearance", () => {
   for (const clearance of [K.cl, K.cl + 0.3]) {
-    const j = gangJoint(geo, { run: 10, clearance, through: 20 });
+    const j = gangJoint(geo, { run: 10, clearance, through: 20, wall: 6 });
     // The run is fused into its own deck - it never crosses into a mating part, so it has
     // no female counterpart (test/gang.test.ts's "clears its socket" check is what proves
     // the run never collides with the neighbour's deck). Only the head is the true
@@ -53,6 +53,13 @@ test("the gang T: tongue inside socket at every clearance", () => {
     expect(j.male.boundingBox().min[1]).toBeCloseTo(-10, 6); // the run reaches back to the ear root
     expect(j.male.boundingBox().max[1]).toBeCloseTo(K.spliceDepth, 6); // the T's head, +Y
     expect(j.female.boundingBox().max[2]).toBeCloseTo(21, 6);
+    // the walls it passes under notch over the run: the run's width and height plus the
+    // clearance, through the wall, from its bottom edge
+    const run = geo.box(K.earW, 6, K.deckLo, 0, 0, K.deckLo / 2);
+    fits({ male: run, female: j.notch });
+    expect(j.notch.boundingBox().max[0] - K.earW / 2).toBeCloseTo(clearance, 6);
+    expect(j.notch.boundingBox().max[2] - K.deckLo).toBeCloseTo(clearance, 6);
+    run.delete();
   }
 });
 
