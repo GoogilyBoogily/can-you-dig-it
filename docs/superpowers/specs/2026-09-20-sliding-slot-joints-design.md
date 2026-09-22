@@ -1,5 +1,11 @@
 # Sliding-slot joints
 
+> **Amended 2026-09-22.** The tongue no longer takes the +Y ear's place. It runs between
+> the ears (`tonguesOf` in `laneOf`), both walls notch over it, and every deck keeps an
+> ear under both walls at every tab. In the design below, every deck's −Y edge hung off
+> the one lip-end ear, and the row's end lane had nothing under its −Y wall at four tabs
+> of five. `K.gangHead` is 30, and the default gang packs on 18 plates.
+
 ## Why
 
 Two dovetails held the flat-pack together, and both were the awkward joint in their family.

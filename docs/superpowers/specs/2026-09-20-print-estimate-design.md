@@ -38,6 +38,12 @@ buttons already sum grams and pick the rescaled value up through `partGrams`.
 
 ## Hours
 
+Stands, with `DUTY` measured instead of guessed (2026-09-22). `2026-09-21-print-cost-design.md`
+proposed replacing it with a per-loop term, and review dropped that: time not spent
+extruding tracks path length, not loop count, and the one-constant model fit three builds
+within 1 % where the loop model missed by 10–14 %. `DUTY` comes from one Bambu Studio
+slice of the default job, and the app shows no hours until it has that number.
+
     mm³      = Σ grams / density × 1000
     flow     = min(filament.maxFlow, nozzleCap)
     hours    = mm³ / (flow × DUTY) / 3600
