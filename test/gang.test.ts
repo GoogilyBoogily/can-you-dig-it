@@ -97,3 +97,19 @@ test("a lane from 260 mm keys to its neighbour; one that cannot says so", () => 
   const short: Options = { ...single, length: 220 };
   expect(check(short, solve(short)).some((w) => w.includes("stand side by side"))).toBe(false);
 });
+
+// On the minimal deck the neighbour's T head drops into a socket cut through the
+// plinth, and the arms beside the head are what hold the row together in Y. Under a
+// tongue the plinth is 3 mm wider a side than under an ear, so each arm is ~5.75 mm,
+// not the 2.75 an ear-width plinth left.
+test("the minimal deck keeps a wide arm each side of every socket", () => {
+  const o: Options = { ...ganged, design: "minimal" };
+  const d = solve(o);
+  const ln = laneOf(o, d, "top");
+  const deck = buildDeck(geo, o, d, ln);
+  const headY = -d.IW / 2 + (K.spliceNeck + K.spliceDepth) / 2;
+  for (const gx of ln.tongues) for (const side of [1, -1]) {
+    const probe = geo.box(4, 4, K.deckLo, gx + side * (K.gangHead / 2 + 3.5), headY, K.deckLo / 2);
+    expect(geo.isect(deck, probe).volume()).toBeCloseTo(probe.volume(), 3);
+  }
+});

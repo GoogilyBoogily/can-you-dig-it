@@ -29,8 +29,8 @@ test.each([...PATTERNS])("%s cuts the walls, the end wall and the cover", (patte
 });
 
 // A square's or a slat's bottom edge over an ear notch would be a 1.25 mm bridge across
-// 12.5 mm. Every pattern but hex starts its field at the top of the recess pads, so the
-// wall is full thickness from the notch top through the pad.
+// 12.5 mm. Every pattern but hex starts its field padRise above the notch, where the
+// recess frame starts too, so the wall is full thickness from the notch top up.
 test.each(PATTERNS.filter((p) => p !== "hex"))("%s leaves the wall solid over every ear notch", (pattern) => {
   const o: Options = { ...shortLane, pattern };
   const d = solve(o);
@@ -40,6 +40,25 @@ test.each(PATTERNS.filter((p) => p !== "hex"))("%s leaves the wall solid over ev
   for (const tx of ln.tabs) {
     const probe = geo.box(K.earW + 2 * K.cl, o.wall, 4, tx, d.IW / 2 + o.wall / 2, notchH + 2);
     expect(geo.isect(wall, probe).volume()).toBeCloseTo(probe.volume(), 3);
+  }
+});
+
+// The recess is a frame (2026-09-24): the outer face keeps its full thickness along the
+// bottom edge, between every ear and tongue notch as well as over them. It used to run
+// down through the border with a pad left over each notch, eleven posts along the edge.
+// The probe sits in the bottom border, under every pattern's cells, on both designs.
+test.each([...PATTERNS])("%s keeps the bottom edge of the outer face full thickness", (pattern) => {
+  for (const design of ["standard", "minimal"] as const) {
+    const o: Options = { ...shortLane, pattern, design };
+    const d = solve(o);
+    const ln = laneOf(o, d, "top");
+    const wall = buildWall(geo, o, d, ln, 1);
+    const notches = [...ln.tabs, ...ln.tongues].sort((a, b) => a - b);
+    for (let i = 0; i + 1 < notches.length; i++) {
+      const x = (notches[i] + notches[i + 1]) / 2;
+      const probe = geo.box(4, 1, 1, x, d.OW / 2 - 0.5, K.border / 2 + 1);
+      expect(geo.isect(wall, probe).volume(), `${design} at x ${x}`).toBeCloseTo(probe.volume(), 3);
+    }
   }
 });
 

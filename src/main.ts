@@ -216,6 +216,18 @@ function showTab(key: string) {
 // The translucent settings print every part solid at 20 mm/s, so the estimate follows the checkbox.
 const partGrams = (p: PartOut) => pick.translucent.checked ? p.solidGrams : p.grams;
 const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p) * p.qty, 0);
+/** Extruded mm³ a second over a whole job, travel and acceleration in: the default job's
+ *  filament volume over Bambu Studio's sliced time (0.20 mm Standard, 0.4 nozzle, Bambu
+ *  PETG Basic). Null until that slice is done; no hours show without it, since a guessed
+ *  duty factor is off by a third either way.
+ *  ponytail: one number for every printer and filament; scale by the filament's max flow
+ *  once that is scraped into the index. */
+const JOB_FLOW: number | null = null;
+function jobHours(parts: PartOut[]) {
+  if (JOB_FLOW === null) return "";
+  const mm3 = parts.reduce((a, p) => a + p.grams / DENSITY * 1000 * p.qty, 0);
+  return `, about ${(mm3 / JOB_FLOW / 3600).toFixed(0)} h (±30 %)`;
+}
 function translucentHours(parts: PartOut[]) {
   const machine = index?.machines.find((m) => m.name === pick.nozzle.value);
   if (!machine) return "";
@@ -246,7 +258,7 @@ function renderResults() {
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${K.lipH} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}; ${(d.Hb - K.deckLo - K.lipH - K.lipInset * d.tan - o.canD).toFixed(0)} mm over the can as it clears the lip</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}</dd>
-    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg${filamentNote()}${pick.translucent.checked ? ` solid${translucentHours(parts)}` : ""}</dd>
+    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg${filamentNote()}${pick.translucent.checked ? ` solid${translucentHours(parts)}` : jobHours(parts)}</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
     ${layout.warnings.length ? `<p class="warn">${layout.warnings.join("<br>")}</p>` : ""}`;
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";

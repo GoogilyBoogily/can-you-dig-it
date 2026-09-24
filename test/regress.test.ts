@@ -72,9 +72,12 @@ test("filament estimate holds on thin parts: within 8 % of a fine sampling", () 
 // Solid volume, not the filament model, so the check does not move with print settings.
 // Measured when it landed: top 0.51, bottom 0.46, cover 0.69; flat-pack 0.50, 0.47, 0.70;
 // 0.575, 0.540, 0.705 since the gang tongues moved between the ears (2026-09-22), each
-// with a plinth under it both sides - fails when something creeps back.
+// with a plinth under it both sides; 0.604, 0.563, 0.705 since the recess became a frame
+// with a full-thickness bottom band (2026-09-24), which costs the 1.7 mm minimal web more
+// than the 3.5 mm standard one. A decided trade, so the limits follow it by 0.016 - fails
+// when something creeps back.
 test("the minimal design is about half the material", () => {
-  expect(laneVolume("minimal-lane-top") / laneVolume("lane-top")).toBeLessThan(0.6);
-  expect(laneVolume("minimal-lane-bottom") / laneVolume("lane-bottom")).toBeLessThan(0.55);
+  expect(laneVolume("minimal-lane-top") / laneVolume("lane-top")).toBeLessThan(0.62);
+  expect(laneVolume("minimal-lane-bottom") / laneVolume("lane-bottom")).toBeLessThan(0.58);
   expect(laneVolume("minimal-cover") / laneVolume("cover")).toBeLessThan(0.75);
 });

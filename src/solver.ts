@@ -107,9 +107,9 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H);
   const lanes = lanesMax * tiers;
   // per 480 mm lane (the mean of the default top and bottom lanes) and per cover, from
-  // filamentGrams on the default parts; the lip is ~8 g. Remeasured 2026-09-22, when the
-  // sampling fix took the cover from 130 to 84
-  const laneGrams = o.design === "minimal" ? 260 : 315;
+  // filamentGrams on the default parts; the lip is ~8 g. Remeasured 2026-09-24, after the
+  // recess became a frame; on 2026-09-22 the sampling fix took the cover from 130 to 84
+  const laneGrams = o.design === "minimal" ? 270 : 320;
   const coverGrams = o.cover ? (o.design === "minimal" ? 60 : 85) : 0;
   return {
     options: o, derived: d, cans: perLane * lanesMax,

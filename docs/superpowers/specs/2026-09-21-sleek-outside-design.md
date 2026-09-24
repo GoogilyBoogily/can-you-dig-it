@@ -41,6 +41,11 @@ every lane is from now on.
 | lanes too short to gang | warn only (shipped); no refusal, no squeezed tongue |
 | minimal socket slivers | plinth +3 mm a side at the sockets only, arms ~2.75 → ~5.75 mm |
 
+Built 2026-09-24: the frame and the socket plinth, one `bun run ref`. Walls and end walls
+rise 5–10 % standard and 12–21 % minimal in volume, no bound moves, minimal decks +1.3–2.1 %,
+nothing else changes. The default job is +1.7 % in volume, minimal +6.0 %; the
+minimal/standard lane ratio is 0.604 top, 0.563 bottom.
+
 ## Why
 
 - The outer face of a side wall and of the end wall is pocketed over the lattice field

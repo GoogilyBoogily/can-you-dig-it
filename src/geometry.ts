@@ -73,7 +73,7 @@ export const K = {
   deckLo: 4, topgap: 2, slack: 8, lipH: 20, edgeR: 3,
   lipInset: 8, // the lip pockets, and the first can, this far in from the deck start
   minimalT: 2.5, // the minimal design's fins, ties and end ties
-  padRise: 4, // a recess pad stands this far above the notch it guards
+  padRise: 4, // the recess frame, and every field but hex, starts this far above the ear notch
   hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
   border: 5, web: 3.5,
   cl: 0.25, // every joint's clearance a side, before `fit`
@@ -469,8 +469,15 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
     // under each ear the strip keeps an ear-high plinth out to the fin, 3 mm past a
     // socket head: an ear is rooted in the deck by earRoot, and inside a 2.5 mm tie the tab
     // hole takes all of it. Six loose 12 × 6 × 4 chips a lane, once
+    // Under a tongue it is 3 mm wider again: the -Y side carries the neighbour's socket,
+    // and the arms beside the head are what hold the row together in Y - 2.75 mm at the
+    // ear's width, 5.75 here
     const plinth = Math.max(K.earW, K.gangHead) / 2 + 3;
-    const earPads = [...ln.tabs, ...ln.tongues].map((tx) => g.rect(tx - plinth, -IW, tx + plinth, IW));
+    const socketPlinth = plinth + 3;
+    const earPads = [
+      ...ln.tabs.map((tx) => g.rect(tx - plinth, -IW, tx + plinth, IW)),
+      ...ln.tongues.map((tx) => g.rect(tx - socketPlinth, -IW, tx + socketPlinth, IW)),
+    ];
     const earPadUnion = g.cs2d(...earPads);
     for (let i = 0; i + 1 < ln.edges.length; i += 2) {
       const a = ln.edges[i], b = ln.edges[i + 1];
@@ -550,23 +557,21 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   const wcells = cellsOf(g, o.pattern, d.hexR, d.lig, panel, keep);
   if (wcells) cuts.push(g.prismY(wcells, o.wall + 2, y0 - 1));
 
-  // recess the outer face over the lattice field and down through the bottom border to
-  // a web. Pads stay over every tab root and the end notch, so a tab is rooted in a
-  // full-thickness wall. A pad is exactly the notch's width: with the ear flush in the
-  // notch below it, the two read as one post from the bottom edge up. The minimal web
-  // is four 0.42 mm lines, the same floor as the ligament width: two perimeters a
-  // side, no infill
+  // recess the outer face over the lattice field to a web, inside a frame: the border
+  // stays full thickness round it, and along the bottom it runs up past the ear notches
+  // by padRise, so every tab root and notch sits in a full-thickness wall and the bottom
+  // edge is one straight band. Until 2026-09-22 the recess ran down through the bottom
+  // border with a pad left over each notch - eleven posts along the edge of a face you
+  // look at. The minimal web is four 0.42 mm lines, the same floor as the ligament
+  // width: two perimeters a side, no infill
   const rd = recessDepth(o);
   if (rd) {
-    const pads = [endNotch, ...[...ln.tabs, ...ln.tongues].map((tx) => g.rect(tx - K.earW / 2 - c, -1, tx + K.earW / 2 + c, notchH + K.padRise))];
-    const padUnion = g.cs2d(...pads); // the same union for every component; it was rebuilt per iteration
     const field = panel.subtract(g.cs2d(...keep));
     for (const comp of field.decompose()) {
       const { min: [gx0], max: [gx1] } = comp.bounds();
-      const face = g.rect(gx0, -1, gx1, H - b).subtract(padUnion);
+      const face = g.rect(gx0, notchH + K.padRise, gx1, H - b).subtract(endNotch);
       cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
     }
-    padUnion.delete();
   }
   return cuts;
 }
@@ -595,7 +600,8 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
     const ecells = cellsOf(g, o.pattern, d.hexR, d.lig, g.rect(gy0, te + b, gy1, ewh - b), []);
     if (ecells) cuts.push(g.prismX(ecells, o.wall + 2, xe - 1));
     const rd = recessDepth(o);
-    if (rd) cuts.push(g.prismX(g.rect(gy0, te - 1, gy1, ewh - b), rd + 1, xo - rd));
+    // framed like the side walls': the border stays full thickness along the bottom too
+    if (rd) cuts.push(g.prismX(g.rect(gy0, te + b, gy1, ewh - b), rd + 1, xo - rd));
   }
   return g.assemble(adds, cuts);
 }

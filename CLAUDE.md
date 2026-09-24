@@ -149,12 +149,18 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   4R wide — that is what keeps the splice band solid. Slat cover takes the
   whole-row path on both designs. Spec in
   `docs/superpowers/specs/2026-09-18-pattern-axis-design.md`.
-  Outer wall face is recessed to a 3.5 mm web, a pocket with vertical sides, down
-  through the bottom border, with pads left over every ear notch (the notch's own width,
-  so ear and pad read as one post) and the end-wall notch. The
+  Outer wall face is recessed to a 3.5 mm web (1.7 minimal), a pocket with vertical
+  sides inside a frame: the border stays full thickness all round, and along the bottom
+  the frame runs `padRise` above the ear notches so every notch and tab root sits in
+  full-thickness wall. The end wall is framed the same way. Until 2026-09-24 the recess
+  ran down through the bottom border with a pad over each notch: eleven posts along the
+  edge (`test/pattern.test.ts`). The frame put the default job up 1.7 % in volume and
+  minimal 6 % (it costs the thin web more).
   In the minimal deck the fin-to-wall strip keeps an ear-high
   plinth under each ear: rooted by 1 mm inside a 2.5 mm tie, the tab hole took all of
-  it and the ears printed loose (`test/islands.test.ts`). Deck centre band is open with
+  it and the ears printed loose (`test/islands.test.ts`). Under a gang tongue it is 3 mm
+  wider a side: the neighbour's socket is cut through it, and the ~5.75 mm arms beside
+  the head hold the row in Y (`test/gang.test.ts`). Deck centre band is open with
   cross-ties, not honeycomb — a hex core prints 100 % dense and weighs more.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
@@ -183,7 +189,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
   standard rail with the strip to the wall open, 2.5 mm ties and end ties, the cover a
   perforated sheet (1.5× the grille radius, ligament bars, clipped at the frame). Solid
-  volume is 0.54–0.58 of standard on lanes; the filament model says about −17 % because
+  volume is 0.56–0.60 of standard on lanes; the filament model says about −17 % because
   what is left is thin and prints dense. Spec in `docs/superpowers/specs/2026-09-18-minimal-design.md`.
 - `filamentGrams` has skins: the core is what sits inside the perimeters with 1 mm of
   material above and below. Without them a 2.4 mm plate read as 6 % infill. It samples a
