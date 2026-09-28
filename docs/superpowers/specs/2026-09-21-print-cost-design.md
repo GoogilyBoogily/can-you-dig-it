@@ -73,6 +73,11 @@ X1 Carbon 0.4, 0.20mm Standard @BBL X1C, Bambu PETG Basic.
   (`bed_exclude_area`). `pack()` does not know it, and plate 1 of the default job puts
   `lane-bottom-deck-front` in it. Bambu refuses the slice ("too close to exclusion
   area"). The P2S, A1 and H2S have no such area.
+- **Re-measured the same day on the P2S** (the printer this is built for), 0.20mm Standard
+  @BBL P2S, Bambu PETG Basic: **40.4 h**, `JOB_FLOW` 7.95 (plates 7.21–8.75). Its stock
+  outer-wall acceleration is 6000, and 10000 saves **0.8 %**. Grams +4.6 %, as on the X1C.
+- **Keep-out fixed:** `pack()` keeps the corner clear (see `CLAUDE.md`). The X1C job now
+  slices through the CLI with the exclusion area left in, on 20 plates.
 ## Why
 
 Nothing here has been sliced with a stopwatch. The default build is 34 prints on 18

@@ -1,10 +1,10 @@
 import Module from "manifold-3d";
 import type { Manifold } from "manifold-3d";
 import { DENSITY, Geo, solve, buildAll, freeSet, partList, filamentGrams, type Options, type PartRole } from "./geometry";
-import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement } from "./export";
+import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement, type Rect } from "./export";
 
 export type Req =
-  | { type: "build"; id: number; options: Options }
+  | { type: "build"; id: number; options: Options; keepOut: Rect[] } // keepOut: the printer's bed_exclude_area
   | { type: "export"; id: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
 // solidGrams: the part printed 100 % dense, which the translucent settings do.
@@ -46,7 +46,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       // Manifold outlives this line. Builds run on a 250 ms debounce from the form, and
       // the WASM heap does not come back on its own.
       freeSet(set);
-      const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin);
+      const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin, undefined, req.keepOut);
       const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
       last = { parts, placed, options: o };
       const res: Res = { type: "built", id: req.id, parts, placed, nplates, ms: performance.now() - t0 };

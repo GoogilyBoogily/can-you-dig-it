@@ -22,6 +22,13 @@ export function bboxOf(pos: Float32Array): MeshData["bbox"] {
 
 const EPS = 1e-6;
 
+/** A rectangle on the bed, x0 y0 x1 y1 from the front-left corner. */
+export type Rect = [number, number, number, number];
+
+/** Whether a box, moved by (dx, dy), comes within `clear` of any of `rects`. */
+const hitsAny = (rects: Rect[], clear: number, [x0, y0, x1, y1]: Rect, dx = 0, dy = 0) =>
+  rects.some(([kx0, ky0, kx1, ky1]) => x0 + dx < kx1 + clear - EPS && x1 + dx > kx0 - clear + EPS && y0 + dy < ky1 + clear - EPS && y1 + dy > ky0 - clear + EPS);
+
 /** A row of parts across a plate. `height` is set by its first part and never grows. */
 interface Shelf { depth: number; height: number; width: number }
 
@@ -37,18 +44,46 @@ interface Seat { name: string; mesh: MeshData; plate: number; shelf: Shelf; offs
  * by Y extent descending, so the part that opens a shelf is the deepest that will ever
  * want it - letting shelves grow packs no configuration any tighter.
  */
-function seatOnPlate(shelves: Shelf[], alongX: number, alongY: number, usableWidth: number, usableDepth: number, gap: number): { shelf: Shelf; offsetAlongShelf: number } | null {
+function seatOnPlate(shelves: Shelf[], alongX: number, alongY: number, usableWidth: number, usableDepth: number, gap: number, keep: KeepOut): { shelf: Shelf; offsetAlongShelf: number } | null {
   for (const shelf of shelves) {
-    const offsetAlongShelf = shelf.width === 0 ? 0 : shelf.width + gap;
+    const offsetAlongShelf = keep.along(shelf, shelf.width === 0 ? 0 : shelf.width + gap, alongX, shelf.height);
     if (offsetAlongShelf + alongX <= usableWidth + EPS && alongY <= shelf.height + EPS) return { shelf, offsetAlongShelf };
   }
   const last = shelves[shelves.length - 1];
-  const depth = last ? last.depth + last.height + gap : 0;
-  if (depth + alongY > usableDepth + EPS) return null;
-  const shelf: Shelf = { depth, height: alongY, width: 0 };
-  shelves.push(shelf);
-  return { shelf, offsetAlongShelf: 0 };
+  // a part too wide to slide past a keep-out opens its shelf behind it instead
+  for (const depth of [last ? last.depth + last.height + gap : 0, ...keep.behind(last ? last.depth + last.height + gap : 0)]) {
+    if (depth + alongY > usableDepth + EPS) return null;
+    const shelf: Shelf = { depth, height: alongY, width: 0 };
+    const offsetAlongShelf = keep.along(shelf, 0, alongX, alongY);
+    if (offsetAlongShelf + alongX > usableWidth + EPS) continue;
+    shelves.push(shelf);
+    return { shelf, offsetAlongShelf };
+  }
+  return null;
 }
+
+/** The printer's keep-out areas (`bed_exclude_area`: an 18 × 28 mm corner on the X1 and
+ *  P1 series, where the nozzle is wiped), which the slicer refuses to print over. Packing
+ *  works in the plate's uncentred frame - shelf 0 at the front margin, offset 0 at the
+ *  left - and keeps every part `margin` clear of them there, the same floor as the bed's
+ *  edge, by sliding it along its shelf past one. Centring afterwards only moves a part
+ *  where it stays clear, so the uncentred layout is always a valid fallback. */
+interface KeepOut {
+  along(shelf: Shelf, offset: number, alongX: number, bandHeight: number): number;
+  /** Shelf depths past `from` that start clear behind a keep-out, nearest first. */
+  behind(from: number): number[];
+}
+const keepOutFor = (rects: Rect[], margin: number): KeepOut => ({
+  behind: (from) => rects.map((k) => k[3]).filter((depth) => depth > from).sort((a, b) => a - b),
+  along(shelf, offset, alongX, bandHeight) {
+    for (let moved = true; moved;) {
+      moved = false;
+      const box: Rect = [margin + offset, margin + shelf.depth, margin + offset + alongX, margin + shelf.depth + bandHeight];
+      for (const [, , kx1] of rects.filter((k) => hitsAny([k], margin, box))) { offset = kx1 + margin - margin; moved = true; }
+    }
+    return offset;
+  },
+});
 
 /**
  * Shelf-pack into bed-sized plates, then centre what landed on each one.
@@ -69,7 +104,30 @@ function seatOnPlate(shelves: Shelf[], alongX: number, alongY: number, usableWid
  * 6 mm gap meet, which comes off the plate as one joined part. Brim is off by default
  * and the packer cannot see the profile, so this is a floor to respect, not a check.
  */
-export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, number, number], margin: number, gap = 6): Placement[] {
+export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, number, number], margin: number, gap = 6, keepOut: Rect[] = []): Placement[] {
+  if (!keepOut.length) return packFrame(parts, bed, margin, gap, []);
+  // The packer fills a plate from the front-left, so a front-left keep-out costs the first
+  // slot of every plate - four plates on some jobs. Pack in the frame turned so the
+  // keep-out lands where the packer finishes, and mirror the placements back: the parts
+  // move, none is turned or mirrored. Fewest plates wins, the plain frame on a tie.
+  const [W, D] = bed;
+  const frames = [[false, false], [false, true], [true, false], [true, true]].map(([fx, fy]) => {
+    const flip = ([x0, y0, x1, y1]: Rect): Rect => [fx ? W - x1 : x0, fy ? D - y1 : y0, fx ? W - x0 : x1, fy ? D - y0 : y1];
+    const placed = packFrame(parts, bed, margin, gap, keepOut.map(flip));
+    const plates = Math.max(...placed.map((p) => p.plate)) + 1;
+    return { plates, placed: placed.map((p) => {
+      const [x0, y0] = flip([p.bbox[0], p.bbox[1], p.bbox[3], p.bbox[4]]);
+      const dx = x0 - p.bbox[0], dy = y0 - p.bbox[1];
+      if (!dx && !dy) return p;
+      const pos = p.pos.map((v, i) => v + (i % 3 === 0 ? dx : i % 3 === 1 ? dy : 0));
+      return { ...p, pos, bbox: bboxOf(pos) };
+    }) };
+  });
+  return frames.reduce((best, frame) => (frame.plates < best.plates ? frame : best)).placed;
+}
+
+function packFrame(parts: { mesh: MeshData; qty: number }[], bed: [number, number, number], margin: number, gap: number, keepOut: Rect[]): Placement[] {
+  const keep = keepOutFor(keepOut, margin);
   const usableWidth = bed[0] - 2 * margin, usableDepth = bed[1] - 2 * margin;
   const flat: { name: string; mesh: MeshData }[] = [];
   for (const { mesh, qty } of parts)
@@ -96,7 +154,7 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
       const shelves = plates[plate] ?? [];
       for (const [alongX, alongY, rotated] of orientations) {
         if (alongX > usableWidth + EPS || alongY > usableDepth + EPS) continue;
-        const spot = seatOnPlate(shelves, alongX, alongY, usableWidth, usableDepth, gap);
+        const spot = seatOnPlate(shelves, alongX, alongY, usableWidth, usableDepth, gap, keep);
         if (!spot) continue;
         spot.shelf.width = spot.offsetAlongShelf + alongX;
         if (plate === plates.length) plates.push(shelves);
@@ -109,19 +167,48 @@ export function pack(parts: { mesh: MeshData; qty: number }[], bed: [number, num
     seats.push(seat);
   }
 
-  // One centring offset per plate, front to back; the across-bed one is per shelf.
-  const frontPad = plates.map((shelves) => {
+  // Centre, then move each plate's stack and each shelf only where every part stays clear
+  // of the keep-outs: the nearest such shift to centred, with the uncentred layout the
+  // packer checked as the fallback. No keep-outs, and this is plain centring.
+  const alongOf = ({ mesh, rotated }: Seat) => {
+    const bb = mesh.bbox;
+    return rotated ? [bb[4] - bb[1], bb[3] - bb[0]] : [bb[3] - bb[0], bb[4] - bb[1]];
+  };
+  /** Where a seat sits with no centring: x0 y0 x1 y1. */
+  const uncentred = (seat: Seat): Rect => {
+    const [alongX, alongY] = alongOf(seat);
+    const x0 = margin + seat.offsetAlongShelf, y0 = margin + seat.shelf.depth + (seat.shelf.height - alongY) / 2;
+    return [x0, y0, x0 + alongX, y0 + alongY];
+  };
+  /** The shift in [0, 2 × centred] nearest centred that keeps `boxes` clear, 0 at worst. */
+  const nearest = (centred: number, boxes: Rect[], axis: 0 | 1, dOther: number) => {
+    const lo = axis, hi = axis + 2;
+    const candidates = [centred, 0, ...boxes.flatMap((b) => keepOut.flatMap((k) => [k[hi] + margin - b[lo], k[lo] - margin - b[hi]]))]
+      .filter((shift) => shift >= -EPS && shift <= 2 * centred + EPS)
+      .sort((a, b) => Math.abs(a - centred) - Math.abs(b - centred));
+    return candidates.find((shift) => boxes.every((b) => !hitsAny(keepOut, margin, b, axis === 0 ? shift : dOther, axis === 1 ? shift : dOther))) ?? 0;
+  };
+  const shelfShift = new Map<Shelf, number>();
+  const plateShift = plates.map((shelves, plate) => {
     const last = shelves[shelves.length - 1];
-    return margin + (usableDepth - (last.depth + last.height)) / 2;
+    const onPlate = seats.filter((seat) => seat.plate === plate);
+    const centredY = (usableDepth - (last.depth + last.height)) / 2;
+    // the stack moves first, with every shelf where the packer left it; each shelf then
+    // centres across the bed as far as it stays clear at that depth
+    const dy = nearest(centredY, onPlate.map(uncentred), 1, 0);
+    for (const shelf of shelves)
+      shelfShift.set(shelf, nearest((usableWidth - shelf.width) / 2, onPlate.filter((seat) => seat.shelf === shelf).map(uncentred), 0, dy));
+    return dy;
   });
 
-  return seats.map(({ name, mesh, plate, shelf, offsetAlongShelf, rotated }) => {
+  return seats.map((seat) => {
+    const { name, mesh, plate, shelf, rotated } = seat;
     const bb = mesh.bbox;
     // Turning is -90° about Z (x' = -y, y' = x), so the turned box starts at -maxY, minX.
     const low = rotated ? [-bb[4], bb[0]] : [bb[0], bb[1]];
-    const alongY = rotated ? bb[3] - bb[0] : bb[4] - bb[1];
-    const dx = margin + (usableWidth - shelf.width) / 2 + offsetAlongShelf - low[0];
-    const dy = frontPad[plate] + shelf.depth + (shelf.height - alongY) / 2 - low[1];
+    const [x0, y0] = uncentred(seat);
+    const dx = x0 + shelfShift.get(shelf)! - low[0];
+    const dy = y0 + plateShift[plate] - low[1];
     const pos = new Float32Array(mesh.pos.length);
     for (let i = 0; i < pos.length; i += 3) {
       pos[i] = (rotated ? -mesh.pos[i + 1] : mesh.pos[i]) + dx;

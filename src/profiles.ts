@@ -17,6 +17,7 @@ export interface Machine {
   nozzleDiameters: string[];
   extruderTypes?: string[];
   printableArea: string[]; // Bambu's "256x256" corner strings
+  excludeArea?: string[];  // bed_exclude_area, the same strings: the X1 and P1 wipe corner
   printableHeight: string;
   bedType: string;
 }
@@ -132,6 +133,7 @@ export function composeProfile(index: ProfileIndex, picks: Picks): Uint8Array {
     nozzle_diameter: machine.nozzleDiameters,
     ...(machine.extruderTypes && { extruder_type: machine.extruderTypes }),
     printable_area: machine.printableArea,
+    ...(machine.excludeArea && { bed_exclude_area: machine.excludeArea }),
     printable_height: machine.printableHeight,
     curr_bed_type: machine.bedType,
     ...(picks.translucent && translucentOverrides(machine, process, filament)),
@@ -151,6 +153,21 @@ export function picksFromConfig(index: ProfileIndex, config: Uint8Array): Picks 
     && index.processes.some((p) => p.name === picks.process)
     && index.filaments.some((f) => f.name === picks.filament);
   return known ? picks : null;
+}
+
+/** The keep-out rectangle of a project_settings.config's bed_exclude_area, or none. Bambu
+ *  gives a polygon; its bounding box is what the packer keeps clear, which is exact for
+ *  every printer that has one (a rectangle in a corner).
+ *  ponytail: one box; split the polygon if a printer ever ships an L-shaped area. */
+export function keepOutFromConfig(config: Uint8Array): [number, number, number, number][] {
+  const corners = JSON.parse(new TextDecoder().decode(config)).bed_exclude_area;
+  if (!Array.isArray(corners) || !corners.length) return [];
+  const points = corners.map((corner: string) => corner.split("x").map(Number));
+  if (points.some((point: number[]) => point.length !== 2 || !point.every(Number.isFinite)))
+    throw new Error(`profile has an unreadable bed_exclude_area: ${JSON.stringify(corners)}`);
+  const xs = points.map((point: number[]) => point[0]), ys = points.map((point: number[]) => point[1]);
+  const box: [number, number, number, number] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  return box[2] > box[0] && box[3] > box[1] ? [box] : [];
 }
 
 /** Bed X, Y, Z from a project_settings.config: the far corner of printable_area and printable_height. */

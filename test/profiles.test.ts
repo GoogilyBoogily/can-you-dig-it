@@ -3,7 +3,7 @@
 // the few keys Bambu Studio 2.8 reads before it swaps in the system preset's values:
 // printer_model, nozzle_diameter with a matching extruder_type, filament_colour.
 import { test, expect } from "bun:test";
-import { INDEX_URL, composeProfile, picksFromConfig, defaultPicks, processesFor, filamentsFor, printersOf, machinesFor, vendorsOf, bedFromConfig, describePicks, translucentFeed, type ProfileIndex } from "../src/profiles";
+import { INDEX_URL, composeProfile, picksFromConfig, defaultPicks, processesFor, filamentsFor, printersOf, machinesFor, vendorsOf, bedFromConfig, keepOutFromConfig, describePicks, translucentFeed, type ProfileIndex } from "../src/profiles";
 
 const index: ProfileIndex = await Bun.file(INDEX_URL).json();
 const P2S = "Bambu Lab P2S 0.4 nozzle", H2D = "Bambu Lab H2D 0.4 nozzle";
@@ -144,4 +144,16 @@ test("translucent round-trips through the config and shows in the label", () => 
 
 test("composeProfile refuses unknown presets", () => {
   expect(() => composeProfile(index, { machine: "nope", process: "x", filament: "y" })).toThrow("unknown preset");
+});
+
+// The X1 and P1 series keep an 18 × 28 mm front-left corner off-limits; the packer reads
+// it from the composed config, the same path an imported project takes.
+test("the keep-out corner rides in the config for the printers that have one", () => {
+  const configFor = (machine: string) => composeProfile(index, defaultPicks(index, machine));
+  for (const machine of ["Bambu Lab X1 Carbon 0.4 nozzle", "Bambu Lab P1S 0.4 nozzle", "Bambu Lab P1P 0.6 nozzle"])
+    expect(keepOutFromConfig(configFor(machine)), machine).toEqual([[0, 0, 18, 28]]);
+  for (const machine of [P2S, H2D, "Bambu Lab A1 mini 0.4 nozzle"])
+    expect(keepOutFromConfig(configFor(machine)), machine).toEqual([]);
+  expect(keepOutFromConfig(new TextEncoder().encode("{}"))).toEqual([]);
+  expect(() => keepOutFromConfig(new TextEncoder().encode(`{"bed_exclude_area":["0x0","wat"]}`))).toThrow(/unreadable/);
 });

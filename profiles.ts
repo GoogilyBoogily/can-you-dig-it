@@ -62,6 +62,7 @@ for (const name of await presetNames("machine")) {
     name, printer: preset.printer_model, nozzle: match[2],
     nozzleDiameters: preset.nozzle_diameter, extruderTypes: preset.extruder_type,
     printableArea: preset.printable_area, printableHeight: preset.printable_height, bedType: model.default_bed_type,
+    ...(preset.bed_exclude_area?.length && { excludeArea: preset.bed_exclude_area }),
   });
 }
 const machineIndex = new Map(machines.map((m, i) => [m.name, i]));

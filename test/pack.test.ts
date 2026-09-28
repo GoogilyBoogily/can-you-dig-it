@@ -121,3 +121,44 @@ test("a part is turned 90° only when that is what makes it fit", () => {
   // Decks are 248 × 155 and walls 248 × 100 on a 250 × 250 usable bed: they fit flat, so they stay flat.
   for (const part of long) expect(part.bbox[3] - part.bbox[0], part.name).toBeGreaterThan(part.bbox[4] - part.bbox[1]);
 });
+
+// The X1 and P1 series wipe the nozzle in an 18 × 28 mm front-left corner, and Bambu
+// Studio refuses a plate with a part in it or within reach of it ("too close to
+// exclusion area") - the default job did exactly that on plate 1. Every part keeps the
+// margin clear of it, as of the bed's edge, and nothing else about the packing gives.
+// A 240 mm part cannot pass beside the corner on a 256 bed, so the default job needs
+// KEEPOUT_PLATES: measured when this landed.
+const CORNER: [number, number, number, number] = [0, 0, 18, 28];
+const KEEPOUT_PLATES = 20;
+const withCorner = pack(defaultParts(), BED, MARGIN, GAP, [CORNER]);
+
+test("the packer keeps the printer's keep-out corner clear", () => {
+  for (const p of withCorner) {
+    const clear = p.bbox[0] >= CORNER[2] + MARGIN - 1e-6 || p.bbox[1] >= CORNER[3] + MARGIN - 1e-6;
+    expect(clear, `${p.name} on plate ${p.plate + 1} is in the keep-out`).toBe(true);
+    expect(p.bbox[0], p.name).toBeGreaterThanOrEqual(MARGIN - 1e-3);
+    expect(p.bbox[1], p.name).toBeGreaterThanOrEqual(MARGIN - 1e-3);
+    expect(p.bbox[3], p.name).toBeLessThanOrEqual(BED[0] - MARGIN + 1e-3);
+    expect(p.bbox[4], p.name).toBeLessThanOrEqual(BED[1] - MARGIN + 1e-3);
+  }
+  for (const parts of byPlate(withCorner))
+    for (let i = 0; i < parts.length; i++)
+      for (let j = i + 1; j < parts.length; j++) {
+        const a = parts[i].bbox, b = parts[j].bbox;
+        expect(a[3] <= b[0] + 1e-6 || b[3] <= a[0] + 1e-6 || a[4] <= b[1] + 1e-6 || b[4] <= a[1] + 1e-6, `${parts[i].name} overlaps ${parts[j].name}`).toBe(true);
+      }
+  expect(byPlate(withCorner).length).toBe(KEEPOUT_PLATES);
+  expect(withCorner.length).toBe(packed.length);
+});
+
+// Packing into the frame where the corner falls last saves plates across the solver's
+// layouts (44 over 95 when measured); on the default job every corner costs the same,
+// and the one it picks must still be clear however it lands.
+test.each([[0, 0, 18, 28], [238, 0, 256, 28], [0, 228, 18, 256], [238, 228, 256, 256]].map((corner) => [corner.join(",")]))("a keep-out at %s is clear too", (at) => {
+  const corner = at.split(",").map(Number) as [number, number, number, number];
+  for (const p of pack(defaultParts(), BED, MARGIN, GAP, [corner])) {
+    const [x0, y0, x1, y1] = corner;
+    const clear = p.bbox[0] >= x1 + MARGIN - 1e-6 || p.bbox[3] <= x0 - MARGIN + 1e-6 || p.bbox[1] >= y1 + MARGIN - 1e-6 || p.bbox[4] <= y0 - MARGIN + 1e-6;
+    expect(clear, p.name).toBe(true);
+  }
+});

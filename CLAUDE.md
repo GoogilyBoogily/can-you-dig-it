@@ -213,6 +213,13 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   by Y extent descending, so growing it packs nothing tighter. Then everything is
   centred: each shelf across the bed on its own width, the stack front to back, and each
   part on its shelf's centreline. `bedMargin` stays a hard floor; centring only adds.
+  The X1 and P1 series keep an 18 × 28 mm front-left corner (`bed_exclude_area`, scraped
+  into the index as `excludeArea`, read back by `keepOutFromConfig`) and Bambu refuses a
+  plate with a part within reach of it. The packer keeps every part `bedMargin` clear of
+  it: it packs uncentred with the keep-out in place, tries the four corners the keep-out
+  could fall in and keeps the fewest plates, and centring moves a part only as far as
+  it stays clear. A 240 mm part cannot pass beside the corner on a 256 bed, so the
+  default job is 20 plates there, not 18 (`test/pack.test.ts`).
 - `o.base`: flat (default, the lane sits on the shelf), feet, or gridfinity. A riser is a
   wall-thick foot under ±px with a boss into the wall's bottom notch. Gridfinity
   (2026-09-19): the shelf lane's deck grows a 7 mm unit below z = 0 - a floor of whole

@@ -5,7 +5,7 @@ import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, type Placement } from "./export";
 import { hasStoredProfile, loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { optionsFrom, type FormValues } from "./validate";
-import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
+import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, keepOutFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -144,7 +144,7 @@ function build() {
   const id = buildId; // choose() already claimed it
   setBuildPending(true);
   setStatus("Building parts…", true);
-  const req: Req = { type: "build", id, options: chosen.options };
+  const req: Req = { type: "build", id, options: chosen.options, keepOut };
   worker.postMessage(req);
 }
 
@@ -218,12 +218,13 @@ const partGrams = (p: PartOut) => pick.translucent.checked ? p.solidGrams : p.gr
 const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p) * p.qty, 0);
 /** Extruded mm³ a second over a whole job, travel and acceleration in: the default job's
  *  filamentGrams volume over Bambu Studio's sliced time. Measured 2026-09-28 with the
- *  Bambu Studio 02.08.02.61 CLI on all 18 plates: X1 Carbon 0.4, 0.20mm Standard, Bambu
- *  PETG Basic; 1,155 cm³ in 41.3 h is 7.77. Plates ranged 7.05 (walls) to 8.57 (bottom
- *  deck rear), so one number holds each plate to about ±10 %.
+ *  Bambu Studio 02.08.02.61 CLI on all 18 plates: P2S 0.4, 0.20mm Standard @BBL P2S,
+ *  Bambu PETG Basic; 1,155 cm³ in 40.4 h is 7.95. Plates ranged 7.21 (walls) to 8.75
+ *  (bottom deck rear), so one number holds each plate to about ±10 %. An X1 Carbon on
+ *  its own 0.20 Standard came out 7.77, 2 % off.
  *  ponytail: one number for every printer and filament; scale by the filament's max flow
  *  once that is scraped into the index. */
-const JOB_FLOW: number | null = 7.77;
+const JOB_FLOW: number | null = 7.95;
 function jobHours(parts: PartOut[]) {
   if (JOB_FLOW === null) return "";
   const mm3 = parts.reduce((a, p) => a + p.grams / DENSITY * 1000 * p.qty, 0);
@@ -288,9 +289,18 @@ $("dlstl").addEventListener("click", () => { if (!built || buildPending) return;
 // ------------------------------------------------------------- slicer profile
 // Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
 let profile: StoredProfile | null = null;
+/** The loaded printer's keep-out area, which the packer has to leave clear. */
+let keepOut: [number, number, number, number][] = [];
 
 // textContent, not innerHTML: the file name is whatever the user named the file.
 function showProfile() {
+  // The plates are packed round the printer's keep-out, so a new one repacks them. A
+  // profile that cannot say where it is packs as if there were none, and says why.
+  let next: typeof keepOut = [];
+  try { if (profile) next = keepOutFromConfig(profile.config); } catch (err) { console.warn("ignoring the profile's keep-out area", err); }
+  const changed = JSON.stringify(next) !== JSON.stringify(keepOut);
+  keepOut = next;
+  if (changed && chosen) choose(chosenIndex); // retires the build in flight, packed for the old one
   $("profileNow").textContent = profile
     ? `Using settings from ${profile.name}.`
     // Bambu Studio 2.8 calls a project with no settings "invalid config" and pops a

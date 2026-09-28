@@ -228,12 +228,28 @@ test("a non-numeric dimension names the field instead of building NaN", async ()
   await page.close();
 });
 
-// Hours come from JOB_FLOW, measured on a Bambu Studio slice of this very job: 41.3 h.
-test("the default build shows about 41 hours", async () => {
+// Hours come from JOB_FLOW, measured on a Bambu Studio slice of this very job: 40.4 h.
+test("the default build shows about 40 hours", async () => {
   const page = await buildOnce();
   const hours = Number((await page.locator("#summary").innerText()).match(/about (\d+) h \(±30 %\)/)?.[1]);
   expect(hours).toBeGreaterThanOrEqual(39);
   expect(hours).toBeLessThanOrEqual(44);
+  await page.close();
+});
+
+// An X1 keeps an 18 × 28 mm corner off the bed, and the packer goes round it: picking
+// one repacks the plates though the bed size does not change, and a P2S packs as before.
+test("picking a printer with a keep-out corner repacks the plates round it", async () => {
+  const page = await buildOnce();
+  const plates = async (count: number) => {
+    await page.waitForFunction((n) => (document.getElementById("status")!.textContent ?? "").includes(`· ${n} plates ·`), count, { timeout: 90000 });
+  };
+  await page.selectOption("#pickPrinter", "Bambu Lab X1 Carbon");
+  await waitForLabel(page, "Bambu Lab X1 Carbon · 0.4 nozzle");
+  await plates(20);
+  await page.selectOption("#pickPrinter", "Bambu Lab P2S");
+  await waitForLabel(page, "Bambu Lab P2S · 0.4 nozzle");
+  await plates(18);
   await page.close();
 });
 
