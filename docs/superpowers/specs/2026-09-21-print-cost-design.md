@@ -53,6 +53,26 @@ closes a question for good.
 | hours | duty factor, calibrated: `DUTY` from one Bambu Studio slice of the default job, the job named in the constant's comment. Hidden until that number exists |
 | baked keys | none yet. `outer_wall_acceleration` 10000 is tried in the same slice session against 5000 and baked only if time drops and the outer face previews clean. Arachne stays out |
 
+
+### Measured 2026-09-28
+
+Sliced the default job headless with the Bambu Studio 02.08.02.61 CLI: all 18 plates,
+X1 Carbon 0.4, 0.20mm Standard @BBL X1C, Bambu PETG Basic.
+
+- **41.3 h** at the stock `outer_wall_acceleration` 5000, **40.8 h** at 10000: **−1.1 %**.
+  The −17 % estimate was kinematics on one hex edge; the printer is flow-capped, and
+  outer walls are a small share of the time. Not baked.
+- `JOB_FLOW` = 7.77 mm³/s (`main.ts`), `filamentGrams` volume over Bambu's time. Every
+  plate is 7.05–8.57, so one number holds each plate to about ±10 %. Hours now show.
+- Grams: `filamentGrams` is +4.6 % on the job against Bambu. Decks are within ±3 %;
+  walls and covers are +8 to +10 %.
+- The CLI needs flattened presets passed with `--load-settings` / `--load-filaments`
+  (it looks for `machine_full/` and `process_full/`, which only Bambu's CI builds ship)
+  and exits `-64` "Object conflicts" on the next finding.
+- **Bug found:** X1, X1C, X1E, P1S and P1P reserve an 18 × 28 mm front-left corner
+  (`bed_exclude_area`). `pack()` does not know it, and plate 1 of the default job puts
+  `lane-bottom-deck-front` in it. Bambu refuses the slice ("too close to exclusion
+  area"). The P2S, A1 and H2S have no such area.
 ## Why
 
 Nothing here has been sliced with a stopwatch. The default build is 34 prints on 18

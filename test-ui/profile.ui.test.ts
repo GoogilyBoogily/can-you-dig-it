@@ -228,6 +228,15 @@ test("a non-numeric dimension names the field instead of building NaN", async ()
   await page.close();
 });
 
+// Hours come from JOB_FLOW, measured on a Bambu Studio slice of this very job: 41.3 h.
+test("the default build shows about 41 hours", async () => {
+  const page = await buildOnce();
+  const hours = Number((await page.locator("#summary").innerText()).match(/about (\d+) h \(±30 %\)/)?.[1]);
+  expect(hours).toBeGreaterThanOrEqual(39);
+  expect(hours).toBeLessThanOrEqual(44);
+  await page.close();
+});
+
 // The catalogue is fetched from the site and the selects are wired in main.ts, so this
 // is the only test that proves a pick reaches the slicer as a config naming those presets.
 const X1C_06 = "Bambu Lab X1 Carbon 0.6 nozzle";

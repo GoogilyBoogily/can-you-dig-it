@@ -217,12 +217,13 @@ function showTab(key: string) {
 const partGrams = (p: PartOut) => pick.translucent.checked ? p.solidGrams : p.grams;
 const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p) * p.qty, 0);
 /** Extruded mm³ a second over a whole job, travel and acceleration in: the default job's
- *  filament volume over Bambu Studio's sliced time (0.20 mm Standard, 0.4 nozzle, Bambu
- *  PETG Basic). Null until that slice is done; no hours show without it, since a guessed
- *  duty factor is off by a third either way.
+ *  filamentGrams volume over Bambu Studio's sliced time. Measured 2026-09-28 with the
+ *  Bambu Studio 02.08.02.61 CLI on all 18 plates: X1 Carbon 0.4, 0.20mm Standard, Bambu
+ *  PETG Basic; 1,155 cm³ in 41.3 h is 7.77. Plates ranged 7.05 (walls) to 8.57 (bottom
+ *  deck rear), so one number holds each plate to about ±10 %.
  *  ponytail: one number for every printer and filament; scale by the filament's max flow
  *  once that is scraped into the index. */
-const JOB_FLOW: number | null = null;
+const JOB_FLOW: number | null = 7.77;
 function jobHours(parts: PartOut[]) {
   if (JOB_FLOW === null) return "";
   const mm3 = parts.reduce((a, p) => a + p.grams / DENSITY * 1000 * p.qty, 0);
