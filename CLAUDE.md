@@ -1,4 +1,8 @@
-# can-you-dig-it
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## can-you-dig-it
 
 Browser-only configurator for 3D-printable can storage. User enters shelf W×D×H,
 can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
@@ -11,8 +15,8 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `bun run dev` — builds, serves `dist/` on :3000, rebuilds on save. `dev.ts` shells out to
   `build.ts` rather than reimplementing it, so dev and Pages serve identical bytes. One
   bundler on purpose: no Vite.
-- Two suites. `bun test test/` is the fast unit one (no browser, ~5 s) and is what CI
-  gates on. `bun run test:ui` drives `test-ui/` in Playwright against a real build; it
+- Two suites. `bun test test/` is the fast unit one (no browser, ~5 s); it and `bun run
+  check` are what the deploy gates on (`.github/workflows/pages.yml`). `bun run test:ui` drives `test-ui/` in Playwright against a real build; it
   needs `bunx playwright install chromium` once, and runs as its own CI job so a flaky
   browser can't block a deploy. Keep the trailing slashes — `bun test test` also matches
   `test-ui/`.
@@ -197,6 +201,11 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   from the bottom sampled a 2.4 mm cover twice, both skin probes fell off its faces and
   it read 43 % heavy. The solver's `laneGrams` / `coverGrams` come from it on the default
   parts; remeasure them when it moves.
+- Print hours in the UI are `filamentGrams` volume over `JOB_FLOW` (`main.ts`), one
+  mm³/s for every printer, measured by slicing the default job in the Bambu Studio CLI
+  (P2S: 7.95; plates spread ±10 %). Re-slice and update it, and the print-cost spec,
+  when geometry or `filamentGrams` moves the default job. Slice scratch lives in the
+  gitignored `.slice/`.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
   slabs of its outline shrunk by the fillet inset, which follows the plan corners. Walls
   and end walls round the outer top edge only (`Geo.roundOver`), so the 3 mm seat the
