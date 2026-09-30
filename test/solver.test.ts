@@ -1,7 +1,8 @@
 // A 12 in deep, 10 in tall shelf holds four cans a deck on two tiers. It used to hold
 // three: 40 mm was kept for a hand whether the shelf had room to spare or not.
 import { test, expect } from "bun:test";
-import { DEFAULTS, laneLengthFor, solve } from "../src/geometry";
+import { DEFAULTS, laneLengthFor, solve, baseHeight, buildWall, laneOf } from "../src/geometry";
+import { geo } from "./geo";
 import { fitSpace, laneNeeds } from "../src/solver";
 
 const SHELF = { w: 160, d: 305, h: 254, front: 0 };
@@ -91,4 +92,22 @@ test("a grid shelf narrower than one cell offers nothing, not NaN", () => {
   expect(fitSpace({ w: 40, d: 400, h: 600, front: 0 }, options, { cascade: false })).toEqual([]);
   for (const layout of fitSpace({ w: 200, d: 400, h: 600, front: 0 }, options, { cascade: false }))
     expect(Number.isFinite(layout.cans)).toBe(true);
+});
+
+// The top tier's wall stands its pins 2.4 mm proud, and the cover sits flush with them:
+// the solver stacked tier heights alone and put a 192 mm shelf's two tiers 194.4 mm tall.
+// Measured off the built wall, not the solver's own arithmetic.
+test("the stack's top, pins included, fits under the shelf", () => {
+  for (const space of [{ w: 300, d: 240, h: 192, front: 0 }, { w: 300, d: 520, h: 240, front: 0 }]) {
+    for (const cascade of [false, true]) {
+      for (const layout of fitSpace(space, DEFAULTS, { cascade })) {
+        const o = layout.options, d = layout.derived;
+        const lower = o.cascade ? d.Hb + (o.tiers - 2) * d.H : (o.tiers - 1) * d.H;
+        const wallTop = geo.arena(() => buildWall(geo, o, d, laneOf(o, d, "top"), 1).boundingBox().max[2]);
+        const top = baseHeight(o) + lower + wallTop;
+        expect(top, `${JSON.stringify(space)} ${layout.style} ${o.tiers} tiers`).toBeLessThanOrEqual(space.h + 1e-6);
+        expect(layout.footprint[2]).toBeCloseTo(top, 6);
+      }
+    }
+  }
 });

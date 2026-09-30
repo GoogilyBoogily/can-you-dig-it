@@ -36,7 +36,7 @@ export function laneNeeds(base: Options, space: Space): { w: number; h: number }
   const w = base.base === "gridfinity" ? Math.max(solve(seed).OW, K.gridPitch) : solve(seed).gangPitch + 2 * SIDE_GAP;
   const lengths = candidateLengths(space.d - space.front, seed);
   const heights = lengths.map((length) => solve({ ...seed, length }).H);
-  return { w, h: baseHeight(base) + (heights.length ? Math.min(...heights) : solve(seed).H) };
+  return { w, h: baseHeight(base) + (heights.length ? Math.min(...heights) : solve(seed).H) + K.pinH };
 }
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {
@@ -92,7 +92,9 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const d = solve(o);
   const cascade = o.cascade;
   const riser = baseHeight(o);
-  const tierH = space.h - riser;
+  // the top tier's pins stand pinH above its walls, and the cover (coverT = pinH) lies
+  // flush with them, so the stack is that much taller than its tiers, cover or not
+  const tierH = space.h - riser - K.pinH;
   const tiers = cascade
     ? (tierH >= d.Hb ? 1 + Math.floor((tierH - d.Hb) / d.H) : 0)
     : Math.floor(tierH / d.H);
@@ -104,7 +106,7 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const grid = o.base === "gridfinity";
   const lanesMax = o.lanesWide;
   const perLane = cascade ? d.nBottom + (tiers - 1) * d.n : d.n * tiers;
-  const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H);
+  const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H) + K.pinH;
   const lanes = lanesMax * tiers;
   // per 480 mm lane (the mean of the default top and bottom lanes) and per cover, from
   // filamentGrams on the default parts; the lip is ~8 g. Remeasured 2026-09-24, after the
