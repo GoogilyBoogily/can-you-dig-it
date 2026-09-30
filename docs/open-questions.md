@@ -15,10 +15,6 @@ This file only holds what's still open.
   rear end of the top tier's walls is free to lean in. Unprinted, so we don't actually know
   yet. Options: print one and see, add a tie across the top (it can't go at the bottom,
   that's a stop), or warn when `rearLoad` is on and `cover` is off.
-- **The open tier's side walls still have an empty corner slot.** A flat stack's tiers
-  share one set of side walls, so the top tier can't be unslotted without its own wall
-  parts (two more part names). Cosmetic, I think, but it's a notch in the wall top right
-  where you slide cans in. Decide: live with it, or give the rear tier its own walls.
 - **Even tier count in a cascade: warn or disable?** The top tier's back is its chute
   there, so nothing opens and `check()` warns. The checkbox stays clickable. Greying it out
   would say it up front, but the form doesn't know the tier count until a layout's picked.
@@ -29,9 +25,19 @@ This file only holds what's still open.
 - **The layout estimate still counts the missing end walls.** `solver.ts` charges a flat
   `laneGrams` per lane. The totals after a build come from the real parts and are right.
   Only the number on the layout card reads high. Fix it if anyone notices.
-- **A flat stack only opens its top tier.** Its lower tiers are separate lanes, not fed
-  through the top one, so they still load from the front. If loading every tier from
-  the back matters, that's per-tier parts again (see the corner-slot item).
+## Clear PETG settings (proposed 2026-09-30)
+
+Full comparison, plan and test steps in
+`docs/superpowers/specs/2026-09-30-clear-petg-design.md`. The MakerWorld "Clear as glass
+PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
+
+- **Layer height, 0.1 or 0.2?** Theirs is 0.1. Ours is 0.2 because 0.1 doubles every
+  translucent hour. A tile test on the P2S decides it. I'm leaning 0.2.
+- **Nozzle 265 or 270?** Theirs is 265, Bambu's wiki says 270. The same tile test picks.
+- **Bed 60 °C on PETG: built 2026-09-30.** It moves the elephant foot, so any `fit` number
+  found on translucent at 70 °C won't carry over.
+- **Test assertions will move.** `test/profiles.test.ts` pins 270 and, if layer height
+  flips, 0.2. They change because the spec does. Review them with the spec.
 
 ## Project-wide
 
@@ -42,20 +48,13 @@ This file only holds what's still open.
 - **The three 2026-09-21 specs are partly built.** Read the "Amended 2026-09-22" block at
   the top of each before anything else; they carry the review verdicts and the second
   interview's decisions, and they win over the body text.
-  - `2026-09-21-sleek-outside-design.md`: the clean-frame recess and the wider minimal
-    socket plinth are built (`e58c03d`); `deck-end` was dropped. Nothing left open but the
-    minimal ratio below.
+  - `2026-09-21-sleek-outside-design.md`: built (`e58c03d`), `deck-end` dropped. Nothing
+    left open.
   - `2026-09-21-print-cost-design.md`: the `filamentGrams` fix and the hours line are
     built. Loop term, slabs on layers, `reduce_crossing_wall` and baked keys were dropped.
     Arachne only ever with `wall_distribution_count = 1` pinned beside it.
   - `2026-09-21-fit-calibration-design.md`: nothing built, on purpose. It waits on the
     first print (see Next steps).
-- **The minimal ratio limits moved on 2026-09-24.** The recess frame costs the 1.7 mm
-  minimal web more than the 3.5 mm standard one, so minimal/standard lane volume went to
-  0.604 top and 0.563 bottom, and `test/regress.test.ts` now allows 0.62 and 0.58 (was
-  0.6 and 0.55). That followed a decision rather than hiding a bug, but it's the one
-  test limit loosened in this stretch. Veto it by finding the ~2 % somewhere else in
-  minimal.
 - **`pack()` turns parts 90° on their own.** A deck and the wall that notches over it can
   print on different bed axes. A printer 0.1 % off between X and Y is about 0.24 mm of
   ear-to-notch pitch over a 240 mm half, which is the whole clearance, and `fit` can't
@@ -64,7 +63,7 @@ This file only holds what's still open.
 - **`filamentGrams` reads a bit heavy.** Against Bambu Studio on the default job it's
   +4.6 % (at our PETG density 1.27 against Bambu PETG Basic's 1.25, +6 % raw). Decks land
   within ±3 %, walls and covers +8 to +10 %. Good enough for a "~" number. The model
-  assumes 6 % infill and the export hint says 6 % gyroid, but the stock 0.20 Standard
+  assumes 6 % infill, but the stock 0.20 Standard
   process is 15 % grid and we don't write infill into the config, so the hint and what
   gets printed disagree.
 - **One print-hours number for every printer and filament.** `JOB_FLOW` in `src/main.ts`
@@ -107,7 +106,7 @@ In order. The first one decides most of what comes after it.
 3. **Then the rear-load print questions above** (bracing without a cover, the 3 mm
    headroom), which a print of a rear-load top tier answers the same way.
 4. **Small things, whenever:** the layout card's gram estimate for rear-load, the
-   6 %-gyroid hint against the 15 % the process prints, scaling `JOB_FLOW` by filament.
+   scaling `JOB_FLOW` by filament.
 
 ## How to re-measure print time
 

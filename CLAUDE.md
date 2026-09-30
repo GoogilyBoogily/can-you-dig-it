@@ -138,8 +138,10 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   tiers fill through it; a flat stack's still load from the front). A cascade's top faces the back on an odd tier count only; on an even one
   its back is the chute, nothing opens and `check()` says so. It is a part count, not a
   shape: `partList` prints one set fewer and the viewer skips it; the side walls keep
-  their corner slot, since a flat stack's tiers share one set. A can fills the tier over
-  the deck there (~3 mm spare), so no stop, strip or bar fits.
+  their corner slot, since a flat stack's tiers share one set (an empty notch at the
+  door, accepted 2026-09-30 over two more part names). A flat stack opens its top tier
+  only; every tier from the back would need per-tier parts, and nobody needs it. A can
+  fills the tier over the deck there (~3 mm spare), so no stop, strip or bar fits.
 - Long lanes split at x=0. The deck has an in-plane T-slot (`tSlot`: a 30-wide neck 3
   deep, a 40-wide head to 8); the halves drop together in Z and the head locks X. The
   walls butt: a plane cut, each half on its own ears, the tier above and the cover
@@ -172,7 +174,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   full-thickness wall. The end wall is framed the same way. Until 2026-09-24 the recess
   ran down through the bottom border with a pad over each notch: eleven posts along the
   edge (`test/pattern.test.ts`). The frame put the default job up 1.7 % in volume and
-  minimal 6 % (it costs the thin web more).
+  minimal 6 % (it costs the thin web more), which is why `test/regress.test.ts` allows
+  minimal/standard lane volume up to 0.62 top and 0.58 bottom (was 0.6 / 0.55; accepted
+  2026-09-30).
   In the minimal deck the fin-to-wall strip keeps an ear-high
   plinth under each ear: rooted by 1 mm inside a 2.5 mm tie, the tab hole took all of
   it and the ears printed loose (`test/islands.test.ts`). Under a gang tongue it is 3 mm
