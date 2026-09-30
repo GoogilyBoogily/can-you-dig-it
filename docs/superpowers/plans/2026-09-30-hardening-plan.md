@@ -28,7 +28,7 @@ A1. **Clear-PETG spec, corrected, plus its decided part (was 0.1, 0.2, 5.1).** O
     `filamentGrams` keeps 0.06: it already reads +4.6 % heavy against a 15 % slice.
   - Commit with `docs/open-questions.md`.
 A2. **Pin Bun** in `.github/workflows/pages.yml` (`bun-version: 1.4.2`, the local version).
-A3. **Joint coupon (DECISION, recommended yes).** ~30 min print: one ear + slot + notch, one
+A3. **Joint coupon — built 2026-09-30: `bun run coupon.ts`.** ~30 min print: one ear + slot + notch, one
     splice T, one gang tongue/socket, cut from real geometry at fit 0. Catches gross binding
     before ~10 h of plates. Needs a small `coupon` script or export; no app feature.
 A4. **Export the default job** from HEAD, confirm plates 5–8 and 15–18 are what the print plan
