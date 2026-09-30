@@ -217,8 +217,8 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - Print hours in the UI are `filamentGrams` volume over `JOB_FLOW` (`main.ts`), one
   mm³/s for every printer, measured by slicing the default job in the Bambu Studio CLI
   (P2S: 7.95; plates spread ±10 %). Re-slice and update it, and the print-cost spec,
-  when geometry or `filamentGrams` moves the default job. Slice scratch lives in the
-  gitignored `.slice/`.
+  when geometry or `filamentGrams` moves the default job: `bun run slice.ts` does the
+  whole round trip and prints the number. Its scratch lives in the gitignored `.slice/`.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
   slabs of its outline shrunk by the fillet inset, which follows the plan corners. Walls
   and end walls round the outer top edge only (`Geo.roundOver`), so the 3 mm seat the
