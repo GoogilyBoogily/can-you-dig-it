@@ -13,7 +13,7 @@ export interface Layout {
   warnings: string[];
   style: Style;
 }
-export type Style = "cascade" | "flat";
+type Style = "cascade" | "flat";
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
 

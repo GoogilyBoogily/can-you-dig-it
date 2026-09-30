@@ -22,7 +22,7 @@ export const earNotchH = (clearance: number) => K.deckLo + clearance;
  *  solid - so the number is free, and 1 mm keeps every boolean off a coplanar face. */
 export const OVER = 1;
 
-export interface Pair { male: M; female: M }
+interface Pair { male: M; female: M }
 
 /** The T in profile, pointing -X from the seam: a `neck`-wide neck spliceNeck deep, then a
  *  `head`-wide head to spliceDepth, centred on y = 0. Grown by `grow`, it is the socket: a

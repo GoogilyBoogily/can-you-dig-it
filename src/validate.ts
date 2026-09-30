@@ -5,7 +5,7 @@
 import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
 import type { Space } from "./solver";
 
-export interface Limit { min: number; max: number; label: string }
+interface Limit { min: number; max: number; label: string }
 
 export const LIMITS: Record<string, Limit> = {
   w: { min: 50, max: 5000, label: "shelf width" },

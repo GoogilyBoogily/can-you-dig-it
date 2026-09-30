@@ -5,7 +5,7 @@ import type { CrossSection as CS } from "manifold-3d";
 import { K, type Geo, type Pattern, type Vec2 } from "../geometry";
 
 /** Cell pitch and half-extents for Geo.cells; `stagger` offsets odd rows by dx/2. */
-export interface Lattice { dx: number; dy: number; hw: number; hh: number; stagger: boolean }
+interface Lattice { dx: number; dy: number; hw: number; hh: number; stagger: boolean }
 
 /** How far three whole rows of a pattern span, as a·R + b·lig; autoR inverts it. */
 export const ROWS: Record<Pattern, readonly [number, number]> = {
@@ -42,7 +42,7 @@ export function autoR(panelH: number, rows: readonly [number, number]): number {
  * is the same shape and the border reads as a frame. A cell touching one of the
  * `holes` keep-outs is dropped rather than clipped, for the same reason.
  */
-export function hexCells(g: Geo, R: number, t: number, bounds: CS, holes: CS[] = []): CS | null {
+function hexCells(g: Geo, R: number, t: number, bounds: CS, holes: CS[] = []): CS | null {
   const P = R + t / Math.sqrt(3);
   const hexa: Vec2[] = [];
   for (let k = 0; k < 6; k++) {
@@ -59,7 +59,7 @@ export function hexCells(g: Geo, R: number, t: number, bounds: CS, holes: CS[] =
  * the `holes` keep-outs dropped. `cell` draws the shape at a centred centre and gets
  * the lattice indices, for patterns that alternate.
  */
-export function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number, cy: number, i: number, j: number) => CS): CS | null {
+function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number, cy: number, i: number, j: number) => CS): CS | null {
   const { dx, dy, hw, hh, stagger } = lat;
   const { min: [x0, y0], max: [x1, y1] } = bounds.bounds();
   const centres: [number, number, number, number][] = [];
@@ -130,7 +130,7 @@ export function cellsOf(g: Geo, p: Pattern, R: number, t: number, panel: CS, kee
  * the field is split at the keep-outs first and a component narrower than 4R is left
  * solid, which keeps the strips beside the splice band and the end notch blank.
  */
-export function slats(g: Geo, R: number, t: number, panel: CS, keep: CS[]): CS | null {
+function slats(g: Geo, R: number, t: number, panel: CS, keep: CS[]): CS | null {
   const rows: CS[] = [];
   const field = keep.length ? panel.subtract(g.cs2d(...keep)) : panel;
   for (const comp of field.decompose()) {

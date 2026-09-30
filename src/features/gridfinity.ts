@@ -10,7 +10,7 @@ import { K, gridSpan, type Derived, type Geo, type Vec3 } from "../geometry";
  *  upper chamfer runs on `over` mm past the profile: neighbouring feet then meet in
  *  a 45° ridge and their rounded corners close in a 45° pit, and the floor over them
  *  has no flat underside anywhere. */
-export function buildFoot(g: Geo, over: number): M {
+function buildFoot(g: Geo, over: number): M {
   const { footFlat: flat, footChamferLo: lo, footWall: wall, footChamferHi: hi, footR: r } = K;
   const mid = flat + 2 * lo, top = mid + 2 * hi; // 37.2, 41.5
   const ring = (side: number, radius: number, z: number) => g.roundedRect(side, side, radius).toPolygons().flat().map(([x, y]) => [x, y, z] as Vec3);

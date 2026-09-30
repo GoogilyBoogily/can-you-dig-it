@@ -23,7 +23,7 @@ export interface Machine {
 }
 // extruderVariants: Bambu's per-nozzle-type slots ("Direct Drive Standard", "... High Flow");
 // per-variant values are arrays of that length, and a process pairs each with an extruder id.
-export interface Process { name: string; layerHeight: number; printers: number[]; extruderVariants: string[]; extruderIds: string[] }
+interface Process { name: string; layerHeight: number; printers: number[]; extruderVariants: string[]; extruderIds: string[] }
 export interface Filament { name: string; label: string; vendor: string; colour: string; printers: number[] }
 export interface ProfileIndex { version: string; machines: Machine[]; processes: Process[]; filaments: Filament[] }
 
