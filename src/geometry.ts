@@ -509,7 +509,7 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
 const gangs = (o: Options) => o.lanesWide > 1 && o.base !== "gridfinity";
 /** How far a tongue runs past its own wall's outer face: the gap, the neighbour's wall
  *  and the T inside the neighbour's rail. */
-const gangReach = (o: Options) => K.gangGap + o.wall + K.spliceDepth;
+export const gangReach = (o: Options) => K.gangGap + o.wall + K.spliceDepth;
 /** The neighbour wall's inner face, where the T starts, in the lane frame. */
 export const gangInner = (o: Options, d: Derived) => d.OW / 2 + K.gangGap + o.wall;
 

@@ -86,8 +86,6 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
   would need the polygon split. On those printers the default job is 20 plates, not 18,
   because a 240 mm part can't pass beside the corner on a 256 bed. A smarter packer
   (put the short parts in the corner's row) might win them back.
-- **The gang row's end lane keeps a stub of tongue out of its +Y side.** Trimming it means
-  a separate end deck and a fifth plate name. We judged it not worth it on 2026-09-22.
 - **Lanes under ~260 mm stand loose in a gang.** There's no clear stretch of rail for a
   tongue. `check()` warns and that's all.
 

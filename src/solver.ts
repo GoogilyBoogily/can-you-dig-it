@@ -1,6 +1,6 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
-import { K, solve, check, laneLengthFor, baseHeight, type Options, type Derived } from "./geometry";
+import { K, solve, check, laneLengthFor, baseHeight, gangReach, type Options, type Derived } from "./geometry";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -61,10 +61,23 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   return rank(out, styles);
 }
 
-/** How many lanes fit side by side: by gang pitch on a shelf, by whole floors on a grid. */
+/** How wide a row of `lanes` shelf lanes stands: a gang pitch each, and when they gang,
+ *  the +Y end deck's tongue stub, gangReach past its wall less the gap one pitch holds. */
+function rowWidth(lanes: number, o: Options, d: Derived): number {
+  return lanes * d.gangPitch + (lanes > 1 ? gangReach(o) - K.gangGap : 0);
+}
+
+/** How many lanes fit side by side: by gang pitch on a shelf, by whole floors on a grid.
+ *  A lone lane keeps SIDE_GAP a side; a ganged row's stub may use half of it (owner,
+ *  2026-09-30: trimming the stub costs a fifth plate name, and a lane lost to it on the
+ *  default 300 mm shelf cost half the job). */
 function lanesAcross(space: Space, seed: Options): number {
   const seedD = solve(seed);
-  if (seed.base !== "gridfinity") return Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+  if (seed.base !== "gridfinity") {
+    let lanes = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
+    while (lanes > 1 && rowWidth(lanes, seed, seedD) > space.w - SIDE_GAP) lanes--;
+    return lanes;
+  }
   if (seedD.floorCells[1] < 1) return 0; // the shelf has no whole cell across: floor(0/0) is NaN, and NaN < 1 is false
   let lanes = Math.floor(seed.shelfCells[1] / seedD.floorCells[1]);
   while (lanes > 0 && lanes * seedD.gangPitch - 2 * K.gridGap > space.w) lanes--; // a lane wider than its cells
@@ -115,7 +128,7 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const coverGrams = o.cover ? (o.design === "minimal" ? 60 : 85) : 0;
   return {
     options: o, derived: d, cans: perLane * lanesMax,
-    footprint: [grid ? (lanesMax - 1) * d.gangPitch + d.foot[3] - d.foot[1] : lanesMax * d.gangPitch, grid ? d.foot[2] - d.foot[0] : d.L, height],
+    footprint: [grid ? (lanesMax - 1) * d.gangPitch + d.foot[3] - d.foot[1] : rowWidth(lanesMax, o, d), grid ? d.foot[2] - d.foot[0] : d.L, height],
     gramsEst: (lanes * laneGrams + lanesMax * coverGrams) * (d.L / 480) + lanesMax * 8,
     warnings: w, style,
   };

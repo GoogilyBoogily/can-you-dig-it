@@ -1,7 +1,7 @@
 // A 12 in deep, 10 in tall shelf holds four cans a deck on two tiers. It used to hold
 // three: 40 mm was kept for a hand whether the shelf had room to spare or not.
 import { test, expect } from "bun:test";
-import { DEFAULTS, laneLengthFor, solve, baseHeight, buildWall, laneOf } from "../src/geometry";
+import { DEFAULTS, laneLengthFor, solve, baseHeight, buildWall, buildDeck, laneOf } from "../src/geometry";
 import { geo } from "./geo";
 import { fitSpace, laneNeeds } from "../src/solver";
 
@@ -110,4 +110,21 @@ test("the stack's top, pins included, fits under the shelf", () => {
       }
     }
   }
+});
+
+// The row's +Y end deck keeps its gang tongue, gangReach past its wall. The solver counted
+// lanes by gang pitch alone and put a 296 mm row on a 290 mm shelf. The stub may use the
+// side gap (owner, 2026-09-30), so a ganged row keeps 2 mm a side, not 4.
+test("a ganged row, stub included, fits the shelf and the footprint says how wide it is", () => {
+  for (const w of [290, 295, 296, 300, 431, 440]) {
+    for (const layout of fitSpace({ w, d: 500, h: 400, front: 0 }, DEFAULTS, { cascade: true })) {
+      const o = layout.options, d = layout.derived;
+      const deck = geo.arena(() => { const b = buildDeck(geo, o, d, laneOf(o, d, "top")).boundingBox(); return b.max[1] - b.min[1]; });
+      const row = (o.lanesWide - 1) * d.gangPitch + deck;
+      expect(row, `w ${w}, ${o.lanesWide} lanes`).toBeLessThanOrEqual(w - 4);
+      expect(layout.footprint[0], `w ${w}, ${o.lanesWide} lanes`).toBeGreaterThanOrEqual(row - 1e-6);
+    }
+  }
+  // the default shelf keeps its two lanes: 2 × 141 + 14 = 296, 2 mm a side on 300
+  expect(fitSpace({ w: 300, d: 520, h: 240, front: 0 }, DEFAULTS, { cascade: true })[0].options.lanesWide).toBe(2);
 });

@@ -204,7 +204,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   `wall-right`). A ganged deck is `gangReach` (gap + wall + 8) wider on its +Y side;
   `plateY` charges it, and the default gang packs on 18 plates (`test/pack.test.ts`). The
   row's +Y end lane keeps a stub of tongue out of its side; a separate end deck to trim
-  it costs a fifth plate name and was judged not worth it. Below about 260 mm a lane
+  it costs a fifth plate name and was judged not worth it. The solver charges the stub
+  (`rowWidth`), and it may use half the 4 mm side gap, so the default 300 mm shelf keeps
+  two lanes. Below about 260 mm a lane
   can have no clear stretch; `check()` warns that such lanes stand loose. Only when
   `gangs(o)`: `lanesWide > 1` and not on a grid (`test/gang.test.ts`). Spec in
   `docs/superpowers/specs/2026-09-20-sliding-slot-joints-design.md`.
