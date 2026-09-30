@@ -309,8 +309,8 @@ export class Geo {
   }
 
   /** Run `build` and free every shape made while it runs. Whatever has to outlive it
-   *  leaves as plain data (meshDataOf, a volume). A shape already deleted is skipped: a
-   *  helper that frees its own intermediates, or union([x]) handing back x, is fine. */
+   *  leaves as plain data (meshDataOf, a volume). A shape already deleted is skipped:
+   *  filamentGrams frees its slices as it goes, and union([x]) hands back x itself. */
   arena<T>(build: () => T): T {
     if (arenaShapes) throw new Error("arenas do not nest: the inner one would free the outer one's shapes");
     const shapes = new Set<Shape>();
@@ -537,7 +537,6 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
       adds.push(gang.male.translate([gx, inner, 0]));
       cuts.push(gang.female.translate([gx, -IW / 2, 0]));
     }
-    gang.male.delete(); gang.female.delete(); gang.notch.delete();
   }
   if (!o.solid) {
     // minimal: the rail is a 2.5 mm fin at the inner edge of the standard rail, and the
@@ -569,16 +568,13 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
         if (!open.isEmpty()) cuts.push(g.prismZ(open, K.deckLo + 1, -1)); // a band a plinth covers whole extrudes to an invalid solid
       }
     }
-    earPadUnion.delete();
   }
   for (const sy of [1, -1]) {
     for (const tx of ln.tabs) cuts.push(placeSide(earJ.slot, sy, tx, sy * d.py, 0));
     const pocket = lipPocket(g, clearanceOf(o), 40, 10);
     cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
-    pocket.delete();
   }
   const deck = g.assemble(adds, cuts);
-  earJ.ear.delete(); earJ.slot.delete(); earJ.notch.delete();
   return deck;
 }
 
@@ -599,8 +595,6 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
   const m = g.assemble(adds, cuts);
-  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
-  earJ.ear.delete(); earJ.slot.delete(); earJ.notch.delete();
   return m;
 }
 
@@ -613,10 +607,9 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
   if (ln.tongues.length) {
     const gang = gangJoint(g, { run: 1, clearance: c, through: 1, wall: o.wall });
     for (const gx of ln.tongues) cuts.push(gang.notch.translate([gx, sy * d.py, 0]));
-    gang.male.delete(); gang.female.delete(); gang.notch.delete();
   }
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H: ln.H, clearance: c });
-  cuts.push(lap.female.translate([ln.xe, sy * d.py, 0])); lap.male.delete(); lap.female.delete();
+  cuts.push(lap.female.translate([ln.xe, sy * d.py, 0]));
   for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
   return cuts;
 }
@@ -668,7 +661,6 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H, clearance: clearanceOf(o) });
   const adds = [g.box(o.wall, IW, ewh - te, xe + o.wall / 2, 0, (ewh + te) / 2)];
   for (const sy of [1, -1]) adds.push(lap.male.translate([xe, sy * d.py, 0]));
-  lap.male.delete(); lap.female.delete();
   // the outer top edge rounds, like the side walls'. A loading lip's inner edge stays
   // square: printed outer face up it would be a round on the bed edge, and a can loaded
   // over the lip slides over the outer edge anyway
@@ -742,7 +734,6 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   for (const sy of [1, -1]) {
     const tab = lipTab(g, tabLen);
     parts.push(tab.translate([0, sy * d.lipy, 0]));
-    tab.delete();
   }
   const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
   return g.assemble(parts, [scoop]);
@@ -756,7 +747,6 @@ function buildRiser(g: Geo, o: Options, h: number): M {
   // the boss is centred on the riser, not flush with an inner face - a riser has none
   const boss = pinJ.pin.translate([0, (o.wall - K.tabT) / 2, h]);
   const riser = g.union([g.box(K.riserL, o.wall, h, 0, 0, h / 2), boss]);
-  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete(); boss.delete();
   return riser;
 }
 
@@ -776,7 +766,6 @@ function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
   const cuts = [...unit.pockets];
   for (const sy of [1, -1]) cuts.push(lipPocket(g, clearanceOf(o), 2, 0).translate([ln.lipx, sy * d.lipy, 0]));
   const out = g.assemble(adds, cuts);
-  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
   return out;
 }
 
@@ -831,7 +820,6 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     if (cells) cuts.push(g.prismZ(cells, t + 2, -1));
   }
   const m = g.diff(plate, cuts);
-  pinJ.pin.delete(); pinJ.notch.delete(); pinJ.hole.delete();
   if (d.split) {
     const big = L + 20;
     return [g.isect(m, g.box(big, big, 10, -big / 2, 0, 0)), g.isect(m, g.box(big, big, 10, big / 2, 0, 0))];
@@ -861,17 +849,6 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole):
   }
   plates.push({ name: "end-wall", whole: endWall });
   return plates;
-}
-
-/** Free every mesh a PartSet holds. manifold-3d keeps them on the WASM heap, where the JS
- *  collector sees a handle and not the megabytes behind it, so a caller that is done with
- *  a build has to say so. Walk the set, not partList's output: that skips the plain deck
- *  under a Gridfinity base, the riser unless the base is feet, and the covers when the
- *  cover is off, and those are exactly the ones left behind. */
-export function freeSet(set: PartSet): void {
-  for (const lane of set.lanes) for (const plate of lane.plates) for (const mesh of [plate.whole, plate.front, plate.rear]) mesh?.delete();
-  for (const mesh of [set.lip, set.riser, set.gridDeck?.whole, set.gridDeck?.front, set.gridDeck?.rear]) mesh?.delete();
-  for (const mesh of set.cover) mesh.delete();
 }
 
 export function buildAll(g: Geo, o: Options, d: Derived): PartSet {

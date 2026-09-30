@@ -31,9 +31,7 @@ export const tProfile = (g: Geo, neck: number, head: number, grow = 0): CS => {
   const n = neck / 2, h = head / 2, xn = -K.spliceNeck, xh = -K.spliceDepth;
   const t = g.poly([[0.5, -n], [0.5, n], [xn, n], [xn, h], [xh, h], [xh, -h], [xn, -h], [xn, -n]]);
   if (!grow) return t;
-  const grown = t.offset(grow, "Miter");
-  t.delete();
-  return grown;
+  return t.offset(grow, "Miter");
 };
 
 /** The x = 0 splice: the tongue is the T through the plate from `zb` (the underside) to
@@ -78,14 +76,10 @@ export function pinJoint(g: Geo, spec: { wall: number; clearance: number }): { p
 }
 
 /** A joint piece on one side of the lane: mirrored across y for the -Y side (its y
- *  offset to the wall's inner face is signed), then moved. Returns a fresh Manifold
- *  the caller owns; the mirrored intermediate is freed here. */
+ *  offset to the wall's inner face is signed), then moved. */
 export function placeSide(m: M, sy: number, x: number, y: number, z: number): M {
   if (sy > 0) return m.translate([x, y, z]);
-  const mirrored = m.mirror([0, 1, 0]);
-  const placed = mirrored.translate([x, y, z]);
-  mirrored.delete();
-  return placed;
+  return m.mirror([0, 1, 0]).translate([x, y, z]);
 }
 
 /** The joint that carries a deck on a wall: the deck puts an ear out under the wall with
@@ -99,9 +93,7 @@ export function earJoint(g: Geo, spec: { wall: number; through: number; clearanc
   const notchH = earNotchH(c);
   const pocket = earPocket(g, wall, c);
   const tab = tabBox(g, notchH + 2 * OVER, wall, -OVER);
-  const notch = g.diff(pocket, [tab]);
-  pocket.delete(); tab.delete();
-  return { ear, slot, notch };
+  return { ear, slot, notch: g.diff(pocket, [tab]) };
 }
 
 /** The notch in a wall's bottom edge that an ear-wide piece at deck level passes under:
@@ -130,7 +122,6 @@ export function gangJoint(g: Geo, spec: { run: number; clearance: number; throug
   const runBox = g.box(K.earW, run, K.deckLo, 0, -run / 2, K.deckLo / 2);
   const head = g.prismZ(t(), K.deckLo);
   const male = g.union([runBox, head]);
-  runBox.delete(); head.delete();
   const female = g.prismZ(t(clearance), through + 2 * OVER, -OVER);
   return { male, female, notch: earPocket(g, wall, clearance) };
 }

@@ -1,15 +1,11 @@
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve, check, buildAll, partList, freeSet, rearTier, type Options } from "../src/geometry";
+import { DEFAULTS, solve, check, buildAll, partList, rearTier, type Options } from "../src/geometry";
 import { geo } from "./geo";
 
 // Load from the back: the one tier cans slide into from the shelf's back prints without
 // its end wall. A lone tier, or the top of a stack, when its high end faces the back.
-const endWalls = (o: Options) => {
-  const set = buildAll(geo, o, solve(o));
-  const walls = partList(set, o).filter((p) => p.name.endsWith("end-wall")).map((p) => [p.name, p.qty]);
-  freeSet(set);
-  return walls;
-};
+const endWalls = (o: Options) => geo.arena(() =>
+  partList(buildAll(geo, o, solve(o)), o).filter((p) => p.name.endsWith("end-wall")).map((p) => [p.name, p.qty]));
 
 test("off: every tier keeps its end wall", () => {
   expect(endWalls({ ...DEFAULTS, tiers: 3 })).toEqual([["lane-bottom-end-wall", 2], ["lane-mid-end-wall", 2], ["lane-top-end-wall", 2]]);

@@ -57,7 +57,5 @@ export function gridUnit(g: Geo, d: Derived, magnets: boolean): { floor: M; skir
   const clip = g.prismZ(outline, K.unitH, z0);
   const floor = g.isect(g.union(feet), clip);
   const skirt = skirtCS.isEmpty() ? null : g.prismZ(skirtCS, K.unitH, z0);
-  clip.delete(); foot.delete(); lane.delete(); outline.delete(); skirtCS.delete();
-  for (const f of feet) f.delete();
   return { floor, skirt, pockets };
 }

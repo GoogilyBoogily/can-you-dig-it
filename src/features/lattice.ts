@@ -77,24 +77,14 @@ function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number,
   const shiftY = (y0 + y1) / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
   const blocked = holes.length ? g.cs2d(...holes) : null;
   const out: CS[] = [];
-  // One cross-section per candidate cell plus one per keep-out test, on a wall with a
-  // few hundred candidates, six walls a build. The dropped ones and the test results
-  // are garbage the moment they are measured, so free them here rather than leave the
-  // WASM heap holding every cell that did not make it.
   for (const [cx, cy, i, j] of centres) {
     const c = cell(cx + shiftX, cy + shiftY, i, j);
     if (blocked) {
-      const overlap = c.intersect(blocked);
-      const clipped = overlap.area() > 1e-6;
-      overlap.delete();
-      if (clipped) { c.delete(); continue; }
+      if (c.intersect(blocked).area() > 1e-6) continue;
     }
     out.push(c);
   }
-  const field = out.length ? g.cs2d(...out) : null;
-  for (const c of out) c.delete();
-  blocked?.delete();
-  return field;
+  return out.length ? g.cs2d(...out) : null;
 }
 
 /** The chosen pattern's holes in `panel`, radius R, ligament t, clear of `keep`. */

@@ -36,15 +36,8 @@ export function roundTop(g: Geo, body: M, plan: CS, top: number, r: number, pads
     const z0 = top - r + (r * k) / steps, z1 = top - r + (r * (k + 1)) / steps;
     const rise = (z0 + z1) / 2 - (top - r);
     const inset = r - Math.sqrt(r * r - rise * rise);
-    const shrunk = plan.offset(-inset, "Round", 2, 24);
-    keep.push(g.prismZ(shrunk, z1 - z0 + 0.01, z0));
-    shrunk.delete(); // the slab has the outline now
+    keep.push(g.prismZ(plan.offset(-inset, "Round", 2, 24), z1 - z0 + 0.01, z0));
   }
   for (const pad of pads) keep.push(g.prismZ(pad, zMax - zMin, zMin));
-  // Nine slabs and their union, every time the lip or the cover is rounded.
-  const stack = g.union(keep);
-  const rounded = g.isect(body, stack);
-  stack.delete();
-  for (const slab of keep) slab.delete();
-  return rounded;
+  return g.isect(body, g.union(keep));
 }
