@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, laneName, laneXe, platePose, lipPose, type Derived, type Options, type LaneRole, type PlateName, type Pose } from "./geometry";
+import { K, laneName, laneXe, platePose, lipPose, tierRole, rearTier, type Derived, type Options, type PlateName, type Pose } from "./geometry";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -210,12 +210,13 @@ export class Viewer {
         const isBottom = cascade && t === 0;
         const z = cascade ? (t === 0 ? 0 : d.Hb + (t - 1) * d.H) : t * d.H;
         const rot = cascade ? t % 2 === 1 : false;
-        const role: LaneRole = isBottom ? "bottom" : t === o.tiers - 1 ? "top" : "mid";
+        const role = tierRole(o, t);
         // each tier lifts off the one below and across from its gang neighbour
         const lane = new THREE.Group();
         lane.position.set(0, y, z); if (rot) lane.rotation.z = Math.PI;
         this.group.add(lane); track(lane, 0, gI * STEP, t * STEP);
         for (const plate of ["deck", "wall-left", "wall-right", "end-wall"] as PlateName[]) {
+          if (plate === "end-wall" && t === rearTier(o)) continue;
           // the shelf lane's deck carries the Gridfinity unit below z = 0, like the risers do
           const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : laneName(o, role, plate);
           if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }

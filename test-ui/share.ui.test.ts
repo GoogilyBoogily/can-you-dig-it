@@ -27,6 +27,7 @@ test("every option survives the hash, including boxes turned off and the layout 
   await page.goto(URL_);
   await page.uncheck("#form [name=cascade]");
   await page.uncheck("#form [name=cover]");
+  await page.check("#form [name=rearLoad]");
   await page.selectOption("#form [name=design]", "minimal");
   await page.selectOption("#form [name=pattern]", "slat");
   await page.fill("#form [name=slope]", "5");
@@ -44,6 +45,7 @@ test("every option survives the hash, including boxes turned off and the layout 
   await again.goto(shared);
   expect(await again.isChecked("#form [name=cascade]")).toBe(false);
   expect(await again.isChecked("#form [name=cover]")).toBe(false);
+  expect(await again.isChecked("#form [name=rearLoad]")).toBe(true);
   expect(await again.inputValue("#form [name=design]")).toBe("minimal");
   expect(await again.inputValue("#form [name=pattern]")).toBe("slat");
   expect(await again.inputValue("#form [name=slope]")).toBe("5");

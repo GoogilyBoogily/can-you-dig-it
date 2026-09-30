@@ -36,6 +36,12 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   on 2026-09-16; `git show python-reference:cansys.py` still has it. At the moment of
   the switch the two agreed to within 0.0225 % volume and 0.000 mm on bounds.
 
+## Open questions
+- `docs/open-questions.md` holds every parked concern and deferred decision: what is
+  open, what the code does today, where it lives. Add to it when a decision is put off
+  or a risk is accepted unverified. When one is settled, delete it there and record the
+  decision in this file, a spec or a code comment.
+
 ## Layout
 - `src/geometry.ts` — parts. `solve()` derives every dimension from can + options;
   `laneOf(o,d,role)` the per-role numbers every plate shares (deck line, ties, tab
@@ -127,6 +133,13 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   slotted from its top edge down to the same line, closed behind by its own post. The
   end wall drops in last: X from the side wall's slot, the side walls' Y from its body
   and the deck ears. `laneXe` is the one place its x lives (the viewer uses it too).
+- Load from the back (`o.rearLoad`, 2026-09-29, off by default): one tier, `rearTier(o)`,
+  prints without its end wall - the only tier, or the top of a stack (a cascade's lower
+  tiers fill through it; a flat stack's still load from the front). A cascade's top faces the back on an odd tier count only; on an even one
+  its back is the chute, nothing opens and `check()` says so. It is a part count, not a
+  shape: `partList` prints one set fewer and the viewer skips it; the side walls keep
+  their corner slot, since a flat stack's tiers share one set. A can fills the tier over
+  the deck there (~3 mm spare), so no stop, strip or bar fits.
 - Long lanes split at x=0. The deck has an in-plane T-slot (`tSlot`: a 30-wide neck 3
   deep, a 40-wide head to 8); the halves drop together in Z and the head locks X. The
   walls butt: a plane cut, each half on its own ears, the tier above and the cover

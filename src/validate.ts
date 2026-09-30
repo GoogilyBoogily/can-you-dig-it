@@ -67,7 +67,7 @@ export function optionsFrom(field: (name: string) => string | null): FormValues 
     ...DEFAULTS,
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
-    cover: on("cover"), solid: on("solid"), design, pattern, base: standsOn, magnets: on("magnets"), across, along, fit: num("fit"),
+    cover: on("cover"), rearLoad: on("rearLoad"), solid: on("solid"), design, pattern, base: standsOn, magnets: on("magnets"), across, along, fit: num("fit"),
     hexR: num("hexR"), hexAuto: on("hexAuto"), slope: num("slope"), lipGap: num("lipGap"),
   };
   return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: on("cascade") };
