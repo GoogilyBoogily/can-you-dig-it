@@ -201,15 +201,19 @@ C2 → C3 → C5 → C6 → E1.
 After the print: hardening C1, C2 → C3 (on whatever axes remain) → C4, C5 → naming (F) → E2 → C6
 (open-questions prune) → E3.
 
-## Decisions for the owner
+## Decisions (owner interview, 2026-09-30)
 
-| # | Question | Recommended |
+| # | Question | Decided |
 |---|---|---|
-| 1 | Section D: which option axes to delete | Magnets and the three decorative patterns at least; the rest per your use |
-| 2 | A4: delete local clutter (~430 MB, untracked) | Yes |
-| 3 | C1: `pack()` loses its `gap` parameter | Yes |
-| 4 | C2: one new leaf module `options.ts`, 28 importers edited | Yes |
-| 5 | E1: tag, delete executed plan + 8 built specs, flatten docs; unbuilt specs deleted or `docs/backlog/` | Yes; delete the unbuilt ones too |
-| 6 | C4: cover window `canD + 8` — `K.slack` or its own name | Its own name unless it is meant to track slack |
-| 7 | Riser built only for a feet base (`ref.ts` builds a feet variant under the same key) | Yes (moot if feet go) |
-| 8 | B5+: `profiles.test.ts:64` stops expecting `null` for "not json" (a bad config now fails loud) | Yes |
+| 1 | Section D: delete option axes | **None.** Every axis stays; section D is closed |
+| 2 | A4: local clutter | Delete `.playwright-mcp/`, `.superpowers/sdd/`, old `.slice/` runs; `.gitignore` lines |
+| 3 | C1: `pack()` loses `gap` | Yes |
+| 4 | C2: leaf `options.ts` | Yes |
+| 5 | E1: built specs + executed plan | Move to `docs/archive/` (not deleted); unbuilt specs to `docs/backlog/`; flatten `docs/superpowers/` → `docs/{specs,plans,backlog,archive}` |
+| 6 | C4: cover window `canD + 8` | Its own `K` name |
+| 7 | Riser built only for a feet base | Yes |
+| 8 | B5+: bad config fails loud (`profiles.test.ts:64`) | Yes |
+| 9 | Naming (F) | **Full rule:** every identifier, `K` and its keys and `Derived` fields included (`IW` → `innerWidth`, …). Part names in the 3MF/STL and `ref.json` keys stay. CLAUDE.md, specs and `docs/gridfinity-spec.md`'s K column follow in the same commit |
+| 10 | E2: CLAUDE.md | ~170–180 lines |
+| 11 | Execution | Work the interleaved order, one verified commit per step, no push; stop at decisions and the print gate |
+| 12 | Coupon (hardening A3) | Ear + slot + notch, splice T, gang tongue + socket, pin + notch + cover hole; fit 0 only. Lane print follows the coupon |
