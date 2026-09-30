@@ -15,7 +15,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `bun run dev` — builds, serves `dist/` on :3000, rebuilds on save. `dev.ts` shells out to
   `build.ts` rather than reimplementing it, so dev and Pages serve identical bytes. One
   bundler on purpose: no Vite.
-- Two suites. `bun test test/` is the fast unit one (no browser, ~5 s); it and `bun run
+- Two suites. `bun test test/` is the fast unit one (no browser, ~9 s); it and `bun run
   check` are what the deploy gates on (`.github/workflows/pages.yml`). `bun run test:ui` drives `test-ui/` in Playwright against a real build; it
   needs `bunx playwright install chromium` once, and runs as its own CI job so a flaky
   browser can't block a deploy. Keep the trailing slashes — `bun test test` also matches

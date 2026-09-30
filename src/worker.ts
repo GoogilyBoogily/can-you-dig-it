@@ -1,5 +1,5 @@
 import Module from "manifold-3d";
-import { DENSITY, Geo, solve, buildAll, freeSet, partList, filamentGrams, type Options, type PartRole } from "./geometry";
+import { DENSITY, Geo, solve, buildAll, partList, filamentGrams, type Options, type PartRole } from "./geometry";
 import { pack, threeMf, stlZip, meshDataOf, type MeshData, type Placement, type Rect } from "./export";
 
 export type Req =
@@ -29,15 +29,13 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const o = req.options;
       const d = solve(o);
       const g = new Geo(wasm);
-      const set = buildAll(g, o, d);
-      const parts: PartOut[] = partList(set, o).map((p) => ({
+      // Every shape the build makes is freed when the arena closes: builds run on a 250 ms
+      // debounce from the form, and the WASM heap does not come back on its own. Only plain
+      // data leaves it - meshDataOf copies every vertex, and `last` holds those copies.
+      const parts: PartOut[] = g.arena(() => partList(buildAll(g, o, d), o).map((p) => ({
         name: p.name, mesh: meshDataOf(p.name, p.mesh.getMesh()), qty: p.qty, role: p.role,
         grams: filamentGrams(p.mesh), solidGrams: p.mesh.volume() / 1000 * DENSITY,
-      }));
-      // meshDataOf copied every vertex into plain typed arrays and `last` holds those, so no
-      // Manifold outlives this line. Builds run on a 250 ms debounce from the form, and
-      // the WASM heap does not come back on its own.
-      freeSet(set);
+      })));
       const placed = pack(parts.map((p) => ({ mesh: p.mesh, qty: p.qty })), o.bed, o.bedMargin, undefined, req.keepOut);
       const nplates = Math.max(...placed.map((p) => p.plate)) + 1;
       last = { parts, placed, options: o };
