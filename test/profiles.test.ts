@@ -73,6 +73,8 @@ test("the label reads like the dropdowns", () => {
 const PETG = "Bambu PETG Translucent @BBL P2S 0.4 nozzle", PLA = "Bambu PLA Translucent @BBL P2S 0.4 nozzle";
 const translucent = (machine: string, filament: string) => parse(composeProfile(index, { ...defaultPicks(index, machine), filament, translucent: true }));
 
+const BED_KEYS = ["hot_plate_temp", "textured_plate_temp", "eng_plate_temp"].flatMap((key) => [key, `${key}_initial_layer`]);
+
 test("translucent PETG on a 0.4 nozzle carries the demo's process and filament overrides, each listed", () => {
   const config = translucent(P2S, PETG);
   expect(config.wall_loops).toBe("1");
@@ -94,6 +96,10 @@ test("translucent PETG on a 0.4 nozzle carries the demo's process and filament o
   expect(config.enable_overhang_speed).toEqual(["0", "0", "0"]);
   expect(config.filament_flow_ratio).toEqual(["1.01"]);
   expect(config.nozzle_temperature).toEqual(["270"]);
+  // 60 °C bed, from the MakerWorld "Clear as glass" file: less elephant foot on the face every tab is flush with.
+  for (const key of BED_KEYS) expect(config[key], key).toEqual(["60"]);
+  expect(config.cool_plate_temp).toBeUndefined();
+  expect(config.supertack_plate_temp).toBeUndefined();
   expect(config.filament_extruder_variant).toBeUndefined(); // the 3MF loader checks it against filament_self_index
   const [process, filament, printer] = config.different_settings_to_system;
   // Every listed key is one the config sets, and every override is listed: an unlisted
@@ -101,7 +107,11 @@ test("translucent PETG on a 0.4 nozzle carries the demo's process and filament o
   for (const key of [...process.split(";"), ...filament.split(";")]) expect(config[key], key).toBeDefined();
   expect(process.split(";")).toEqual(expect.arrayContaining(["wall_loops", "top_shell_layers", "sparse_infill_pattern", "layer_height", "line_width", "outer_wall_speed"]));
   expect(process.split(";")).not.toContain("print_extruder_variant"); // slot names, not an override
-  expect(filament.split(";").sort()).toEqual(["enable_overhang_bridge_fan", "fan_max_speed", "fan_min_speed", "filament_flow_ratio", "filament_retraction_length", "nozzle_temperature", "nozzle_temperature_initial_layer"]);
+  expect(filament.split(";").sort()).toEqual([
+    "enable_overhang_bridge_fan", "eng_plate_temp", "eng_plate_temp_initial_layer", "fan_max_speed", "fan_min_speed",
+    "filament_flow_ratio", "filament_retraction_length", "hot_plate_temp", "hot_plate_temp_initial_layer",
+    "nozzle_temperature", "nozzle_temperature_initial_layer", "textured_plate_temp", "textured_plate_temp_initial_layer",
+  ]);
   expect(printer).toBe("");
 });
 
@@ -110,6 +120,7 @@ test("translucent PLA keeps its own temperature", () => {
   expect(config.nozzle_temperature).toBeUndefined();
   expect(config.fan_max_speed).toEqual(["0"]);
   expect(config.different_settings_to_system[1]).not.toContain("nozzle_temperature");
+  for (const key of BED_KEYS) expect(config[key], key).toBeUndefined();
 });
 
 test("the H2D fills both extruders' slots", () => {

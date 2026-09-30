@@ -59,7 +59,9 @@ Filament, every filament: fan min and max 0, `enable_overhang_bridge_fan 0` (the
 dovetail groove's flank is 13 % overhang, past the 10 % threshold, and would get a frosted
 band), `filament_flow_ratio 1.01`, `filament_retraction_length 0.3` (all three demos;
 a long retraction at 270 °C across every cell pulls air into the melt). PETG only (label
-matches `/PETG/`): `nozzle_temperature 270` and the initial-layer twin. The index carries
+matches `/PETG/`): `nozzle_temperature 270` and the initial-layer twin, and the bed at 60 °C
+on hot, textured and engineering plates and their initial-layer twins (2026-09-30, from the
+MakerWorld "Clear as glass PETG" file; see `2026-09-30-clear-petg-design.md`). The index carries
 no `filament_type`, and 270 would cook PLA Translucent. Flow and temperature are per
 variant too, but a 3MF's `filament_extruder_variant` is the per-filament list and must
 match `filament_self_index` or the loader throws, so they stay in slot 0, the Standard

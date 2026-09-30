@@ -76,7 +76,10 @@ export const describePicks = (index: ProfileIndex, picks: Picks) => {
 // every wall tab's lines along the root); a flat plate looks the same at any one angle.
 // Every plate prints flat and overhang-free, so fan off costs nothing here, and the
 // overhang fan stays off too: there is no downward face left for it to find.
-// 270 °C is PETG's number and would cook PLA, so it is gated on the filament label.
+// 270 °C is PETG's number and would cook PLA, so it is gated on the filament label, and so
+// is a 60 °C bed (the preset's 70 less 10), from the MakerWorld "Clear as glass PETG" file:
+// cooler means less elephant foot on the bed face, which every tab is flush with. Cool and
+// SuperTack plates keep the preset's.
 //
 // Speeds are per extruder variant (Standard, High Flow, ...), one slot per entry of the
 // process's print_extruder_variant. Bambu Studio restores a listed value only into slots
@@ -108,7 +111,11 @@ function translucentOverrides(machine: Machine, process: Process, filament: Fila
   };
   const filamentValues: Record<string, string[]> = {
     fan_min_speed: ["0"], fan_max_speed: ["0"], enable_overhang_bridge_fan: ["0"], filament_flow_ratio: ["1.01"], filament_retraction_length: ["0.3"],
-    ...(/PETG/.test(filament.label) && { nozzle_temperature: ["270"], nozzle_temperature_initial_layer: ["270"] }),
+    ...(/PETG/.test(filament.label) && {
+      nozzle_temperature: ["270"], nozzle_temperature_initial_layer: ["270"],
+      hot_plate_temp: ["60"], hot_plate_temp_initial_layer: ["60"], textured_plate_temp: ["60"],
+      textured_plate_temp_initial_layer: ["60"], eng_plate_temp: ["60"], eng_plate_temp_initial_layer: ["60"],
+    }),
   };
   return {
     print_extruder_variant: process.extruderVariants, print_extruder_id: process.extruderIds,
