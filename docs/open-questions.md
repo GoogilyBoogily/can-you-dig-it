@@ -95,24 +95,38 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
 
 In order. The first one decides most of what comes after it.
 
-1. **Print one lane at `fit` 0 on the P2S.** Default shelf (300 × 520 × 240), P2S 0.4,
-   0.20mm Standard, Bambu PETG Basic, Download 3MF. Print both top deck halves (plates
-   5–8) and the four top wall halves (plates 15–18): the smallest set with a gang joint,
-   a splice, ears, tongue notches and the new frame. Check, in this order:
-   - plates flat, no warp on the 240 mm halves;
-   - each wall drops over the deck's ears and tongues and its tabs go through the slots;
-   - the two deck halves drop together at the splice T;
-   - two decks set side by side key at the tongues without forcing;
-   - the ears at both ends of a half line up with their notches (pitch, see above).
-2. **Act on what it shows.**
-   - Joints bind or rattle evenly: build the rung strip from the amended fit-calibration
-     spec, in the direction the print points.
-   - Only the far ears miss: that's pitch. Stop `pack()` turning decks and side walls.
-   - Walls lean or warp: that's geometry, not `fit`.
-3. **Then the rear-load print questions above** (bracing without a cover, the 3 mm
+1. **Print the coupon.** `bun run coupon.ts`, open `coupon.3mf` in Bambu Studio (P2S 0.4,
+   PETG Translucent, smooth PEI, fit 0; check the plate shows Smooth PEI at 60 °C) and
+   print both plates. Photograph each plate before taking pieces off. Judge in this order,
+   destructive check last:
+   - **Flat and clean:** every piece lies flat on a table; no strings across cells or notches.
+   - **Elephant foot:** run a finger along each bed-face edge; note any flare, and on which
+     joints it is the part that binds.
+   - **Fit, per pair (the header of `coupon.ts` lists them):** the target is a snug push by
+     thumb with no wiggle once seated (owner, 2026-09-30: the shelf is built once, rarely
+     taken apart). Grade each pair: *drops in* (too loose), *thumb push* (right), *needs a
+     tool or won't go* (too tight).
+   - **Pitch:** both same-axis pitch pairs seat all three ears at once; then the crossed
+     pair (`pitch-deck-x` + `pitch-wall-y`).
+   - **Clarity:** how clear the solid pieces come out at 0.2 mm and 270 °C.
+   - **Tab strength, last:** on a spare piece (`wall-pin-bottom`), push a tab sideways
+     until it gives: bends back, snaps at the root, or splits along a layer.
+2. **Act on it.**
+   - Every pair right: print the lane (plates 5–8 and 15–18 of the default job) at fit 0.
+   - Every pair off the same way: a ladder coupon - the joint pieces at three or four fit
+     values on one plate - picks the value, then the lane. (Not built; `coupon.ts` builds
+     one fit today.)
+   - One pair off: that joint's geometry, not `fit`.
+   - Same-axis pitch pairs fit and the crossed pair does not: stop `pack()` turning decks
+     and side walls.
+   - Tabs snap at the root or split on a layer: a strength problem for geometry or
+     settings, before any lane is printed.
+3. **Then the lane**, checked as the coupon was, plus: plates flat with no warp on the
+   240 mm halves, and two decks set side by side keying at the tongues.
+4. **Then the rear-load print questions above** (bracing without a cover, the 3 mm
    headroom), which a print of a rear-load top tier answers the same way.
-4. **Small things, whenever:** the layout card's gram estimate for rear-load, the
-   scaling `JOB_FLOW` by filament.
+5. **Small things, whenever:** the layout card's gram estimate for rear-load, scaling
+   `JOB_FLOW` by filament.
 
 ## How to re-measure print time
 
