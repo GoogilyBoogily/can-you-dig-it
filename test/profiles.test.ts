@@ -57,11 +57,18 @@ test("the bed follows the machine", () => {
   expect(bedFromConfig(composeProfile(index, defaultPicks(index, "Bambu Lab A1 mini 0.4 nozzle")))).toEqual([180, 180, 180]);
 });
 
+test("a bed with unreadable corners throws instead of handing the form NaN", () => {
+  const junk = new TextEncoder().encode(`{"printable_area":["0x0","axb"],"printable_height":"250"}`);
+  expect(() => bedFromConfig(junk)).toThrow(/unreadable printable_area/);
+});
+
 test("picks round-trip through the config, and a foreign config yields none", () => {
   const picks = defaultPicks(index, H2D);
   expect(picksFromConfig(index, composeProfile(index, picks))).toEqual(picks);
   expect(picksFromConfig(index, new TextEncoder().encode(`{"printer_settings_id":"X1C 0.4"}`))).toBeNull();
-  expect(picksFromConfig(index, new TextEncoder().encode("not json"))).toBeNull();
+  // not JSON is not "foreign": it was a silent null, and an unreadable import looked like a
+  // readable one that matched no preset
+  expect(() => picksFromConfig(index, new TextEncoder().encode("not json"))).toThrow(/aren't JSON/);
 });
 
 test("the label reads like the dropdowns", () => {

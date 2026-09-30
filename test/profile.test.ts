@@ -29,6 +29,13 @@ test("extractProfile names the missing entry when the 3MF has no profile", () =>
   expect(() => extractProfile(file)).toThrow(/Metadata\/project_settings\.config/);
 });
 
+// An honest 5 MB config used to report "no Metadata/project_settings.config in that file":
+// the size filter hid it, and the message blamed the wrong thing.
+test("extractProfile says a too-large profile is too large, not missing", () => {
+  const file = zipSync({ "Metadata/project_settings.config": new Uint8Array(5e6) }, { level: 9 });
+  expect(() => extractProfile(file)).toThrow(/over 4 MB/);
+});
+
 test("extractProfile fails loudly on something that is not a zip", () => {
   expect(() => extractProfile(strToU8("not a 3mf"))).toThrow();
 });

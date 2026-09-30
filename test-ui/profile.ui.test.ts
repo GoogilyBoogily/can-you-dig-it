@@ -302,6 +302,19 @@ test("the picks survive a reload and Clear puts the selects back", async () => {
   await page.close();
 });
 
+// The imported project is the printer the parts go to, so its bed is the one they must
+// fit; only the pickers used to set it, and an A1 mini project packed for a 256 bed.
+test("importing a 3MF sets the bed from its printable area", async () => {
+  const page = await buildOnce();
+  const a1mini = `{"printable_area":["0x0","180x0","180x180","0x180"],"printable_height":"180"}`;
+  await page.setInputFiles("#profileIn", upload("a1mini.3mf", a1mini));
+  await waitForLabel(page, "a1mini.3mf");
+  await page.waitForFunction(() => (document.querySelector("#form [name=bedX]") as HTMLInputElement).value === "180", null, { timeout: 15000 });
+  expect(await page.inputValue("#form [name=bedY]")).toBe("180");
+  expect(await page.inputValue("#form [name=bedZ]")).toBe("180");
+  await page.close();
+});
+
 test("a 3MF upload takes the selects back to no pick", async () => {
   const page = await buildOnce();
   await page.selectOption("#pickPrinter", "Bambu Lab P2S");

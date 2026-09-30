@@ -310,7 +310,15 @@ const PROFILE = "Metadata/project_settings.config";
 export function extractProfile(bytes: Uint8Array): Uint8Array {
   // Inflate only the entry we want, and only if it is a plausible size: a 1 MB
   // zip of nested zeroes expands to gigabytes and takes the tab with it.
-  const entry = unzipSync(bytes, { filter: (f) => f.name === PROFILE && f.originalSize! < 4e6 })[PROFILE];
+  let tooLarge = false;
+  const entry = unzipSync(bytes, {
+    filter: (f) => {
+      if (f.name !== PROFILE) return false;
+      tooLarge = f.originalSize! >= 4e6;
+      return !tooLarge;
+    },
+  })[PROFILE];
+  if (tooLarge) throw new Error(`${PROFILE} in that file is over 4 MB - no slicer profile is that big`);
   if (!entry) throw new Error(`no ${PROFILE} in that file - save a project from Bambu Studio or Orca, not an exported plate`);
   if (!entry.length) throw new Error(`${PROFILE} in that file is empty - the slicer may not have finished saving`);
   return entry;

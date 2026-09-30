@@ -148,10 +148,27 @@ export function composeProfile(index: ProfileIndex, picks: Picks): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(config, null, 2));
 }
 
+/** A project_settings.config as an object. Bambu Studio and Orca both write JSON; anything
+ *  else is not a slicer profile, and saying so beats treating it as one that matched nothing. */
+export function parseConfig(config: Uint8Array): any {
+  try {
+    return JSON.parse(new TextDecoder().decode(config));
+  } catch (err) {
+    throw new Error(`its settings aren't JSON (${err instanceof Error ? err.message : err}) - save a project from Bambu Studio or Orca`);
+  }
+}
+
+/** Bambu writes bed points as "XxY" strings. */
+function cornersOf(label: string, corners: string[]): [number, number][] {
+  const points = corners.map((corner) => String(corner).split("x").map(Number));
+  if (points.some((point) => point.length !== 2 || !point.every(Number.isFinite)))
+    throw new Error(`profile has an unreadable ${label}: ${JSON.stringify(corners)}`);
+  return points as [number, number][];
+}
+
 /** The picks a stored config was composed from, or null when it came from somewhere else. */
 export function picksFromConfig(index: ProfileIndex, config: Uint8Array): Picks | null {
-  let parsed: any;
-  try { parsed = JSON.parse(new TextDecoder().decode(config)); } catch { return null; }
+  const parsed = parseConfig(config);
   const picks: Picks = { machine: parsed?.printer_settings_id, process: parsed?.print_settings_id, filament: parsed?.filament_settings_id?.[0] };
   // Any project Bambu Studio saved carries different_settings_to_system too, so look for
   // the override itself rather than the list.
@@ -167,23 +184,20 @@ export function picksFromConfig(index: ProfileIndex, config: Uint8Array): Picks 
  *  every printer that has one (a rectangle in a corner).
  *  ponytail: one box; split the polygon if a printer ever ships an L-shaped area. */
 export function keepOutFromConfig(config: Uint8Array): [number, number, number, number][] {
-  const corners = JSON.parse(new TextDecoder().decode(config)).bed_exclude_area;
+  const corners = parseConfig(config).bed_exclude_area;
   if (!Array.isArray(corners) || !corners.length) return [];
-  const points = corners.map((corner: string) => corner.split("x").map(Number));
-  if (points.some((point: number[]) => point.length !== 2 || !point.every(Number.isFinite)))
-    throw new Error(`profile has an unreadable bed_exclude_area: ${JSON.stringify(corners)}`);
-  const xs = points.map((point: number[]) => point[0]), ys = points.map((point: number[]) => point[1]);
+  const points = cornersOf("bed_exclude_area", corners);
+  const xs = points.map((point) => point[0]), ys = points.map((point) => point[1]);
   const box: [number, number, number, number] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
   return box[2] > box[0] && box[3] > box[1] ? [box] : [];
 }
 
 /** Bed X, Y, Z from a project_settings.config: the far corner of printable_area and printable_height. */
 export function bedFromConfig(config: Uint8Array): [number, number, number] {
-  const parsed = JSON.parse(new TextDecoder().decode(config));
+  const parsed = parseConfig(config);
   const corners: string[] = parsed.printable_area;
   const height = Number(parsed.printable_height);
   if (!Array.isArray(corners) || !corners.length || !Number.isFinite(height)) throw new Error("profile has no printable_area or printable_height");
-  const xs = corners.map((corner) => Number(corner.split("x")[0]));
-  const ys = corners.map((corner) => Number(corner.split("x")[1]));
-  return [Math.max(...xs), Math.max(...ys), height];
+  const points = cornersOf("printable_area", corners);
+  return [Math.max(...points.map((point) => point[0])), Math.max(...points.map((point) => point[1])), height];
 }

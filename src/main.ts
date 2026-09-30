@@ -5,7 +5,7 @@ import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, type Placement } from "./export";
 import { hasStoredProfile, loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { optionsFrom, type FormValues } from "./validate";
-import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, picksFromConfig, bedFromConfig, keepOutFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
+import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, parseConfig, picksFromConfig, bedFromConfig, keepOutFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -325,18 +325,25 @@ let keepOut: [number, number, number, number][] = [];
 function showProfile() {
   // The plates are packed round the printer's keep-out, so a new one repacks them. A
   // profile that cannot say where it is packs as if there were none, and says why.
-  let next: typeof keepOut = [];
-  try { if (profile) next = keepOutFromConfig(profile.config); } catch (err) { console.warn("ignoring the profile's keep-out area", err); }
+  let next: typeof keepOut = [], picks: Picks | null = null, note = "";
+  if (profile) {
+    try { next = keepOutFromConfig(profile.config); } catch (err) {
+      console.warn("ignoring the profile's keep-out area", err);
+      note = ` Its keep-out area is unreadable (${reason(err)}), so plates are packed as if it had none.`;
+    }
+    // a profile stored before imports were checked can still be one no parser reads
+    try { picks = index && picksFromConfig(index, profile.config); } catch (err) { console.warn("the profile names no presets we can read", err); }
+  }
   const changed = JSON.stringify(next) !== JSON.stringify(keepOut);
   keepOut = next;
   if (changed && chosen) choose(chosenIndex); // retires the build in flight, packed for the old one
   $("profileNow").textContent = profile
-    ? `Using settings from ${profile.name}.`
+    ? `Using settings from ${profile.name}.${note}`
     // Bambu Studio 2.8 calls a project with no settings "invalid config" and pops a
     // dialog, but still loads every plate and part. Say so, or the dialog reads as failure.
     : "No print settings loaded. Bambu Studio will warn about an invalid config and fall back to the slicer's own defaults; plates and parts still load.";
   $("profileClear").hidden = !profile;
-  if (index) showPicks(profile ? picksFromConfig(index, profile.config) : null);
+  if (index) showPicks(picks);
 }
 $("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
 
@@ -403,17 +410,21 @@ function applyPicks(picks: Picks, persist = true) {
   const config = composeProfile(index!, picks);
   adoptProfile({ name: describePicks(index!, picks), config }, persist);
   // The printer picked is the bed the parts must fit, so the form follows.
-  const bed = bedFromConfig(config);
+  followBed(bedFromConfig(config));
+}
+
+/** Put a profile's bed in the form, refit if it moved, and put it in the link. refit(chosenIndex),
+ *  not refit(): the default resets the choice to 0, and a shared link carrying both a layout
+ *  and a printer had its layout dropped when the catalogue landed. */
+function followBed(bed: [number, number, number]) {
   let changed = false;
   (["bedX", "bedY", "bedZ"] as const).forEach((name, axis) => {
     const input = form.elements.namedItem(name) as HTMLInputElement;
     if (Number(input.value) === bed[axis]) return;
     input.value = String(bed[axis]); changed = true;
   });
-  // refit(chosenIndex), not refit(): the default resets the choice to 0, and a shared link
-  // carrying both a layout and a printer had its layout dropped when the catalogue landed.
   if (changed) refit(chosenIndex);
-  queueHash(); // the picks are in the link now, and only the bed change needs a refit
+  queueHash(); // the picks or the bed are in the link now
 }
 
 pick.printer.addEventListener("change", () => {
@@ -460,6 +471,7 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   let loaded: StoredProfile;
   try {
     loaded = { name: file.name, config: extractProfile(new Uint8Array(await file.arrayBuffer())) };
+    parseConfig(loaded.config); // before it is stored: a profile nothing can read is refused here
   } catch (err) {
     // A bad drop keeps whatever profile was already working.
     fail(`Couldn't read that 3MF: ${reason(err)}`, err);
@@ -468,6 +480,12 @@ $<HTMLInputElement>("profileIn").addEventListener("change", async (e) => {
   }
   adoptProfile(loaded);
   input.value = "";
+  // The project is the printer the parts go to, so its bed is the one they must fit. A
+  // project that does not say keeps the bed typed in, and the profile line says so.
+  try { followBed(bedFromConfig(loaded.config)); } catch (err) {
+    console.warn("the imported profile gives no bed size", err);
+    $("profileNow").textContent += ` It gives no bed size (${reason(err)}), so the bed below stays as typed.`;
+  }
 });
 
 loadProfile();
