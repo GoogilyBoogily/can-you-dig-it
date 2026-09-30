@@ -14,7 +14,8 @@
 //   wall-pin-top + cover-corner    the same pin goes through the cover's hole
 import Module from "manifold-3d";
 import type { Manifold as M } from "manifold-3d";
-import { DEFAULTS, Geo, solve, laneOf, buildDeck, buildWall, splitDeck, buildCover, platePose, lay } from "./src/geometry";
+import { DEFAULTS, Geo, solve, laneOf, buildDeck, buildWall, splitDeck, buildCover } from "./src/geometry";
+import { lay, platePose } from "./src/features/pose";
 import { pack, threeMf, meshDataOf } from "./src/export";
 import { composeProfile, defaultPicks, filamentsFor, keepOutFromConfig, type ProfileIndex } from "./src/profiles";
 

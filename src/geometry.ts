@@ -7,7 +7,6 @@ import { lay, platePose } from "./features/pose";
 import { cellsOf, ligFor, autoR, rowsRadius, ROWS } from "./features/lattice";
 import { recessDepth, roundOver, roundTop } from "./features/pocket";
 import { gridUnit } from "./features/gridfinity";
-export { ROWS, ligFor, autoR, type Lattice } from "./features/lattice";
 
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
@@ -138,7 +137,7 @@ export const gridSpan = (cells: number) => cells * K.gridPitch - 2 * K.gridGap;
 export interface Derived {
   n: number; nBottom: number; split: boolean;
   L: number; IW: number; OW: number; H: number; Hb: number;
-  run: number; dhi: number; dhiB: number; tan: number; inset: number;
+  dhi: number; dhiB: number; tan: number; inset: number;
   hexR: number; lig: number;
   xd: number; px: number; py: number; lipy: number; railHy: number;
   gangPitch: number; plateX: number; plateY: number; plateZ: number; usableX: number; usableY: number; usableZ: number;
@@ -214,7 +213,7 @@ export function solve(o: Options): Derived {
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall;
   return {
-    n, nBottom, split, L, IW, OW, H, Hb, run, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
+    n, nBottom, split, L, IW, OW, H, Hb, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px: L / 2 - pinIn(o), py: IW / 2 + o.wall / 2,
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
@@ -264,7 +263,7 @@ export function check(o: Options, d: Derived): string[] {
 export class Geo {
   private Manifold: typeof M;
   private CrossSection: typeof CS;
-  constructor(private wasm: ManifoldToplevel) {
+  constructor(wasm: ManifoldToplevel) {
     this.Manifold = wasm.Manifold;
     this.CrossSection = wasm.CrossSection;
   }
@@ -457,7 +456,7 @@ const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
   g.poly([[ln.xd, zb], [d.L / 2, zb], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]);
 
 export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
-  const { L, IW } = d;
+  const { IW } = d;
   const minimal = o.design === "minimal";
   // the wedge sits between the walls. Under each wall it puts out an ear as tall as the
   // deck's low end, with the slot the wall's tab drops through: that is what holds the
@@ -623,11 +622,11 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   return g.assemble(adds, cuts);
 }
 
-export { platePose, lipPose, lay, stand, type Pose } from "./features/pose";
+export { platePose, lipPose, stand, type Pose } from "./features/pose";
 
 /** Lay a side wall flat, outer face up. The viewer stands it back up with the same pose. */
-export const layWall = (m: M, sy: number, IW: number): M => lay(m, platePose(sy > 0 ? "wall-left" : "wall-right", IW, 0));
-export const layEndWall = (m: M, xe: number): M => lay(m, platePose("end-wall", 0, xe));
+const layWall = (m: M, sy: number, IW: number): M => lay(m, platePose(sy > 0 ? "wall-left" : "wall-right", IW, 0));
+const layEndWall = (m: M, xe: number): M => lay(m, platePose("end-wall", 0, xe));
 
 /** Cut a plate at x=0 into a front and a rear half joined by an in-plane T-slot: the
  *  rear keeps the tongue, the front gets the socket. `tongue` and `socket` are the
@@ -689,7 +688,7 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
 /** A foot under a wall at ±px: as thick as the wall, since the deck starts at the wall's
  *  inner face and the next gang 3 mm past its outer one. The boss goes into the wall's
  *  bottom notch. */
-export function buildRiser(g: Geo, o: Options, h: number): M {
+function buildRiser(g: Geo, o: Options, h: number): M {
   const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 }); // the boss is the male: clearance is the notch's
   // the boss is centred on the riser, not flush with an inner face - a riser has none
   const boss = pinJ.pin.translate([0, (o.wall - K.tabT) / 2, h]);
@@ -705,7 +704,7 @@ export function buildRiser(g: Geo, o: Options, h: number): M {
  *  deck's underside is one plane with the wall bottoms, so every cut it has stops at
  *  z = 0; the lip's tab now ends flush with the pan, and its pocket keeps 1 mm of
  *  clearance under it for the fit. Prints as it sits, feet down, like every bin. */
-export function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
+function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
   const unit = gridUnit(g, d, o.magnets);
   const adds = [deck, unit.floor];
   if (unit.skirt) adds.push(unit.skirt);
@@ -835,7 +834,7 @@ function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Pla
 
 // ---------------------------------------------------------------- the print list
 export type PartRole = "lane" | "lip" | "riser" | "cover";
-export interface Part { name: string; mesh: M; qty: number; role: PartRole }
+interface Part { name: string; mesh: M; qty: number; role: PartRole }
 
 /** The name a lane plate prints under. A flat stack's tiers are all the same lane, so
  *  the role is left out; the viewer and the snapshot look parts up by this name. */

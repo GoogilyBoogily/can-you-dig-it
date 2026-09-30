@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { K, DEFAULTS, PATTERNS, ROWS, solve, laneOf, buildWall, buildEndWall, buildCover, type Options } from "../src/geometry";
+import { K, DEFAULTS, PATTERNS, solve, laneOf, buildWall, buildEndWall, buildCover, type Options } from "../src/geometry";
 import { cellsOf } from "../src/features/lattice";
 
 import { geo } from "./geo";

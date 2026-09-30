@@ -1,7 +1,7 @@
 // One pose per plate: geometry lays a plate flat with its inverse, the viewer stands it
 // up with it, and this is the round trip that keeps those two the same function.
 import { test, expect } from "bun:test";
-import { DEFAULTS, solve, laneOf, buildDeck, buildWall, buildEndWall, buildLip, laneXe, K, type PlateName } from "../src/geometry";
+import { DEFAULTS, solve, laneOf, buildDeck, buildWall, buildEndWall, buildLip, laneXe, type PlateName } from "../src/geometry";
 import { platePose, lipPose, lay, stand } from "../src/features/pose";
 import { geo } from "./geo";
 

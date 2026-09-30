@@ -201,7 +201,7 @@ function renderTabs() {
 }
 
 function showTab(key: string) {
-  if (!built) return;
+  if (!built) throw new Error("showTab before a build: dropBuild clears the tabs, so nothing can call it then");
   $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.key === key)));
   $("plates").querySelectorAll(".plate").forEach((b) => b.setAttribute("aria-pressed", String(b.getAttribute("data-key") === key)));
   const { layout, parts, placed } = built;
@@ -224,9 +224,8 @@ const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p)
  *  its own 0.20 Standard came out 7.77, 2 % off.
  *  ponytail: one number for every printer and filament; scale by the filament's max flow
  *  once that is scraped into the index. */
-const JOB_FLOW: number | null = 7.95;
+const JOB_FLOW = 7.95;
 function jobHours(parts: PartOut[]) {
-  if (JOB_FLOW === null) return "";
   const mm3 = parts.reduce((a, p) => a + p.grams / DENSITY * 1000 * p.qty, 0);
   return `, about ${(mm3 / JOB_FLOW / 3600).toFixed(0)} h (±30 %)`;
 }

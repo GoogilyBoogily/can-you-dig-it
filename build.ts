@@ -1,5 +1,5 @@
 // bun run build.ts  →  dist/ (static site)
-import { cpSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync } from "node:fs";
 rmSync("dist", { recursive: true, force: true }); mkdirSync("dist");
 const r = await Bun.build({
   entrypoints: ["src/main.ts", "src/worker.ts"],
@@ -10,5 +10,4 @@ if (!r.success) { for (const l of r.logs) console.error(l); process.exit(1); }
 cpSync("node_modules/manifold-3d/manifold.wasm", "dist/manifold.wasm");
 cpSync("index.html", "dist/index.html"); cpSync("styles.css", "dist/styles.css");
 cpSync("profiles", "dist/profiles", { recursive: true });
-if (existsSync("public")) cpSync("public", "dist", { recursive: true });
 console.log("built:", r.outputs.map((o) => `${o.path.split("/").pop()} ${(o.size / 1024).toFixed(0)} KB`).join(", "));

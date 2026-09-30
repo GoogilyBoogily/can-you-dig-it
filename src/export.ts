@@ -88,7 +88,7 @@ const keepOutFor = (rects: Rect[], margin: number): KeepOut => ({
     for (let moved = true; moved;) {
       moved = false;
       const box: Rect = [margin + offset, margin + shelf.depth, margin + offset + alongX, margin + shelf.depth + bandHeight];
-      for (const [, , kx1] of rects.filter((k) => hitsAny([k], margin, box))) { offset = kx1 + margin - margin; moved = true; }
+      for (const [, , kx1] of rects.filter((k) => hitsAny([k], margin, box))) { offset = kx1; moved = true; /* the box starts at margin + offset: one margin past the keep-out */ }
     }
     return offset;
   },

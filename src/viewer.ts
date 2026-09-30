@@ -23,7 +23,6 @@ export class Viewer {
   private theta = 2.45; private phi = 1.05; private dist = 600;
   private target = new THREE.Vector3();
   private geoms = new Map<string, THREE.BufferGeometry>();
-  private cached = new Set<THREE.BufferGeometry>(); // the geoms values, for an identity test in clear()
 
   constructor(private el: HTMLElement) {
     this.cam = new THREE.PerspectiveCamera(38, 1, 1, 8000);
@@ -85,7 +84,6 @@ export class Viewer {
       g.setIndex(new THREE.BufferAttribute(m.idx, 1));
       g.computeVertexNormals();
       this.geoms.set(m.name, g);
-      this.cached.add(g);
     }
     return g;
   }
@@ -100,10 +98,11 @@ export class Viewer {
     // nothing. Every view change built a new group and left the old one's buffers behind,
     // so clicking between two plate tabs leaked both plates' geometry every time. Cached
     // geometries outlive the group on purpose - reset() owns those.
+    const cached = new Set(this.geoms.values());
     this.group.traverse((object) => {
       const mesh = object as Partial<THREE.Mesh>;
       if (!mesh.geometry) return;
-      if (!this.cached.has(mesh.geometry)) mesh.geometry.dispose();
+      if (!cached.has(mesh.geometry)) mesh.geometry.dispose();
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material!]) material?.dispose();
     });
     this.group = new THREE.Group(); this.scene.add(this.group);
@@ -132,7 +131,6 @@ export class Viewer {
     this.clear(); // before the cache empties, or clear() disposes what it is about to lose
     for (const geometry of this.geoms.values()) geometry.dispose();
     this.geoms.clear();
-    this.cached.clear();
   }
 
   /** Cans in the assembly view. They sit inside the lanes, so framing on the visible

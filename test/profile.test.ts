@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { zipSync, unzipSync, strToU8 } from "fflate";
 import { extractProfile, threeMf, bboxOf, type Placement } from "../src/export";
 import { readStoredProfile, saveStoredProfile, PROFILE_KEY, type StoredProfile } from "../src/profile";
 
