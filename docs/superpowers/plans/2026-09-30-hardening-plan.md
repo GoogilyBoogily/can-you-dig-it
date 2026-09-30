@@ -54,6 +54,9 @@ B1. **WASM heap leak (was 1.1). HIGHEST PRIORITY.** manifold-3d 3.5.3 registers 
       at the end. Per-site deletes are ~50 edits with an aliasing trap (`Geo.union([x])`
       returns `x`, `diff(a, [])` returns `a` — double free). The arena is a new pattern, hence
       the ask.
+    - The arena's design and traps (method-made shapes, patch after `setup()`, `finally` that
+      survives an abort, `filamentGrams` per-layer frees, cached test snapshots) are in
+      `2026-09-30-cleanup-plan.md` B1+. Build it to that.
     - Test: manifold exposes no live count and is lazy (no `.volume()` → nothing allocated). So:
       build + evaluate every part (`.volume()`) for 3 warm-up builds, then assert RSS growth over
       the next 5 stays under a bound. WASM heap never shrinks: assert a plateau, not a drop.
