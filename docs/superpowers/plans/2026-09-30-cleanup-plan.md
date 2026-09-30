@@ -14,6 +14,14 @@ a 92-line `packFrame` with a one-implementation interface; builders that constru
 to keep one piece; copy-pasted UI wiring; and, biggest of all if the owner wants it, **deleting
 option axes** rather than refactoring them (section D).
 
+## Progress
+
+- Done: A1 dead bits (`f5a26bf`, `135506c`), A3 one mesh converter (`7232086`), A4 clutter
+  (`ec1e70d`), B1+ arena (`1a21a15`, with hardening B1).
+- Next: B2+ (delete manual frees). Open before it: tests and `ref.ts` build outside any arena
+  and today lean on the manual frees; measure the unit suite's peak RSS without them, and
+  wrap uncached test builds in `geo.arena` if it climbs.
+
 ## Safety nets (every step)
 
 - `bun run check && bun test test/`.

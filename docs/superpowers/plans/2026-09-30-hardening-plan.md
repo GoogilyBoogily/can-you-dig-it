@@ -42,7 +42,7 @@ print and is not part of the gate (bed 60 °C moves elephant foot; fit found the
 
 ## Track B — in parallel with the print (does not move tested geometry)
 
-B1. **WASM heap leak (was 1.1). HIGHEST PRIORITY.** manifold-3d 3.5.3 registers no finalizer on
+B1. **WASM heap leak (was 1.1). DONE `1a21a15`** (the 20-rebuild UI case was not added; the bun heap test covers the arena, the UI suite the worker wiring). manifold-3d 3.5.3 registers no finalizer on
     `Manifold`; every handle not `.delete()`d stays. Flat leaks ~3–7 MB/build (234 handles),
     Gridfinity ~12.5 MB (magnets off) to ~25 MB (magnets on); the worker aborts after 60–125
     rebuilds. Biggest sites: `buildGridDeckPlate` (`geometry.ts:830-832`, whole deck and
