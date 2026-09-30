@@ -41,6 +41,12 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
 
 ## Project-wide
 
+- **The lane prints in translucent PETG on the smooth PEI plate (owner, 2026-09-30).** So
+  the coupon does too. The app still writes the printer's default plate (textured) and has
+  no plate picker; switch it in Bambu Studio, or add a picker if that gets old. The coupon
+  prints at today's translucent values (0.2 mm layers, 270 °C): if the tile test flips D1
+  or D2 above, the coupon's fit reading may not carry over.
+
 - **Nothing has been printed yet.** Every joint, clearance and `fit` default is untested
   on a real printer. The 2026-09-21 reviewers' consensus was to print one default lane
   before building anything else. That's still the thing that retires the most of this

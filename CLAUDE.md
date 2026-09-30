@@ -25,7 +25,8 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   actually receives. A corrupt stored profile once white-screened the whole app and no
   unit test saw it.
 - `bun run coupon.ts` writes `coupon.3mf` (gitignored): every joint of the default lane cut
-  out of the real parts onto one plate, to print before the full lane.
+  out of the real parts, plus pitch strips printed along X and along Y, in translucent PETG
+  on smooth PEI (how the owner prints the lane), to print before the full lane.
 - Geometry: `manifold-3d` (WASM) in a Web Worker. Viewer: three.js. ZIP: fflate.
 - `ref.json` is a geometry snapshot generated from this codebase by `bun run ref`
   (`ref.ts`). `test/regress.test.ts` must stay green: every part within 0.01 % volume
