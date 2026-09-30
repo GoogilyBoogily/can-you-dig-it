@@ -141,6 +141,15 @@ test("Infinity and absurd magnitudes are rejected", () => {
   expect(() => readNumbers({ w: 1e9 })).toThrow(/width/i);
 });
 
+// A valid 5000 mm cube shelf built 7595 plates: 33 s of kernel time and a 66 MB 3MF from
+// one shared link. 2000 mm covers any shelf a person owns.
+test("a shelf dimension over 2000 mm is rejected, 2000 passes", () => {
+  for (const key of ["w", "d", "h"]) {
+    expect(() => readNumbers({ [key]: 2001 }), key).toThrow(/shelf/);
+    expect(() => readNumbers({ [key]: 2000 }), key).not.toThrow();
+  }
+});
+
 test("every limit names a sane range", () => {
   for (const [key, limit] of Object.entries(LIMITS)) {
     expect(Number.isFinite(limit.min), key).toBe(true);

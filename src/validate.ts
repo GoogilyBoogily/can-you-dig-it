@@ -8,9 +8,9 @@ import type { Space } from "./solver";
 interface Limit { min: number; max: number; label: string }
 
 export const LIMITS: Record<string, Limit> = {
-  w: { min: 50, max: 5000, label: "shelf width" },
-  d: { min: 50, max: 5000, label: "shelf depth" },
-  h: { min: 50, max: 5000, label: "shelf height" },
+  w: { min: 50, max: 2000, label: "shelf width" },
+  d: { min: 50, max: 2000, label: "shelf depth" },
+  h: { min: 50, max: 2000, label: "shelf height" },
   front: { min: 0, max: 500, label: "front gap" },
   canD: { min: 20, max: 200, label: "can diameter" },
   canL: { min: 40, max: 400, label: "can length" },

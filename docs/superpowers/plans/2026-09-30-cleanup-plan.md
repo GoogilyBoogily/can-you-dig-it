@@ -76,7 +76,7 @@ B2+. **Delete manual frees** right after B1: every `.delete()` in geometry/featu
 B3+. **Worker client out of top level (with hardening B2).** `startWorker()` binds `onmessage`,
     `onerror`, `onmessageerror`; `onmessage` → `onBuilt` / `onFile` / `onError`. Respawn is then
     one call.
-B4+. **HTML limits from `LIMITS` (with hardening B3).** One loop sets min/max on the 11 number
+B4+. **DROPPED 2026-09-30:** `validation.test.ts` already holds every HTML min/max equal to `LIMITS`, so they cannot drift; a load-time loop would add the load-order trap below for nothing. Was: **HTML limits from `LIMITS` (with hardening B3).** One loop sets min/max on the 11 number
     inputs, run before `loadHash()` (`main.ts:518`). The `fit` and `lipGap` sliders keep their HTML
     attributes (a range input without them is 0–100 and would clamp `fit=-0.1` on load;
     `validate.ts` says those bounds must match).
