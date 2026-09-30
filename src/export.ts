@@ -20,6 +20,15 @@ export function bboxOf(pos: Float32Array): MeshData["bbox"] {
   return b as MeshData["bbox"];
 }
 
+/** A kernel mesh as flat xyz triples and triangle indices: what the packer, the file
+ *  writers and the viewer take. Structural, so this file needs no manifold import. */
+export function meshDataOf(name: string, mesh: { vertProperties: Float32Array; triVerts: Uint32Array; numProp: number }): MeshData {
+  const { vertProperties: props, numProp } = mesh;
+  const pos = new Float32Array(props.length / numProp * 3);
+  for (let i = 0, j = 0; i < props.length; i += numProp, j += 3) { pos[j] = props[i]; pos[j + 1] = props[i + 1]; pos[j + 2] = props[i + 2]; }
+  return { name, pos, idx: new Uint32Array(mesh.triVerts), bbox: bboxOf(pos) };
+}
+
 const EPS = 1e-6;
 
 /** A rectangle on the bed, x0 y0 x1 y1 from the front-left corner. */

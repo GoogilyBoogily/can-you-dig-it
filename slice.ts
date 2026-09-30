@@ -13,7 +13,7 @@ import Module from "manifold-3d";
 import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULTS, DENSITY, Geo, solve, buildAll, partList, filamentGrams } from "./src/geometry";
-import { pack, threeMf, bboxOf, type MeshData } from "./src/export";
+import { pack, threeMf, meshDataOf } from "./src/export";
 import { composeProfile, defaultPicks, filamentsFor, keepOutFromConfig, type ProfileIndex } from "./src/profiles";
 
 const APP = "/Applications/BambuStudio.app/Contents";
@@ -26,11 +26,7 @@ mkdirSync(out, { recursive: true });
 const wasm = await Module(); wasm.setup();
 const g = new Geo(wasm), o = DEFAULTS;
 const parts = partList(buildAll(g, o, solve(o)), o).map((p) => {
-  const mg = p.mesh.getMesh();
-  const pos = new Float32Array(mg.vertProperties.length / mg.numProp * 3);
-  for (let i = 0, j = 0; i < mg.vertProperties.length; i += mg.numProp, j += 3) { pos[j] = mg.vertProperties[i]; pos[j + 1] = mg.vertProperties[i + 1]; pos[j + 2] = mg.vertProperties[i + 2]; }
-  const mesh: MeshData = { name: p.name, pos, idx: new Uint32Array(mg.triVerts), bbox: bboxOf(pos) };
-  return { mesh, qty: p.qty, grams: filamentGrams(p.mesh) };
+  return { mesh: meshDataOf(p.name, p.mesh.getMesh()), qty: p.qty, grams: filamentGrams(p.mesh) };
 });
 const index: ProfileIndex = await Bun.file("profiles/index.json").json();
 const picks = { ...defaultPicks(index, machine), filament: filamentsFor(index, machine).find((f) => f.label === "Bambu PETG Basic")!.name };

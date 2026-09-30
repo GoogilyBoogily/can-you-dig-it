@@ -1,7 +1,6 @@
 import Module from "manifold-3d";
-import type { Manifold } from "manifold-3d";
 import { DENSITY, Geo, solve, buildAll, freeSet, partList, filamentGrams, type Options, type PartRole } from "./geometry";
-import { pack, threeMf, stlZip, bboxOf, type MeshData, type Placement, type Rect } from "./export";
+import { pack, threeMf, stlZip, meshDataOf, type MeshData, type Placement, type Rect } from "./export";
 
 export type Req =
   | { type: "build"; id: number; options: Options; keepOut: Rect[] } // keepOut: the printer's bed_exclude_area
@@ -19,13 +18,6 @@ const wasmP = Module({ locateFile: () => new URL("manifold.wasm", import.meta.ur
 // request reports it) so the worker does not also raise an unhandled rejection.
 wasmP.catch((err) => console.error("geometry engine failed to load", err));
 
-function toMesh(name: string, m: Manifold): MeshData {
-  const mg = m.getMesh();
-  const pos = new Float32Array(mg.vertProperties.length / mg.numProp * 3);
-  for (let i = 0, j = 0; i < mg.vertProperties.length; i += mg.numProp, j += 3) { pos[j] = mg.vertProperties[i]; pos[j + 1] = mg.vertProperties[i + 1]; pos[j + 2] = mg.vertProperties[i + 2]; }
-  return { name, pos, idx: new Uint32Array(mg.triVerts), bbox: bboxOf(pos) };
-}
-
 let last: { parts: PartOut[]; placed: Placement[]; options: Options } | null = null;
 
 self.onmessage = async (e: MessageEvent<Req>) => {
@@ -39,10 +31,10 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       const g = new Geo(wasm);
       const set = buildAll(g, o, d);
       const parts: PartOut[] = partList(set, o).map((p) => ({
-        name: p.name, mesh: toMesh(p.name, p.mesh), qty: p.qty, role: p.role,
+        name: p.name, mesh: meshDataOf(p.name, p.mesh.getMesh()), qty: p.qty, role: p.role,
         grams: filamentGrams(p.mesh), solidGrams: p.mesh.volume() / 1000 * DENSITY,
       }));
-      // toMesh copied every vertex into plain typed arrays and `last` holds those, so no
+      // meshDataOf copied every vertex into plain typed arrays and `last` holds those, so no
       // Manifold outlives this line. Builds run on a 250 ms debounce from the form, and
       // the WASM heap does not come back on its own.
       freeSet(set);
