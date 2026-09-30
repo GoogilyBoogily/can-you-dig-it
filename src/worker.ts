@@ -11,7 +11,9 @@ export interface PartOut { name: string; mesh: MeshData; qty: number; grams: num
 export type Res =
   | { type: "built"; id: number; parts: PartOut[]; placed: Placement[]; nplates: number; ms: number }
   | { type: "file"; id: number; name: string; bytes: Uint8Array }
-  | { type: "error"; id: number; of: Req["type"]; message: string };
+  // fatal: the kernel aborted (WebAssembly.RuntimeError) and this worker's module is
+  // unusable for good; the page starts a fresh worker
+  | { type: "error"; id: number; of: Req["type"]; message: string; fatal: boolean };
 
 const wasmP = Module({ locateFile: () => new URL("manifold.wasm", import.meta.url).href }).then((w) => { w.setup(); return w; });
 // A load failure rejects before any message arrives; mark it handled here (the first
@@ -52,6 +54,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
   } catch (err) {
     console.error(err); // the message crosses to the page; the stack only lives here
     const message = err instanceof Error ? err.message : String(err);
-    (self as any).postMessage({ type: "error", id: req.id, of: req.type, message } satisfies Res);
+    const fatal = err instanceof WebAssembly.RuntimeError;
+    (self as any).postMessage({ type: "error", id: req.id, of: req.type, message, fatal } satisfies Res);
   }
 };

@@ -120,6 +120,28 @@ test("a worker that fails to load keeps its message on the status line", async (
   await page.close();
 });
 
+// A kernel abort (WebAssembly.RuntimeError: a heap overrun, Aborted()) leaves the module
+// in the worker unusable: every later build failed until a reload. The first worker served
+// here throws one on its first build; the page has to start a fresh worker and rebuild.
+test("a kernel abort starts a fresh worker and the build goes through", async () => {
+  const page = await browser.newPage();
+  let served = 0;
+  await page.route("**/worker.js", async (route) => {
+    served++;
+    const original = await (await route.fetch()).text();
+    const abortOnce = `const __now = performance.now.bind(performance); let __armed = true;
+performance.now = () => { if (__armed) { __armed = false; throw new WebAssembly.RuntimeError("Aborted()"); } return __now(); };\n`;
+    await route.fulfill({
+      body: served === 1 ? abortOnce + original : original,
+      headers: { "content-type": "text/javascript", "cache-control": "no-store" },
+    });
+  });
+  await page.goto(`${URL_}#w=160&d=305&h=254`);
+  await page.waitForFunction(() => /plates · .* built in/.test(document.getElementById("status")!.textContent ?? ""), null, { timeout: 60_000 });
+  expect(served).toBe(2);
+  await page.close();
+});
+
 test("Share copies the full URL even before anything was typed", async () => {
   const context = await browser.newContext();
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://localhost:${PORT}` });

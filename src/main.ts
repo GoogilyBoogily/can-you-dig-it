@@ -32,7 +32,7 @@ $("showCans").querySelector("input")!.addEventListener("change", (e) => viewer.s
 $("showGrid").querySelector("input")!.addEventListener("change", (e) => viewer.showGrid((e.target as HTMLInputElement).checked));
 $("showBed").querySelector("input")!.addEventListener("change", (e) => viewer.showBed((e.target as HTMLInputElement).checked));
 $("explode").querySelector("input")!.addEventListener("input", (e) => viewer.explode(Number((e.target as HTMLInputElement).value)));
-const worker = new Worker(new URL("worker.js", document.baseURI), { type: "module" });
+let worker = startWorker();
 
 let layouts: Layout[] = [];
 let chosen: Layout | null = null;
@@ -41,6 +41,7 @@ let built: { parts: PartOut[]; placed: Placement[]; nplates: number; layout: Lay
 let buildId = 0, exportId = 0, buildTimer = 0;
 let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
 let workerDead: string | null = null; // the worker script failed to load: the message every build() shows instead
+let restartedFor = -1; // the build a kernel abort last restarted the worker on
 
 // ------------------------------------------------------------- inputs
 /** The form as the solver takes it; throws naming a bad field. */
@@ -148,14 +149,44 @@ function build() {
   worker.postMessage(req);
 }
 
-worker.onmessage = (e: MessageEvent<Res>) => {
+/** The geometry worker with the page's handlers on it: at load, and again after a kernel abort. */
+function startWorker(): Worker {
+  const started = new Worker(new URL("worker.js", document.baseURI), { type: "module" });
+  started.onmessage = onWorkerMessage;
+  started.onerror = onWorkerError;
+  started.onmessageerror = (e) => fail("The geometry engine sent something unreadable - reload the page.", e);
+  return started;
+}
+
+/** A kernel abort leaves the worker's module unusable, and the build queued behind the
+ *  one that aborted died with it. Start a fresh worker and send the build on screen again,
+ *  once: a layout that aborts the kernel every time gets an error, not a loop. `last`,
+ *  the export source, dies too; the rebuild restores it and the downloads wait for it. */
+function restartWorker(r: Extract<Res, { type: "error" }>) {
+  worker.terminate();
+  worker = startWorker();
+  console.warn(`the geometry kernel aborted on ${r.of} #${r.id} (${r.message}); started a fresh worker`);
+  if (!chosen) return;
+  if (restartedFor === buildId) {
+    setBuildPending(false); dropBuild();
+    fail(`The geometry engine crashed twice building this layout: ${r.message}`);
+    return;
+  }
+  restartedFor = buildId;
+  build();
+}
+
+function onWorkerMessage(e: MessageEvent<Res>) {
   const r = e.data;
   if (r.type === "error") {
-    // Only the build on screen may re-enable downloads: a superseded build's error, or an
-    // export's, must not unlock an export of whatever the worker built before it.
+    if (r.fatal) { restartWorker(r); return; }
+    // A superseded build's error is about numbers no longer on screen: it would overwrite
+    // "Building parts…" or the build that replaced it with news about neither.
+    if (r.of === "build" && r.id !== buildId) { console.warn(`superseded build #${r.id} failed: ${r.message}`); return; }
     // The build on screen failed, so take it off: leaving it up re-enables the downloads
-    // over the previous build's geometry, under an error about this one.
-    if (r.of === "build" && r.id === buildId) { setBuildPending(false); dropBuild(); }
+    // over the previous build's geometry, under an error about this one. An export's
+    // error leaves the build alone.
+    if (r.of === "build") { setBuildPending(false); dropBuild(); }
     fail(`Something went wrong: ${r.message}`);
     return;
   }
@@ -177,17 +208,16 @@ worker.onmessage = (e: MessageEvent<Res>) => {
   renderTabs(); renderResults();
   showTab("assembly");
   setStatus(`${built.layout.cans} cans · ${r.nplates} plates · ~${(totalGrams(r.parts) / 1000).toFixed(2)} kg · built in ${(r.ms / 1000).toFixed(1)} s`);
-};
+}
 
 // The worker script failing to load or parse. Nothing will ever be built, so every later
 // build() shows this instead of "Building parts…". preventDefault keeps the browser from
 // re-raising it on window, where the generic handler would overwrite the message.
-worker.onerror = (e) => {
+function onWorkerError(e: ErrorEvent) {
   e.preventDefault();
   workerDead = `The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`;
   fail(workerDead, e);
-};
-worker.onmessageerror = (e) => fail("The geometry engine sent something unreadable - reload the page.", e);
+}
 
 // ------------------------------------------------------------- stage
 function renderTabs() {
