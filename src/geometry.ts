@@ -240,6 +240,18 @@ export function check(o: Options, d: Derived): string[] {
   const fitsTurned = d.plateY <= d.usableX && d.plateX <= d.usableY;
   if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
   if (d.plateZ > d.usableZ) w.push(`FAIL plate ${d.plateZ.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
+  // The end wall lies flat as OW by its standing height, H - te: posts to full tier height
+  // above the deck line at the lane end. Only the tiers that print one count.
+  for (let tier = 0; tier < o.tiers; tier++) {
+    if (tier === rearTier(o)) continue;
+    const ln = laneOf(o, d, tierRole(o, tier));
+    const [along, across] = [ln.H - ln.te, d.OW];
+    const fits = (along <= d.usableX && across <= d.usableY) || (across <= d.usableX && along <= d.usableY);
+    if (!fits) {
+      w.push(`FAIL end wall ${along.toFixed(0)} × ${across.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation - use a smaller can or a bigger printer`);
+      break;
+    }
+  }
   // laneOf filters only the interior tabs through clear(); the two end tabs are placed
   // unconditionally. The rear one clears the pin by construction (pinIn); the front one
   // sits inset + tabIn from the lane end and the tier below's wall-top pin at -px is

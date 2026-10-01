@@ -1,9 +1,10 @@
 // The app's whole job is answering "does this fit?". These tests pin the cases
 // where it used to answer yes when the honest answer is no.
 import { test, expect } from "bun:test";
-import { DEFAULTS, K, solve, check, type Options } from "../src/geometry";
+import { DEFAULTS, K, solve, check, buildAll, partList, type Options } from "../src/geometry";
+import { geo } from "./geo";
 import { fitSpace } from "../src/solver";
-import { pack, bboxOf, type MeshData } from "../src/export";
+import { pack, bboxOf, meshDataOf, type MeshData } from "../src/export";
 
 const SHELF = { w: 600, d: 600, h: 500, front: 40 };
 
@@ -235,3 +236,27 @@ test("a can that puts the deck's front ear on the pin below is rejected", () => 
     expect(check(options, solve(options)).some((w) => w.includes("seat")), `canD ${canD}`).toBe(false);
   }
 });
+
+// check() sized the deck and the side walls and never the end wall, which lies flat as
+// OW × (H - te). A big can on a narrow bed passed check() and then pack() refused it:
+// "lane-end-wall-01 is 124 × 138 mm and fits no plate on a 120 × 256 mm bed".
+test("every layout check() passes also packs, end walls included", () => {
+  // Narrow beds where the old check() also offered a short lane whose end wall pack()
+  // refused (127 and 137 mm here) beside longer lanes that fit. Every case must still
+  // offer something, or it tests nothing.
+  const cases: [Options, boolean][] = [
+    [{ ...DEFAULTS, canD: 110, bed: [120, 256, 256], slope: 10 }, false],
+    [{ ...DEFAULTS, canD: 120, bed: [140, 256, 256], slope: 3 }, true],
+    [{ ...DEFAULTS, canD: 120, bed: [140, 256, 256], slope: 3, rearLoad: true }, true],
+    [DEFAULTS, true],
+  ];
+  for (const [base, cascade] of cases) {
+    const layouts = fitSpace({ w: 300, d: 700, h: 400, front: 40 }, base, { cascade });
+    expect(layouts.length, `canD ${base.canD} bed ${base.bed}`).toBeGreaterThan(0);
+    for (const layout of layouts) {
+      const o = layout.options;
+      const parts = geo.arena(() => partList(buildAll(geo, o, layout.derived), o).map((p) => ({ mesh: meshDataOf(p.name, p.mesh.getMesh()), qty: p.qty })));
+      expect(() => pack(parts, o.bed, o.bedMargin), `bed ${o.bed} length ${layout.derived.L}`).not.toThrow();
+    }
+  }
+}, 60_000);
