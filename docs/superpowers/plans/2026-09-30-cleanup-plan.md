@@ -18,9 +18,12 @@ option axes** rather than refactoring them (section D).
 
 - Done: A1 dead bits (`f5a26bf`, `135506c`), A3 one mesh converter (`7232086`), A4 clutter
   (`ec1e70d`), B1+ arena (`1a21a15`, with hardening B1).
-- Next: B2+ (delete manual frees). Open before it: tests and `ref.ts` build outside any arena
-  and today lean on the manual frees; measure the unit suite's peak RSS without them, and
-  wrap uncached test builds in `geo.arena` if it climbs.
+- Done: B2+ manual frees (`244b72c`; unit suite peak 854 → 885 MB, `ref.ts` 341 MB),
+  B3+ worker client (`f101f0a`), B5+ config parsing (`fe97d5d`, kept the byte signatures:
+  parsing a small JSON twice costs nothing and no exported signature moved), B6+ `rowWidth`
+  (`d822e47`). B4+ dropped (see below).
+- Next: hardening B7 (rank even-tier rear-load cascades down), B9 (tests that can fail),
+  then cleanup A2, C1 onward.
 
 ## Safety nets (every step)
 

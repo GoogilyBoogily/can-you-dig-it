@@ -63,26 +63,26 @@ B1. **WASM heap leak (was 1.1). DONE `1a21a15`** (the 20-rebuild UI case was not
       Run for flat default and Gridfinity with magnets.
     - UI: one `test-ui/` case, 20 rebuilds, no error in the status line.
     - Spot-check `viewer.ts` disposes three.js geometries across rebuilds (same class, GPU side).
-B2. **Worker recovery (was 1.6, shrunk).** With B1 fixed a build is short and `buildId` already
+B2. **DONE `f101f0a`** **Worker recovery (was 1.6, shrunk).** With B1 fixed a build is short and `buildId` already
     drops stale results, so no terminate-on-supersede. Two things only:
     - `main.ts:159`: an error from a superseded build (`r.id !== buildId`) goes to
       `console.warn`, not `fail()`.
     - After a kernel abort (`Aborted()` / `RuntimeError`), the module is poisoned: terminate,
       create a new Worker, re-bind `onmessage` / `onerror` / `onmessageerror`, rebuild once.
       `last` is lost, which is safe: downloads are locked while a build is pending.
-B3. **Job-size cap (was 2.6).** Lower the shelf maxima in `LIMITS` (`validate.ts`) — recommended
+B3. **DONE `8904c3a`** **Job-size cap (was 2.6).** Lower the shelf maxima in `LIMITS` (`validate.ts`) — recommended
     2000 mm per axis — instead of a new "job size" concept. A 5000³ link today is 7595 plates,
     33 s, 66 MB. Test: `validation.test.ts` rejects 2001. Check no UI preset exceeds it.
-B4. **`check()` skips the end wall (was 1.2).** Laid size is OW × (end-wall height − deck line),
+B4. **DONE `a654826`** **`check()` skips the end wall (was 1.2).** Laid size is OW × (end-wall height − deck line),
     per role (top/bottom). Add it to the bed check in both orientations, through the same
     keep-out-aware rule `pack` uses. Test as a property: for a sweep of narrow beds (incl.
     [120,256,256] canD 120, and a P1S keep-out bed), every layout `check()` passes also packs.
     Include a rearLoad top tier (no end wall there, lower tiers still have one). No ref change.
-B5. **Solver: pin height (was 1.4).** The top wall is `H + K.pinH`; `K.coverT === K.pinH`, so
+B5. **DONE `e87158f`** **Solver: pin height (was 1.4).** The top wall is `H + K.pinH`; `K.coverT === K.pinH`, so
     one `pinH` per stack covers cover or no cover. Add it in `layoutFor` *and* `laneNeeds` in
     the same commit, or `solver.test.ts`'s "fits / 1 mm under doesn't" test breaks. Pinned
     shelves (254, 240 tall) and the 12-inch fourth can are unaffected.
-B6. **Solver: gang stub (was 1.3). BLOCKED ON A DECISION.** The +Y end deck reaches `gangReach`
+B6. **DONE `d822e47`** **Solver: gang stub (was 1.3). BLOCKED ON A DECISION.** The +Y end deck reaches `gangReach`
     (17) past its wall; `n·gangPitch` already holds one gap, so the row is 14 mm wider than
     charged. Charging it honestly makes the **default 300 mm shelf drop to 1 lane** (296 >
     300 − 8), halving the default job and breaking `test-ui/profile.ui.test.ts:249/252`
@@ -99,7 +99,7 @@ B6. **Solver: gang stub (was 1.3). BLOCKED ON A DECISION.** The +Y end deck reac
 B7. **Rear-load in the solver.** Even-tier cascades with `rearLoad` on only warn in `check()`.
     Rank them below odd counts in `rank()` (`solver.ts:127`). Retires an open question with no
     print.
-B8. **Fail loud at the boundaries (was 2.1–2.4).**
+B8. **DONE `fe97d5d`** **Fail loud at the boundaries (was 2.1–2.4).**
     - Keep-out parse failure (`main.ts:300`): message in `#profileNow`, not `setStatus`
       ("Building parts…" overwrites that at once).
     - `picksFromConfig` bare catch (`profiles.ts:147`): log it. Expect noise in
