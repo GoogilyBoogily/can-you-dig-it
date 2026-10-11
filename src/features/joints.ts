@@ -125,3 +125,61 @@ export function gangJoint(g: Geo, spec: { run: number; clearance: number; throug
   const female = g.prismZ(t(clearance), through + 2 * OVER, -OVER);
   return { male, female, notch: earPocket(g, wall, clearance) };
 }
+
+/** One prong pair, in (v, u): v across the tab, the way the prongs flex, u along them
+ *  from the plate edge (u = 0) to the tip. Each prong is snapT wide at the tab's edge
+ *  and carries a hook `hook` proud of it, peaking at `peak`. Its return face climbs
+ *  `returnSlope` in u per unit of v toward the root, its lead-in runs `leadSlope` per
+ *  unit of v toward the tip, and the whole is clipped at the tip. */
+export interface SnapSpec { width: number; tip: number; peak: number; hook: number; returnSlope: number; leadSlope: number }
+
+export function snapProfile(g: Geo, spec: SnapSpec): CS {
+  const { width, tip, peak, hook, returnSlope, leadSlope } = spec;
+  const edge = width / 2;
+  const prong = g.cs2d(
+    g.rect(edge - K.snapT, 0, edge, tip),
+    g.poly([[edge, peak - hook * returnSlope], [edge + hook, peak], [edge, peak + hook * leadSlope]]),
+  );
+  const pair = g.cs2d(prong, prong.mirror([1, 0]));
+  return pair.intersect(g.rect(-width, 0, width, tip));
+}
+
+/** The slots that free a prong pair, cut into the plate from its edge down `root`: the
+ *  middle between the prongs, and one as wide as a prong outside each. */
+export function snapRelief(g: Geo, width: number, root: number): CS {
+  const edge = width / 2, inner = edge - K.snapT;
+  return g.cs2d(
+    g.rect(-inner, -root, inner, OVER),
+    g.rect(edge, -root, edge + K.snapT, OVER),
+    g.rect(-edge - K.snapT, -root, -edge, OVER),
+  );
+}
+
+/** The wall-top pin as a snap. The return face starts a clearance above the cover's top
+ *  face and climbs 30° off square, so it holds a full lane and still comes apart with a
+ *  firm pull; the lead-in is 45°, which keeps the tip under 4 mm. The wall above catches
+ *  it in the same profile grown by the clearance. */
+export function pinSnap(clearance: number): SnapSpec {
+  const hook = clearance + K.snapCatch;
+  const returnSlope = Math.tan(Math.PI / 6);
+  const peak = K.coverT + clearance + hook * returnSlope;
+  return { width: K.tabW, tip: peak + hook, peak, hook, returnSlope, leadSlope: 1 };
+}
+
+/** How far a pin's tip stands above its wall top: what the stack is charged on top. */
+export const snapTop = (o: Options) => pinSnap(clearanceOf(o)).tip;
+
+/** A tab that drops through a slot `length` deep: the hook's return face runs parallel
+ *  to the slot's 45° flare, a clearance off it, and the 30° lead-in is clipped at the
+ *  tip, which is the slot's far face. */
+export function tabSnap(clearance: number, length: number, width: number): SnapSpec {
+  const hook = clearance + K.snapCatch;
+  return { width, tip: length, peak: length - K.snapFlare + hook, hook, returnSlope: 1, leadSlope: 1 / Math.tan(Math.PI / 6) };
+}
+
+/** The flare at the far end of a slot `tip` deep, in the same (v, u) frame: the straight
+ *  slot's half-width plus 45° outward over the last snapFlare, run OVER past the face. */
+export function flareProfile(g: Geo, width: number, clearance: number, tip: number): CS {
+  const start = width / 2 + clearance, from = tip - K.snapFlare, wide = start + K.snapFlare + OVER;
+  return g.poly([[-start, from], [start, from], [wide, tip + OVER], [-wide, tip + OVER]]);
+}

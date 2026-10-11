@@ -112,6 +112,11 @@ export const K = {
   // concentric with r 3.75 at the top. Magnets 6 × 2 on a 26 mm square in every cell
   gridPitch: 42, gridGap: 0.25, unitH: 7, footFlat: 35.6, footChamferLo: 0.8, footWall: 1.8,
   footChamferHi: 2.15, footR: 3.75, magnetR: 3.25, magnetDepth: 2.4, magnetPitch: 26,
+  // the snap: every tab is two snapT prongs at its edges with a hook snapCatch past the
+  // mouth it springs through, freed by relief slots so the hook sits snapLen from the
+  // prong's root - 2.5 % strain in PETG at that catch. A tab's catch is a snapFlare-deep
+  // 45° flare at the far side of the slot it drops through
+  snapT: 1.6, snapCatch: 0.5, snapLen: 7, snapFlare: 2,
 };
 
 /** Where the end ears sit in from the deck ends: the ear starts 1 mm inside. */

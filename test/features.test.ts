@@ -1,10 +1,10 @@
 // Every joint's two halves come from one spec here, so a tab cannot drift from its slot.
 // Each pair is checked the same way: the male sits entirely inside the female (their
 // intersection is the male), and the shell between them is exactly the clearance.
-import { test, expect } from "bun:test";
+import { test, expect, describe } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint, earJoint } from "../src/features/joints";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint, earJoint, snapProfile, snapRelief, pinSnap, tabSnap, flareProfile, snapTop } from "../src/features/joints";
 import { stand, lipPose, platePose, lay } from "../src/features/pose";
 import { recessDepth } from "../src/features/pocket";
 import { geo, overhangArea } from "./geo";
@@ -142,4 +142,54 @@ test("the recess goes down to the web, and not at all on a wall no thicker than 
   expect(recessDepth(DEFAULTS)).toBeCloseTo(DEFAULTS.wall - K.web, 9);
   expect(recessDepth({ ...DEFAULTS, design: "minimal" })).toBeCloseTo(DEFAULTS.wall - K.ligMin, 9);
   expect(recessDepth({ ...DEFAULTS, wall: K.web + 0.1 })).toBe(0);
+});
+
+// The snap: every Z hold in the kit is one prong pair drawn in (v, u) - v across the tab,
+// the way the prongs flex, u along them toward the tip - and cut in a wall's or the lip's
+// own plane. The pin's hook climbs out of the wall top, the tab's sits at its tip inside
+// the slot's flare; both stand proud of the straight mouth by K.snapCatch whatever the fit.
+describe("the snap", () => {
+  for (const clearance of [K.cl, K.cl + 0.3]) {
+    const width = K.tabW;
+
+    test(`the pin's prongs at clearance ${clearance}`, () => {
+      const spec = pinSnap(clearance);
+      const profile = snapProfile(geo, spec);
+      const { min, max } = profile.bounds();
+      expect(profile.decompose().length).toBe(2); // two prongs, nothing joining them
+      expect(max[0]).toBeCloseTo(width / 2 + clearance + K.snapCatch, 6);
+      expect(min[0]).toBeCloseTo(-max[0], 6);
+      expect(min[1]).toBeCloseTo(0, 6);
+      expect(max[1]).toBeCloseTo(spec.tip, 6);
+      // the return face starts a clearance above the cover's top face
+      expect(spec.peak - spec.hook * spec.returnSlope).toBeCloseTo(K.coverT + clearance, 6);
+    });
+
+    test(`the tab's hook sits in the slot's flare at clearance ${clearance}`, () => {
+      const length = K.deckLo + clearance;
+      const spec = tabSnap(clearance, length, width);
+      const profile = snapProfile(geo, spec);
+      const mouth = geo.cs2d(geo.rect(-width / 2 - clearance, -OVER, width / 2 + clearance, length + OVER), flareProfile(geo, width, clearance, length));
+      expect(profile.intersect(mouth).area()).toBeCloseTo(profile.area(), 6);
+      // the catch: past the straight slot by snapCatch, and nothing past the tip
+      expect(profile.bounds().max[0] - (width / 2 + clearance)).toBeCloseTo(K.snapCatch, 6);
+      expect(profile.bounds().max[1]).toBeCloseTo(length, 6);
+    });
+  }
+
+  test("the pin stands about 3.8 mm above the wall top", () => {
+    expect(snapTop(DEFAULTS)).toBeCloseTo(K.coverT + K.cl + (K.cl + K.snapCatch) * (Math.tan(Math.PI / 6) + 1), 6);
+    expect(snapTop(DEFAULTS)).toBeGreaterThan(3.8);
+    expect(snapTop(DEFAULTS)).toBeLessThan(3.9);
+  });
+
+  test("the relief frees each prong to K.snapLen from its hook", () => {
+    const spec = pinSnap(K.cl);
+    const root = K.snapLen - spec.peak;
+    const relief = snapRelief(geo, K.tabW, root);
+    expect(relief.decompose().length).toBe(3); // the middle and one outside each prong
+    expect(relief.bounds().min[1]).toBeCloseTo(-root, 6);
+    // the relief and the prongs never overlap
+    expect(relief.intersect(snapProfile(geo, spec)).area()).toBeCloseTo(0, 6);
+  });
 });
