@@ -76,6 +76,8 @@ X1 Carbon 0.4, 0.20mm Standard @BBL X1C, Bambu PETG Basic.
 - **Re-measured the same day on the P2S** (the printer this is built for), 0.20mm Standard
   @BBL P2S, Bambu PETG Basic: **40.4 h**, `JOB_FLOW` 7.95 (plates 7.21–8.75). Its stock
   outer-wall acceleration is 6000, and 10000 saves **0.8 %**. Grams +4.6 %, as on the X1C.
+- **Re-sliced 2026-10-11** after the snap joins (P2S, same presets): **41.2 h**,
+  `JOB_FLOW` 8.12 (plates 7.62–8.77), Bambu 1434 g against our 1531 g.
 - **Keep-out fixed:** `pack()` keeps the corner clear (see `CLAUDE.md`). The X1C job now
   slices through the CLI with the exclusion area left in, on 20 plates.
 ## Why

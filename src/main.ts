@@ -258,10 +258,11 @@ const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p)
  *  Bambu Studio 02.08.02.61 CLI on all 18 plates: P2S 0.4, 0.20mm Standard @BBL P2S,
  *  Bambu PETG Basic; 1,155 cm³ in 40.4 h is 7.95. Plates ranged 7.21 (walls) to 8.75
  *  (bottom deck rear), so one number holds each plate to about ±10 %. An X1 Carbon on
- *  its own 0.20 Standard came out 7.77, 2 % off.
+ *  its own 0.20 Standard came out 7.77, 2 % off. Re-sliced 2026-10-11 after the snap
+ *  joins: 41.2 h, 8.12, plates 7.62 to 8.77.
  *  ponytail: one number for every printer and filament; scale by the filament's max flow
  *  once that is scraped into the index. */
-const JOB_FLOW = 7.95;
+const JOB_FLOW = 8.12;
 function jobHours(parts: PartOut[]) {
   const mm3 = parts.reduce((a, p) => a + p.grams / DENSITY * 1000 * p.qty, 0);
   return `, about ${(mm3 / JOB_FLOW / 3600).toFixed(0)} h (±30 %)`;

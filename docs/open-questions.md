@@ -7,6 +7,20 @@ When one gets decided, delete it here and put the decision where it belongs: a
 design-rules bullet in `CLAUDE.md`, a spec in `docs/superpowers/specs/`, or a code comment.
 This file only holds what's still open.
 
+## Snap joins (added 2026-10-11)
+
+- **The snap numbers are first guesses.** `K.snapCatch` 0.5, `snapLen` 7, `snapFlare` 2,
+  the pin's 30°-off-square return and 45° lead-in, the tab's 45° return: sized by the
+  cantilever strain formula for PETG at 2.5 %, not printed. The coupon (`bun run
+  coupon.ts`) carries every snap; print it on the P2S in translucent PETG and check that
+  each one goes in by hand, holds a loaded lane, and comes apart without breaking.
+- **The top tier's end walls lift out with nothing on top.** They drop in last and only
+  the cover or a tier above holds them down. With no cover, a stack lifted by its top
+  leaves them behind. Options: a snap in the cross-lap, or accept it.
+- **Units mate only when printed from the same settings.** The tongue positions come from
+  `laneOf`, so two jobs at different lengths or cans do not line up. The UI says so; the
+  app cannot compare two print jobs.
+
 ## Load from the back (`o.rearLoad`, added 2026-09-29)
 
 - **Nothing braces the side walls at the open end.** The end wall's body is what stops the

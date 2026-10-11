@@ -118,10 +118,22 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   tab through the slot to the wall top below. That is what locates a wall in X and Y and
   carries the deck on the tier below. The first cut stood the wall on an OW-wide rail
   with a sloped bottom edge and lost a row of cells to it (+15 % volume); ears cost +6 %.
-  Pins (2.4 mm tabs) at ±px on the wall tops go into notches in the wall above (X) and
-  the cover's holes (X and Y). Ears go where the deck is solid, not in ties. The three
-  numbers that keep an ear off a pin (`tabIn`, `tabClear`, `pinIn`) derive from `earW`
-  and `tabW`; do not hand-tune them. Ears were 12 and tabs 8 until 2026-09-20.
+  Pins at ±px on the wall tops go into chambers in the wall above (X) and the cover's
+  holes (X and Y). Ears go where the deck is solid, not in ties. The three numbers that
+  keep an ear off a pin (`tabIn`, `tabClear`, `pinIn`) derive from `earW`, `tabW` and the
+  pin's hooks; do not hand-tune them. Ears were 12 and tabs 8 until 2026-09-20.
+- Snaps (2026-10-11): every tab is a snap, so a stack lifts as one piece. One prong pair
+  (`snapProfile` in `joints.ts`): `snapT` prongs at the tab's edges, a hook `snapCatch`
+  past the mouth, freed by relief slots so the hook sits `snapLen` from the root (2.5 %
+  strain in PETG). The wall-top pin catches in a chamber in the wall above (the pin grown
+  by the clearance) or on the cover's top face, and stands `snapTop` (~3.8) where it stood
+  2.4: the solver charges that. The ear tab, the lip tab and the riser boss catch in a 45°
+  `snapFlare` at the bottom of their slot, inside the deck, so nothing hangs below z = 0.
+  A prong only flexes in the plane it printed in, so the riser prints on its side and the
+  grid deck's bosses stay plain. Lattice cells touching a relief or chamber are dropped
+  (walls ~63 % open, was 70 %). `tabClear` carries the hook: on the plain tab the end
+  ear's notch and a chamber left a sliver loose at fit 0.3. The catch and the angles are
+  unproven until the coupon prints. Spec in `docs/superpowers/specs/2026-10-11-snap-joins-design.md`.
 - A head (T, dovetail) only locks when the tongue enters in its own plane: deck splice,
   gang tongue. A wall dropping onto a deck gets a straight tab; two standing plates get
   a cross-lap. Nothing slides sideways to assemble. Spec in
@@ -136,9 +148,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   slotted from its top edge down to the same line, closed behind by its own post. The
   end wall drops in last: X from the side wall's slot, the side walls' Y from its body
   and the deck ears. `laneXe` is the one place its x lives (the viewer uses it too).
-  `o.stackable` (2026-10-11, off by default) gives a cascade's top the full wall, so a
-  tier can go on it later, and keeps it even with `rearLoad` (`check()` says so). It does
-  nothing to a flat stack: its tiers are one lane, pins and ears and all, already.
+  `o.stackable` ("Join on top", 2026-10-11, off by default) gives a cascade's top the full
+  wall, so a tier can go on it later, and keeps it even with `rearLoad` (`check()` says
+  so). It does nothing to a flat stack: its tiers are one lane, pins and ears and all.
 - Load from the back (`o.rearLoad`, 2026-09-29, off by default): one tier, `rearTier(o)`,
   prints without its end wall - the only tier, or the top of a stack (a cascade's lower
   tiers fill through it; a flat stack's still load from the front). A cascade's top faces the back on an odd tier count only; on an even one
@@ -205,13 +217,18 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   nothing under its −Y wall at four tabs of five. Decks set down onto each other; head
   locks Y, neck locks X. Walls are one part whatever the lane count (`wall-left` /
   `wall-right`). A ganged deck is `gangReach` (gap + wall + 8) wider on its +Y side;
-  `plateY` charges it, and the default gang packs on 18 plates (`test/pack.test.ts`). The
-  row's +Y end lane keeps a stub of tongue out of its side; a separate end deck to trim
-  it costs a fifth plate name and was judged not worth it. The solver charges the stub
-  (`rowWidth`), and it may use half the 4 mm side gap, so the default 300 mm shelf keeps
-  two lanes. Below about 260 mm a lane
-  can have no clear stretch; `check()` warns that such lanes stand loose. Only when
-  `gangs(o)`: `lanesWide > 1` and not on a grid (`test/gang.test.ts`). Spec in
+  `plateY` charges the widest deck, and the default gang packs on 18 plates
+  (`test/pack.test.ts`). The row's outer sides are the user's (`o.left`, `o.right`:
+  tongue, socket or none, 2026-10-11, default tongue and socket), so separately printed
+  units join on the left and right; the inner joints stay tongue into socket. A row whose
+  ends differ from that prints `deck-left-end` / `deck-right-end` (`deckKinds`; lane 0 is
+  the -Y end, as in the viewer), which reverses the 2026-09-30 call against an end deck.
+  Walls keep their tongue notches whatever the sides. The solver charges every outer
+  tongue (`rowWidth`, 14 mm each), may use half the 4 mm side gap for it, and refuses a
+  shelf a lone lane's stub does not fit; the default 300 mm shelf keeps two lanes. Below
+  about 265 mm a lane can have no clear stretch (split halves from 292); `check()` warns
+  that such lanes stand loose. Only when `gangs(o)`: some edge has a tongue or socket,
+  and not on a grid (`test/gang.test.ts`). Spec in
   `docs/superpowers/specs/2026-09-20-sliding-slot-joints-design.md`.
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
   `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
@@ -228,7 +245,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   parts; remeasure them when it moves.
 - Print hours in the UI are `filamentGrams` volume over `JOB_FLOW` (`main.ts`), one
   mm³/s for every printer, measured by slicing the default job in the Bambu Studio CLI
-  (P2S: 7.95; plates spread ±10 %). Re-slice and update it, and the print-cost spec,
+  (P2S: 8.12 since the snap joins, 2026-10-11; plates spread ±10 %). Re-slice and update it, and the print-cost spec,
   when geometry or `filamentGrams` moves the default job: `bun run slice.ts` does the
   whole round trip and prints the number. Its scratch lives in the gitignored `.slice/`.
 - Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of

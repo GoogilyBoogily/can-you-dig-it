@@ -188,5 +188,17 @@ coupon prints.
 
 ## Status, 2026-10-11
 
-Designed, not built. The Top dropdown's geometry (`o.stackable`) is in the working tree,
-uncommitted, with `test/stackable.test.ts`.
+Built on `snap-joins` (plan `docs/superpowers/plans/2026-10-11-snap-joins.md`). Where
+the build moved off this spec:
+
+- The pin's lead-in is 45°, not 30°: at 30° the tip stood 4.4 mm and its chamber reached
+  the 5 mm hex border. `snapTop` is 3.83.
+- The flare is 2 mm deep, not 1.5: the tab's 30° lead-in did not fit under the return
+  face at 1.5.
+- A prong's root is `snapLen` from the hook's peak, for every snap.
+- `tabClear` grew by the hook (px 196 → 195): the shortest lane that keys to its
+  neighbour is 265 mm (was 260), split halves 292 (290), cascade cans 43 mm (41).
+- Lattice cells beside each snap cut are dropped whole: walls 63 % open (70 %), lanes
+  337 g (320) on `filamentGrams`, `JOB_FLOW` 8.12 (7.95), the default job 41.2 h.
+- A lone lane's 14 mm tongue stub must fit the shelf: a 152 mm shelf no longer takes
+  one with the default left tongue.

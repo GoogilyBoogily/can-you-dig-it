@@ -676,9 +676,10 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
   return cuts;
 }
 
-/** What the snaps take out of a wall's edges, grown by the thinnest ligament we print so no cell runs into
- *  them: the relief over each ear tab, the relief under each wall-top pin, and the chamber
- *  over each pin of the tier below. A cell touching one is dropped, like any keep-out. */
+/** What the snaps take out of a wall's edges, grown by the thinnest ligament we print
+ *  so no cell runs into them: the relief over each ear tab, the relief under each
+ *  wall-top pin, and the chamber over each pin of the tier below. A cell touching one is
+ *  dropped, like any keep-out. */
 function snapKeepOuts(g: Geo, o: Options, d: Derived, ln: Lane, c: number): CS[] {
   const pin = pinSnap(c), tab = tabSnap(c, earNotchH(c), K.tabW);
   const half = K.tabW / 2 + K.snapT + K.ligMin, chamberHalf = K.tabW / 2 + pin.hook + c + K.ligMin;

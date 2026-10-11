@@ -8,13 +8,13 @@
 //   bun run coupon.ts "Bambu Lab X1 Carbon 0.4 nozzle"
 //
 // What goes together:
-//   deck-ear + wall-ear            the wall notches over the ear, its tab drops through the slot
+//   deck-ear + wall-ear            the wall notches over the ear, its tab snaps into the slot's flare
 //   splice-front + splice-rear     the deck halves drop together at the T
 //   gang-tongue + gang-socket      the tongue drops into the socket; wall-tongue notches over the tongue
-//   wall-pin-top + wall-pin-bottom the pin on one wall top goes into the notch in the wall above
-//   wall-pin-top + cover-corner    the same pin goes through the cover's hole
+//   wall-pin-top + wall-pin-bottom the pin on one wall top snaps into the chamber in the wall above
+//   wall-pin-top + cover-corner    the same pin snaps through the cover's hole
 //   end-wall-corner + wall-corner  the end wall's post drops into the side wall's corner slot
-//   lip + lip-pocket               the lip's tabs drop into the deck's pockets
+//   lip + lip-pocket               the lip's tabs snap into the deck's pockets
 //   pitch-deck + pitch-wall        three ears over ~145 mm into three notches: printer scale,
 //                                  not clearance. The -x pair prints along X, the -y pair
 //                                  along Y. Same-axis pairs fit and crossed ones do not: the
