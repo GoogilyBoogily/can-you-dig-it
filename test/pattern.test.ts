@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { K, DEFAULTS, PATTERNS, solve, laneOf, buildWall, buildEndWall, buildCover, type Options } from "../src/geometry";
 import { cellsOf } from "../src/features/lattice";
+import { earJoint } from "../src/features/joints";
 
 import { geo } from "./geo";
 
@@ -30,16 +31,19 @@ test.each([...PATTERNS])("%s cuts the walls, the end wall and the cover", (patte
 
 // A square's or a slat's bottom edge over an ear notch would be a 1.25 mm bridge across
 // 12.5 mm. Every pattern but hex starts its field padRise above the notch, where the
-// recess frame starts too, so the wall is full thickness from the notch top up.
+// recess frame starts too, so the wall is full thickness from the notch top up - but for
+// the slots that free the tab's snap prongs, which are through the wall and bridge nothing.
 test.each(PATTERNS.filter((p) => p !== "hex"))("%s leaves the wall solid over every ear notch", (pattern) => {
   const o: Options = { ...shortLane, pattern };
   const d = solve(o);
   const ln = laneOf(o, d, "top");
   const wall = buildWall(geo, o, d, ln, 1);
   const notchH = K.deckLo + K.cl + o.fit;
+  const relief = earJoint(geo, { wall: o.wall, through: 0, clearance: K.cl + o.fit }).notch;
   for (const tx of ln.tabs) {
     const probe = geo.box(K.earW + 2 * K.cl, o.wall, 4, tx, d.IW / 2 + o.wall / 2, notchH + 2);
-    expect(geo.isect(wall, probe).volume()).toBeCloseTo(probe.volume(), 3);
+    const expected = probe.volume() - geo.isect(probe, relief.translate([tx, d.py, 0])).volume();
+    expect(geo.isect(wall, probe).volume()).toBeCloseTo(expected, 3);
   }
 });
 
@@ -56,6 +60,9 @@ test.each([...PATTERNS])("%s keeps the bottom edge of the outer face full thickn
     const notches = [...ln.tabs, ...ln.tongues].sort((a, b) => a - b);
     for (let i = 0; i + 1 < notches.length; i++) {
       const x = (notches[i] + notches[i + 1]) / 2;
+      // a probe over the chamber a pin of the tier below snaps into is on that joint, not
+      // on the frame: the chamber runs through the wall up to ~4 mm
+      if (Math.abs(Math.abs(x) - d.px) < K.earW / 2) continue;
       const probe = geo.box(4, 1, 1, x, d.OW / 2 - 0.5, K.border / 2 + 1);
       expect(geo.isect(wall, probe).volume(), `${design} at x ${x}`).toBeCloseTo(probe.volume(), 3);
     }

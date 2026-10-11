@@ -4,6 +4,7 @@ import { test, expect } from "bun:test";
 import { DEFAULTS, K, solve, check, buildAll, partList, type Options } from "../src/geometry";
 import { geo } from "./geo";
 import { fitSpace } from "../src/solver";
+import { snapTop } from "../src/features/joints";
 import { pack, bboxOf, meshDataOf, type MeshData } from "../src/export";
 
 const SHELF = { w: 600, d: 600, h: 500, front: 40 };
@@ -59,7 +60,7 @@ test("check() passes a tall lane whose plates all print flat", () => {
 test("plateY covers the laid wall, not just the deck", () => {
   const options: Options = { ...DEFAULTS, canD: 150, canL: 100, slope: 10, length: 464, bed: [250, 210, 400] };
   const derived = solve(options);
-  expect(derived.plateY).toBe(Math.max(derived.H, derived.Hb) + K.pinH);
+  expect(derived.plateY).toBe(Math.max(derived.H, derived.Hb) + snapTop(options));
   expect(derived.plateY).toBeGreaterThan(derived.OW + K.gangGap);
   expect(check(options, derived).some((w) => w.startsWith("FAIL"))).toBe(true);
 });
@@ -219,19 +220,19 @@ test("pack() refuses a mesh with no geometry instead of poisoning the plate", ()
 // laneOf runs its interior tabs through clear(), which keeps them tabClear off the
 // wall-top pins at +-px, but places the two end tabs unconditionally. The rear one sets
 // where the pins go; the front one and the pin below it are |inset + tabIn - pinIn|
-// apart whatever the lane length, so a can under 41 mm drops the deck's ear straight
+// apart whatever the lane length, so a can under 43 mm drops the deck's ear straight
 // onto that pin (inset is canD + 6 + wall).
 // Every part is a valid one-piece solid with no
 // overhang - the snapshot, the island test and the overhang test all pass - and the tier
 // will not seat. Only cascade lanes have a chute, so only they have the clash.
 test("a can that puts the deck's front ear on the pin below is rejected", () => {
-  for (const canD of [20, 25, 31, 40]) {
+  for (const canD of [20, 25, 31, 40, 42]) {
     const options = { ...DEFAULTS, canD };
     expect(check(options, solve(options)).some((w) => w.startsWith("FAIL") && w.includes("seat")), `canD ${canD}`).toBe(true);
     // The flat style has no chute, so it keeps working and is still offered.
     expect(fitSpace({ w: 400, d: 400, h: 900, front: 0 }, options, { cascade: true }).every((l) => l.style === "flat")).toBe(true);
   }
-  for (const canD of [41, 66, 100]) {
+  for (const canD of [43, 66, 100]) {
     const options = { ...DEFAULTS, canD };
     expect(check(options, solve(options)).some((w) => w.includes("seat")), `canD ${canD}`).toBe(false);
   }

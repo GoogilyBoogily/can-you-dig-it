@@ -50,10 +50,18 @@ export function tSlotJoint(g: Geo, spec: { neck: number; head: number; clearance
 export const tabBox = (g: Geo, len: number, wall: number, z0: number): M =>
   g.box(K.tabW, K.tabT, len, 0, (K.tabT - wall) / 2, z0 + len / 2);
 
-/** The lip's tab, as the lip lies to print: `len` along x from 0, lipTabW across y,
- *  lipTabT thick from z = 0. */
-export const lipTab = (g: Geo, len: number): M =>
-  g.box(len, K.lipTabW, K.lipTabT, len / 2, 0, K.lipTabT / 2);
+/** The lip's tab as a snap, as the lip lies to print: x the insertion depth from the
+ *  blade (x = 0) to the tip at `len`, y across, lipTabT thick from z = 0; the relief it
+ *  needs cut back into the blade; and the flare under its pocket, in the deck's frame
+ *  with the pocket centred on the origin. The prongs flex across the lip, in its plane. */
+export function lipSnap(g: Geo, len: number, clearance: number): { tab: M; relief: M; flare: M } {
+  const snap = tabSnap(clearance, len, K.lipTabW);
+  const along = (cs: CS) => cs.rotate(-90); // (v, u) to (x = u, y = -v)
+  const tab = g.prismZ(along(withRoots(g, snapProfile(g, snap), K.lipTabW)), K.lipTabT);
+  const relief = g.prismZ(along(snapRelief(g, K.lipTabW, K.snapLen - snap.peak)), K.lipTabT + 2 * OVER, -OVER);
+  const flare = g.prismX(fromTip(flareProfile(g, K.lipTabW, clearance, len), len), K.lipTabT + 2 * clearance, -K.lipTabT / 2 - clearance);
+  return { tab, relief, flare };
+}
 
 /** The pocket that tab drops into, cut in the deck with the tab standing: lipTabT along x,
  *  lipTabW along y, each plus the clearance a side, `h` tall centred on z = zc. Was
@@ -64,15 +72,21 @@ export const lipTab = (g: Geo, len: number): M =>
 export const lipPocket = (g: Geo, clearance: number, h: number, zc: number): M =>
   g.box(K.lipTabT + 2 * clearance, K.lipTabW + 2 * clearance, h, 0, 0, zc);
 
-/** A pin on a wall top (or a boss on a riser or a grid deck) and what receives it: the
- *  notch in the bottom of the wall above, centred on the wall so the pin's offset to the
- *  inner face is inside it, and the hole through the cover. */
-export function pinJoint(g: Geo, spec: { wall: number; clearance: number }): { pin: M; notch: M; hole: M } {
+/** A pin on a wall top (or a boss on a riser) and what receives it: a snap whose prongs
+ *  are freed by `relief`, cut down from the wall top; the notch in the bottom of the wall
+ *  above, a mouth and a chamber that are the pin grown by the clearance, through the
+ *  wall; and the hole through the cover, whose top face the hooks catch. */
+export function pinJoint(g: Geo, spec: { wall: number; clearance: number }): { pin: M; notch: M; hole: M; relief: M } {
   const { wall, clearance: c } = spec;
-  const pin = tabBox(g, K.pinH, wall, 0);
-  const notch = g.box(K.tabW + 2 * c, wall + 2 * OVER, K.pinH + c + OVER, 0, 0, (K.pinH + c - OVER) / 2);
+  const snap = pinSnap(c);
+  const profile = snapProfile(g, snap);
+  const pin = g.prismY(profile, K.tabT, -wall / 2);
+  const mouth = g.cs2d(profile, g.rect(-K.tabW / 2, -OVER, K.tabW / 2, snap.tip)).offset(c, "Miter");
+  const through = (cs: CS) => g.prismY(cs, wall + 2 * OVER, -wall / 2 - OVER);
+  const notch = through(mouth);
+  const relief = through(snapRelief(g, K.tabW, K.snapLen - snap.peak));
   const hole = g.box(K.tabW + 2 * c, K.tabT + 2 * c, K.coverT + 2 * OVER, 0, (K.tabT - wall) / 2, K.coverT / 2);
-  return { pin, notch, hole };
+  return { pin, notch, hole, relief };
 }
 
 /** A joint piece on one side of the lane: mirrored across y for the -Y side (its y
@@ -84,17 +98,34 @@ export function placeSide(m: M, sy: number, x: number, y: number, z: number): M 
 
 /** The joint that carries a deck on a wall: the deck puts an ear out under the wall with
  *  a slot through it; the wall notches over the ear and leaves its tab standing in the
- *  notch to drop through the slot to the wall top below. Origin at the tab's x on the
- *  wall's centreline; +y is out through the wall. The ear roots earRoot into the deck. */
+ *  notch to drop through the slot to the wall top below. The tab is a snap: two prongs,
+ *  freed by relief slots up past the notch, whose hooks spring into a 45° flare at the
+ *  bottom of the slot - inside the ear, so nothing hangs below the deck. Origin at the
+ *  tab's x on the wall's centreline; +y is out through the wall. The ear roots earRoot
+ *  into the deck. */
 export function earJoint(g: Geo, spec: { wall: number; through: number; clearance: number }): { ear: M; slot: M; notch: M } {
   const { wall, through, clearance: c } = spec;
   const ear = g.box(K.earW, wall + K.earRoot, K.deckLo, 0, -K.earRoot / 2, K.deckLo / 2);
-  const slot = g.box(K.tabW + 2 * c, K.tabT + 2 * c, through + 2 * OVER, 0, (K.tabT - wall) / 2, through / 2);
   const notchH = earNotchH(c);
-  const pocket = earPocket(g, wall, c);
-  const tab = tabBox(g, notchH + 2 * OVER, wall, -OVER);
-  return { ear, slot, notch: g.diff(pocket, [tab]) };
+  const snap = tabSnap(c, notchH, K.tabW);
+  const slotY = (K.tabT - wall) / 2;
+  const flare = g.prismY(fromTip(flareProfile(g, K.tabW, c, notchH), notchH), K.tabT + 2 * c, slotY - K.tabT / 2 - c);
+  const slot = g.union([g.box(K.tabW + 2 * c, K.tabT + 2 * c, through + 2 * OVER, 0, slotY, through / 2), flare]);
+  const tab = g.prismY(fromTip(withRoots(g, snapProfile(g, snap), K.tabW), notchH), K.tabT, -wall / 2);
+  const relief = g.prismY(fromTip(snapRelief(g, K.tabW, K.snapLen - snap.peak), notchH), wall + 2 * OVER, -wall / 2 - OVER);
+  return { ear, slot, notch: g.union([g.diff(earPocket(g, wall, c), [tab]), relief]) };
 }
+
+/** A hanging snap's (v, u) to a plate's (x, z): u runs down from `tip` above z = 0, so
+ *  the tip lands on z = 0. */
+const fromTip = (cs: CS, tip: number): CS => cs.mirror([0, 1]).translate([0, tip]);
+
+/** The prongs run on OVER back into their plate, so the cut that leaves them standing
+ *  has no face on the plate edge. */
+const withRoots = (g: Geo, profile: CS, width: number): CS => {
+  const edge = width / 2;
+  return g.cs2d(profile, g.rect(edge - K.snapT, -OVER, edge, 0), g.rect(-edge, -OVER, -edge + K.snapT, 0));
+};
 
 /** The notch in a wall's bottom edge that an ear-wide piece at deck level passes under:
  *  the ear's own (less the tab it leaves standing), and a gang tongue's. */

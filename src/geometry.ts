@@ -2,8 +2,8 @@
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
-import { clearanceOf, earNotchH, tSlotJoint, gangJoint, lipTab, lipPocket, crossLap, pinJoint, placeSide, earJoint } from "./features/joints";
-import { lay, platePose } from "./features/pose";
+import { clearanceOf, earNotchH, tSlotJoint, gangJoint, lipSnap, lipPocket, crossLap, pinJoint, placeSide, earJoint, tabBox, snapTop, pinSnap, tabSnap } from "./features/joints";
+import { lay, platePose, riserPose } from "./features/pose";
 import { cellsOf, ligFor, autoR, rowsRadius, ROWS } from "./features/lattice";
 import { recessDepth, roundOver, roundTop } from "./features/pocket";
 import { gridUnit } from "./features/gridfinity";
@@ -121,9 +121,11 @@ export const K = {
 
 /** Where the end ears sit in from the deck ends: the ear starts 1 mm inside. */
 const tabIn = K.earW / 2 + 1;
-/** How far an ear keeps from the seam and from a pin: the two solids touch at
- *  earW/2 + tabW/2, and 2 mm more is clearance, not a hair. */
-const tabClear = K.earW / 2 + K.tabW / 2 + 2;
+/** How far an ear keeps from the seam and from a pin: the two solids touch at earW/2
+ *  plus the pin's half-width, hooks and chamber included (tabW/2 + snapCatch + 2·cl),
+ *  and 2 mm more is clearance, not a hair. On the plain tab's tabW/2 the chamber left a
+ *  0.5 mm web beside the end ear's notch at fit 0, and none at fit 0.3. */
+const tabClear = K.earW / 2 + K.tabW / 2 + K.snapCatch + 2 * K.cl + 2;
 /** How far in from the lane end the wall-top pins sit (±px): just clear of the rear end
  *  ear, which stands tabIn in from the end wall. Was a fixed 40, which the 24 mm ear
  *  reached. */
@@ -214,7 +216,7 @@ export function solve(o: Options): Derived {
   // A ganged deck's tongues reach past its walls: gangReach on the +Y side alone.
   // gangPitch keeps its gap: that is the spacing between lanes on the shelf, not a
   // plate's own footprint.
-  const wallPlateY = Math.max(H, Hb) + K.pinH;
+  const wallPlateY = Math.max(H, Hb) + snapTop(o);
   const deckPlateY = grid ? foot[3] - foot[1] : OW + (gangs(o) ? gangReach(o) : 0);
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall;
@@ -225,7 +227,7 @@ export function solve(o: Options): Derived {
     gangPitch,
     plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
     plateY: Math.max(deckPlateY, wallPlateY),
-    plateZ: Math.max(deckPlateZ, wallPlateZ, o.base === "feet" ? 24 + K.pinH : 0),
+    plateZ: Math.max(deckPlateZ, wallPlateZ), // a riser prints on its side, as thick as a wall
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
 }
@@ -595,10 +597,11 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
       }
     }
   }
+  const lip = lipSnap(g, lipTabLength(d), clearanceOf(o));
   for (const sy of [1, -1]) {
     for (const tx of ln.tabs) cuts.push(placeSide(earJ.slot, sy, tx, sy * d.py, 0));
     const pocket = lipPocket(g, clearanceOf(o), 40, 10);
-    cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]));
+    cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]), lip.flare.translate([ln.lipx, sy * d.lipy, 0]));
   }
   const deck = g.assemble(adds, cuts);
   return deck;
@@ -618,6 +621,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   for (const sx of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
   const cuts: M[] = [g.prismX(roundOver(g, sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
+  for (const sx of [1, -1]) cuts.push(pinJ.relief.translate([sx * d.px, sy * d.py, H]));
   cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ));
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
   const m = g.assemble(adds, cuts);
@@ -640,6 +644,20 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
   return cuts;
 }
 
+/** What the snaps take out of a wall's edges, grown by the thinnest ligament we print so no cell runs into
+ *  them: the relief over each ear tab, the relief under each wall-top pin, and the chamber
+ *  over each pin of the tier below. A cell touching one is dropped, like any keep-out. */
+function snapKeepOuts(g: Geo, o: Options, d: Derived, ln: Lane, c: number): CS[] {
+  const pin = pinSnap(c), tab = tabSnap(c, earNotchH(c), K.tabW);
+  const half = K.tabW / 2 + K.snapT + K.ligMin, chamberHalf = K.tabW / 2 + pin.hook + c + K.ligMin;
+  const tabTop = earNotchH(c) + K.snapLen - tab.peak + K.ligMin;
+  return [
+    ...ln.tabs.map((tx) => g.rect(tx - half, -1, tx + half, tabTop)),
+    ...[1, -1].map((sx) => g.rect(sx * d.px - half, ln.H - (K.snapLen - pin.peak) - K.ligMin, sx * d.px + half, ln.H + 1)),
+    ...[1, -1].map((sx) => g.rect(sx * d.px - chamberHalf, -1, sx * d.px + chamberHalf, pin.tip + c + K.ligMin)),
+  ];
+}
+
 /** The lattice through the wall and the recess of its outer face down to a web, both
  *  clear of the seam's border and the corner slot's column. */
 function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number): M[] {
@@ -649,7 +667,7 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   const keep: CS[] = [];
   if (d.split) keep.push(g.rect(-b, 0, b, H));
   const endNotch = g.rect(ln.xe - 3 - c, -1, L / 2 + 1, H + 1);
-  keep.push(endNotch);
+  keep.push(endNotch, ...snapKeepOuts(g, o, d, ln, c));
   const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
   const cuts: M[] = [];
   const wcells = cellsOf(g, o.pattern, d.hexR, d.lig, panel, keep);
@@ -703,7 +721,7 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   return g.assemble(adds, cuts);
 }
 
-export { platePose, lipPose, stand, type Pose } from "./features/pose";
+export { platePose, lipPose, riserPose, stand, type Pose } from "./features/pose";
 
 /** Lay a side wall flat, outer face up. The viewer stands it back up with the same pose. */
 const layWall = (m: M, sy: number, IW: number): M => lay(m, platePose(sy > 0 ? "wall-left" : "wall-right", IW, 0));
@@ -741,6 +759,10 @@ export function splitWall(g: Geo, d: Derived, wall: M): [M, M] {
   return [half(-1), half(1)];
 }
 
+/** How deep the lip's tab drops: the deck's thickness at the lip pocket, so the tab ends
+ *  flush with the underside at every slope. */
+const lipTabLength = (d: Derived) => K.deckLo + K.lipInset * d.tan;
+
 /** The dispense lip, flat on its back: blade x ∈ [-lipH, 0], tabs past x = 0 in the bed
  *  plane, the scoop a vertical cylinder past the top edge. The face-up edges round, and
  *  that face goes toward the cans. */
@@ -751,29 +773,32 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // maps (x, y, z) to (z, y, -x): this x is the insertion depth, and the t is what has to
   // fit the pocket, lipTabT plus the clearance a side. A fixed 6 protruded by 2 - 8*tan -
   // up to a 2 mm stud at slope 0.
-  const tabLen = K.deckLo + K.lipInset * d.tan;
+  const tabLen = lipTabLength(d);
   // The blade drops between the wall inner faces, so its width is a clearance like any
   // other: K.cl + fit a side. It was a flat 0.5 mm a side however the fit was set, then
   // 0.5 + fit; now the same 0.25 every other joint gets.
   const outline = g.roundedRect(K.lipH, d.IW - 2 * clearanceOf(o), 2.4).translate([-K.lipH / 2, 0]);
   const parts = [roundTop(g, g.prismZ(outline, t), outline, t, 2)];
+  const snap = lipSnap(g, tabLen, clearanceOf(o));
+  const cuts = [g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64)]; // the scoop
   for (const sy of [1, -1]) {
-    const tab = lipTab(g, tabLen);
-    parts.push(tab.translate([0, sy * d.lipy, 0]));
+    parts.push(snap.tab.translate([0, sy * d.lipy, 0]));
+    cuts.push(snap.relief.translate([0, sy * d.lipy, 0]));
   }
-  const scoop = g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64);
-  return g.assemble(parts, [scoop]);
+  return g.assemble(parts, cuts);
 }
 
 /** A foot under a wall at ±px: as thick as the wall, since the deck starts at the wall's
- *  inner face and the next gang 3 mm past its outer one. The boss goes into the wall's
- *  bottom notch. */
+ *  inner face and the next gang 3 mm past its outer one. The boss is the wall-top pin's
+ *  snap and goes into the wall's bottom notch. Built standing, laid on its side to print:
+ *  stood up, the prongs would flex across their layers. */
 function buildRiser(g: Geo, o: Options, h: number): M {
-  const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 }); // the boss is the male: clearance is the notch's
-  // the boss is centred on the riser, not flush with an inner face - a riser has none
-  const boss = pinJ.pin.translate([0, (o.wall - K.tabT) / 2, h]);
-  const riser = g.union([g.box(K.riserL, o.wall, h, 0, 0, h / 2), boss]);
-  return riser;
+  const pinJ = pinJoint(g, { wall: o.wall, clearance: clearanceOf(o) });
+  // the boss stays flush with the face the riser prints on (-y), so it rises off the bed
+  // with it; centred, its underside hung in the air
+  const boss = pinJ.pin.translate([0, 0, h]);
+  const riser = g.assemble([g.box(K.riserL, o.wall, h, 0, 0, h / 2), boss], [pinJ.relief.translate([0, 0, h])]);
+  return lay(riser, riserPose);
 }
 
 /** The bottom-tier deck as a Gridfinity bin: the ordinary deck on a 7 mm unit that
@@ -787,8 +812,10 @@ function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
   const unit = gridUnit(g, d, o.magnets);
   const adds = [deck, unit.floor];
   if (unit.skirt) adds.push(unit.skirt);
-  const pinJ = pinJoint(g, { wall: o.wall, clearance: 0 });
-  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, 0));
+  // plain bosses, not snaps: the grid deck prints feet down, so a prong here would flex
+  // across its layers, and the walls' tabs already snap them to the deck
+  const boss = tabBox(g, K.pinH, o.wall, 0);
+  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(placeSide(boss, sy, sx * d.px, sy * d.py, 0));
   const cuts = [...unit.pockets];
   for (const sy of [1, -1]) cuts.push(lipPocket(g, clearanceOf(o), 2, 0).translate([ln.lipx, sy * d.lipy, 0]));
   const out = g.assemble(adds, cuts);

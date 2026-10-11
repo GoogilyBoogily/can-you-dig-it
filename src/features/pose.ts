@@ -28,6 +28,10 @@ export function platePose(plate: PlateName, IW: number, xe: number): Pose {
   }
 }
 
+/** A riser is built standing on the shelf and prints on its side, its -y face down, so
+ *  its boss's prongs flex in the plane they were printed in. */
+export const riserPose: Pose = { rotate: [-90, 0, 0], translate: [0, 0, 0] };
+
 /** The lip is built lying on its back with the blade at x ≤ 0; standing, the blade rises
  *  from the deck at the lip pocket, whose near edge is lipInset - half the lipTabT tab in
  *  from the deck start. */

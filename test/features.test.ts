@@ -4,7 +4,7 @@
 import { test, expect, describe } from "bun:test";
 import type { Manifold as M } from "manifold-3d";
 import { K, DEFAULTS, solve, gangInner } from "../src/geometry";
-import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipTab, lipPocket, crossLap, pinJoint, earJoint, snapProfile, snapRelief, pinSnap, tabSnap, flareProfile, snapTop } from "../src/features/joints";
+import { clearanceOf, OVER, tabBox, tSlotJoint, gangJoint, tProfile, lipPocket, crossLap, pinJoint, earJoint, snapProfile, snapRelief, pinSnap, tabSnap, flareProfile, snapTop, lipSnap } from "../src/features/joints";
 import { stand, lipPose, platePose, lay } from "../src/features/pose";
 import { recessDepth } from "../src/features/pocket";
 import { geo, overhangArea } from "./geo";
@@ -82,16 +82,23 @@ test("the corner cross-lap: post inside slot, slot open at the wall top", () => 
   }
 });
 
-test("the pin: inside the notch above and the cover hole at every clearance", () => {
+test("the pin: a snap in the chamber above, its hooks over the cover's hole", () => {
   for (const clearance of [K.cl, K.cl + 0.3]) {
     const j = pinJoint(geo, { wall: 6, clearance });
+    const snap = pinSnap(clearance);
     expect(geo.isect(j.pin, j.notch).volume()).toBeCloseTo(j.pin.volume(), 3);
-    expect(geo.isect(j.pin, j.hole).volume()).toBeCloseTo(j.pin.volume(), 3);
-    expect(j.pin.boundingBox().max[2]).toBeCloseTo(K.pinH, 6);
-    // containment alone passes on an oversized female: the shell is the clearance on
-    // both in-plane axes, and on the notch's x (its y runs through the wall)
-    expect(grownBy(j.pin, j.hole)).toEqual([clearance, clearance]);
-    expect(grownBy(j.pin, j.notch)[0]).toBeCloseTo(clearance, 6);
+    expect(j.pin.boundingBox().max[2]).toBeCloseTo(snap.tip, 6);
+    // the shaft keeps the clearance a side in the mouth and the hole; the hooks pass both
+    // by snapCatch, which is the catch
+    const shaftZ = K.coverT / 2, peakZ = snap.peak;
+    const reach = (m: M, z: number) => m.slice(z).bounds().max[0];
+    expect(reach(j.notch, shaftZ) - reach(j.pin, shaftZ)).toBeCloseTo(clearance, 6);
+    expect(reach(j.pin, peakZ) - reach(j.notch, shaftZ)).toBeCloseTo(K.snapCatch, 6);
+    expect(reach(j.pin, peakZ) - reach(j.hole, shaftZ)).toBeCloseTo(K.snapCatch, 6);
+    // up to the cover's top face the pin is inside the hole, and the hooks start above it
+    const inCover = geo.isect(j.pin, geo.box(40, 40, K.coverT, 0, 0, K.coverT / 2));
+    expect(geo.isect(inCover, j.hole).volume()).toBeCloseTo(inCover.volume(), 3);
+    expect(grownBy(inCover, j.hole)).toEqual([clearance, clearance]);
   }
 });
 
@@ -103,12 +110,18 @@ function grownBy(inner: M, outer: M): [number, number] {
 }
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
-test("the lip tab, stood up, sits inside its pocket", () => {
+test("the lip tab, stood up, snaps into its pocket's flare", () => {
   for (const clearance of [K.cl, K.cl + 0.3]) {
-    const tab = stand(lipTab(geo, 4.4), lipPose(-K.lipInset + K.lipTabT / 2, 0)); // pose puts the pocket's near edge at x = 0 here
-    const pocket = lipPocket(geo, clearance, 40, 10).translate([K.lipTabT / 2, 0, 0]);
+    const len = K.deckLo;
+    const lip = lipSnap(geo, len, clearance);
+    const tab = stand(lip.tab, lipPose(-K.lipInset + K.lipTabT / 2, 0)); // pose puts the pocket's near edge at x = 0 here
+    const pocket = geo.union([lipPocket(geo, clearance, 40, 10), lip.flare]).translate([K.lipTabT / 2, 0, 0]);
     expect(geo.isect(tab, pocket).volume()).toBeCloseTo(tab.volume(), 3);
-    expect(pocket.boundingBox().max[1] - tab.boundingBox().max[1]).toBeCloseTo(clearance, 6);
+    expect(tab.boundingBox().min[2]).toBeCloseTo(0, 6); // flush with the deck's underside
+    const hook = clearance + K.snapCatch, straightZ = len - 0.5;
+    const reach = (m: M, z: number) => m.slice(z).bounds().max[1];
+    expect(reach(pocket, straightZ) - reach(tab, straightZ)).toBeCloseTo(clearance, 6);
+    expect(reach(tab, K.snapFlare - hook) - reach(pocket, straightZ)).toBeCloseTo(K.snapCatch, 6);
   }
 });
 
@@ -123,8 +136,16 @@ test("the ear joint: the wall's tab fills the ear's slot, the ear fills the notc
     // slab's untouched sides would count as "standing" too and can't fit in the slot
     const tab = geo.isect(notched, geo.box(K.earW, wall + 1, deckLo + clearance, 0, 0, (deckLo + clearance) / 2));
     expect(geo.isect(tab, j.slot).volume()).toBeCloseTo(tab.volume(), 3);
-    expect(tab.boundingBox().max[0] - tab.boundingBox().min[0]).toBeCloseTo(K.tabW, 6);
-    expect(grownBy(tab, j.slot)).toEqual([clearance, clearance]);
+    // two prongs at the tab's edges, each hook snapCatch past the straight slot, which
+    // keeps the clearance a side above the flare; nothing hangs below the deck
+    const hook = clearance + K.snapCatch, peakZ = K.snapFlare - hook, straightZ = deckLo - 0.5;
+    expect(tab.decompose().length).toBe(2);
+    expect(tab.boundingBox().max[0] - tab.boundingBox().min[0]).toBeCloseTo(K.tabW + 2 * hook, 6);
+    expect(tab.boundingBox().min[2]).toBeCloseTo(0, 6);
+    const reach = (m: M, z: number, axis: 0 | 1) => m.slice(z).bounds().max[axis];
+    expect(reach(j.slot, straightZ, 0) - reach(tab, straightZ, 0)).toBeCloseTo(clearance, 6);
+    expect(reach(j.slot, straightZ, 1) - reach(tab, straightZ, 1)).toBeCloseTo(clearance, 6);
+    expect(reach(tab, peakZ, 0) - reach(j.slot, straightZ, 0)).toBeCloseTo(K.snapCatch, 6);
     // the ear sits in the notch: the deck adds the ear and cuts the slot at the same
     // spot, so what actually reaches the deck is ear-minus-its-own-slot; checked against
     // the notch itself, not a slab, since the ear roots past the wall's own inner face

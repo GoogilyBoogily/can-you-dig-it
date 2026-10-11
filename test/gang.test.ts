@@ -80,10 +80,10 @@ test("a ganged deck keeps an ear under both walls at every tab", () => {
   }
 });
 
-// A lane from 260 mm gangs, with a tongue on each half from 290 mm when it splits.
+// A lane from 265 mm gangs, with a tongue on each half from 292 mm when it splits.
 // Shorter, its ears, pins and lip pockets can leave no stretch of rail for a tongue, and
 // check() says so whenever that happens rather than handing over lanes that stand loose.
-test("a lane from 260 mm keys to its neighbour; one that cannot says so", () => {
+test("a lane from 265 mm keys to its neighbour; one that cannot says so", () => {
   for (let length = 150; length <= 520; length += 1) {
     const o: Options = { ...ganged, length };
     const d = solve(o);
@@ -91,8 +91,8 @@ test("a lane from 260 mm keys to its neighbour; one that cannot says so", () => 
     if (warnings.some((w) => w.startsWith("FAIL"))) continue;
     const tongues = (["top", "bottom"] as const).map((role) => laneOf(o, d, role).tongues);
     expect(warnings.some((w) => w.includes("stand side by side"))).toBe(tongues.some((t) => !t.length));
-    if (length >= 260) for (const t of tongues) expect(t.length).toBeGreaterThan(0);
-    if (length >= 290 && d.split) for (const t of tongues) expect(t.some((x) => x < 0) && t.some((x) => x > 0)).toBe(true);
+    if (length >= 265) for (const t of tongues) expect(t.length).toBeGreaterThan(0);
+    if (length >= 292 && d.split) for (const t of tongues) expect(t.some((x) => x < 0) && t.some((x) => x > 0)).toBe(true);
   }
   const short: Options = { ...single, length: 220 };
   expect(check(short, solve(short)).some((w) => w.includes("stand side by side"))).toBe(false);

@@ -4,6 +4,7 @@
 import { test, expect } from "bun:test";
 import { DEFAULTS, K, solve, check, buildAll, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
+import { snapTop } from "../src/features/joints";
 
 import { geo } from "./geo";
 
@@ -122,7 +123,7 @@ test("the solver charges the unit and reports lane and floor together", () => {
     expect(l.options.lanesWide).toBe(2);
     expect(l.footprint[0]).toBe(168 + 167.5);
     const stack = l.style === "cascade" ? l.derived.Hb + (l.options.tiers - 1) * l.derived.H : l.options.tiers * l.derived.H;
-    expect(l.footprint[2]).toBeCloseTo(7 + stack + K.pinH, 9); // the top tier's pins, and the cover flush with them
+    expect(l.footprint[2]).toBeCloseTo(7 + stack + snapTop(l.options), 9); // the top tier's pins, their hooks over the cover
   }
   expect(fitSpace({ w: 130, d: 304, h: 150, front: 0 }, { ...DEFAULTS, base: "gridfinity" }, { cascade: true })).toEqual([]);
 });

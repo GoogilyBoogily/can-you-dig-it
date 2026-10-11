@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, laneName, laneXe, platePose, lipPose, tierRole, rearTier, type Derived, type Options, type PlateName, type Pose } from "./geometry";
+import { K, laneName, laneXe, platePose, lipPose, riserPose, tierRole, rearTier, type Derived, type Options, type PlateName, type Pose } from "./geometry";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -192,10 +192,10 @@ export class Viewer {
       const [px, py, pz] = push[plate];
       track(m, px + (half === "-front" ? -STEP : half === "-rear" ? STEP : 0), py, pz);
     };
-    const put = (parent: THREE.Object3D, name: string, x: number, y: number, z: number, rot = false, pushBy: [number, number, number] = [0, 0, 0], ry = 0) => {
+    const put = (parent: THREE.Object3D, name: string, x: number, y: number, z: number, rot = false, pushBy: [number, number, number] = [0, 0, 0], ry = 0, rx = 0) => {
       const p = by.get(name); if (!p) return;
       const m = this.mesh(p.mesh, COL[p.role]);
-      m.rotation.set(0, ry, rot ? Math.PI : 0, "ZYX");
+      m.rotation.set(rx, ry, rot ? Math.PI : 0, "ZYX");
       m.position.set(x, y, z); parent.add(m);
       track(m, ...pushBy);
     };
@@ -236,7 +236,7 @@ export class Viewer {
       const coverRot = cascade && (o.tiers - 1) % 2 === 1;
       const coverPush: [number, number, number] = [0, gI * STEP, (o.tiers + 1) * STEP];
       if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
-      if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP]);
+      if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP], 0, rad(riserPose.rotate[0]));
     }
     this.addFloor(o.bed);
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
