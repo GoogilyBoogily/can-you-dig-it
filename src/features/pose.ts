@@ -21,7 +21,7 @@ export const lay = (m: M, p: Pose): M => {
  *  turns about Y and moves to the lane end. */
 export function platePose(plate: PlateName, IW: number, xe: number): Pose {
   switch (plate) {
-    case "deck": return { rotate: [0, 0, 0], translate: [0, 0, 0] };
+    case "deck": case "deck-left-end": case "deck-right-end": return { rotate: [0, 0, 0], translate: [0, 0, 0] };
     case "wall-left": return { rotate: [90, 0, 180], translate: [0, IW / 2, 0] };
     case "wall-right": return { rotate: [90, 0, 0], translate: [0, -IW / 2, 0] };
     case "end-wall": return { rotate: [0, 90, 0], translate: [xe, 0, 0] };

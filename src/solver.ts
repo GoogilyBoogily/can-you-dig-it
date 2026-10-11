@@ -1,6 +1,6 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
-import { K, solve, check, laneLengthFor, baseHeight, gangReach, type Options, type Derived } from "./geometry";
+import { K, solve, check, laneLengthFor, baseHeight, gangReach, outerTongues, type Options, type Derived } from "./geometry";
 import { snapTop } from "./features/joints";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
@@ -34,7 +34,8 @@ const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
  *  user a height was enough when the same message came back at it. */
 export function laneNeeds(base: Options, space: Space): { w: number; h: number } {
   const seed = { ...base, cascade: false, length: 200 };
-  const w = base.base === "gridfinity" ? Math.max(solve(seed).OW, K.gridPitch) : solve(seed).gangPitch + 2 * SIDE_GAP;
+  // a lone lane keeps SIDE_GAP a side, and its outer tongues have to fit inside one of them
+  const w = base.base === "gridfinity" ? Math.max(solve(seed).OW, K.gridPitch) : Math.max(solve(seed).gangPitch + 2 * SIDE_GAP, rowWidth(1, seed, solve(seed)) + SIDE_GAP);
   const lengths = candidateLengths(space.d - space.front, seed);
   const heights = lengths.map((length) => solve({ ...seed, length }).H);
   return { w, h: baseHeight(base) + (heights.length ? Math.min(...heights) : solve(seed).H) + snapTop(base) };
@@ -62,10 +63,10 @@ export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }
   return rank(out, styles);
 }
 
-/** How wide a row of `lanes` shelf lanes stands: a gang pitch each, and when they gang,
- *  the +Y end deck's tongue stub, gangReach past its wall less the gap one pitch holds. */
+/** How wide a row of `lanes` shelf lanes stands: a gang pitch each, and a stub for every
+ *  outer side that joins by tongue, gangReach past its wall less the gap one pitch holds. */
 function rowWidth(lanes: number, o: Options, d: Derived): number {
-  return lanes * d.gangPitch + (lanes > 1 ? gangReach(o) - K.gangGap : 0);
+  return lanes * d.gangPitch + outerTongues(o) * (gangReach(o) - K.gangGap);
 }
 
 /** How many lanes fit side by side: by gang pitch on a shelf, by whole floors on a grid.
@@ -76,7 +77,7 @@ function lanesAcross(space: Space, seed: Options): number {
   const seedD = solve(seed);
   if (seed.base !== "gridfinity") {
     let lanes = Math.floor((space.w - 2 * SIDE_GAP) / seedD.gangPitch);
-    while (lanes > 1 && rowWidth(lanes, seed, seedD) > space.w - SIDE_GAP) lanes--;
+    while (lanes > 0 && rowWidth(lanes, seed, seedD) > space.w - SIDE_GAP) lanes--; // a lone lane's stub has to fit too
     return lanes;
   }
   if (seedD.floorCells[1] < 1) return 0; // the shelf has no whole cell across: floor(0/0) is NaN, and NaN < 1 is false

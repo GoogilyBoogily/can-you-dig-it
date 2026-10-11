@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { MeshData } from "./export";
-import { K, laneName, laneXe, platePose, lipPose, riserPose, tierRole, rearTier, type Derived, type Options, type PlateName, type Pose } from "./geometry";
+import { K, laneName, laneXe, platePose, lipPose, riserPose, tierRole, rearTier, deckVariant, type Derived, type Options, type PlateName, type Pose } from "./geometry";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -216,7 +216,8 @@ export class Viewer {
         for (const plate of ["deck", "wall-left", "wall-right", "end-wall"] as PlateName[]) {
           if (plate === "end-wall" && t === rearTier(o)) continue;
           // the shelf lane's deck carries the Gridfinity unit below z = 0, like the risers do
-          const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : laneName(o, role, plate);
+          // a row's end lanes print their own decks when they join differently from the rest
+          const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : laneName(o, role, plate === "deck" ? deckVariant(o, gI) : plate);
           if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }
           else putPlate(lane, name, plate, "");
         }

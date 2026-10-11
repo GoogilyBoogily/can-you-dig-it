@@ -1,9 +1,10 @@
-import { test, expect } from "bun:test";
-import { K, DEFAULTS, solve, check, laneOf, buildDeck, buildWall, buildLanePlates, type Options } from "../src/geometry";
+import { test, expect, describe } from "bun:test";
+import { K, DEFAULTS, SIDES, solve, check, laneOf, buildDeck, buildWall, buildLanePlates, buildAll, partList, gangReach, type Options, type Side } from "../src/geometry";
+import { fitSpace } from "../src/solver";
 
 import { geo } from "./geo";
 
-const single: Options = { ...DEFAULTS, lanesWide: 1 };
+const single: Options = { ...DEFAULTS, lanesWide: 1, left: "none", right: "none" };
 const ganged: Options = { ...DEFAULTS, lanesWide: 2 };
 
 /** Laid flat, a wall's Z extent is its thickness plus whatever stands off the outer face. */
@@ -14,9 +15,9 @@ function wallThickness(o: Options, name: "wall-left" | "wall-right"): number {
 }
 
 // The gang joint lives on the deck: T tongues out of the +Y rail, between the ears, into
-// sockets in the neighbour's rail. A lane that stands alone has nothing to mate with, so its deck ends
-// at its ears and both walls are plain, whatever the lane count.
-test("a single lane's deck ends at its ears; walls are plain either way", () => {
+// sockets in the neighbour's rail. A lane set to join nothing on either side has nothing
+// to mate with, so its deck ends at its ears and both walls are plain, whatever the lane count.
+test("a single lane joining nothing ends at its ears; walls are plain either way", () => {
   const d = solve(single);
   const deck = buildDeck(geo, single, d, laneOf(single, d, "top")).boundingBox();
   expect(deck.max[1]).toBeCloseTo(d.OW / 2, 3);
@@ -112,4 +113,71 @@ test("the minimal deck keeps a wide arm each side of every socket", () => {
     const probe = geo.box(4, 4, K.deckLo, gx + side * (K.gangHead / 2 + 3.5), headY, K.deckLo / 2);
     expect(geo.isect(deck, probe).volume()).toBeCloseTo(probe.volume(), 3);
   }
+});
+
+// Each side of a unit joins by tongue, socket or nothing. Inside a row a lane's +Y tongue
+// runs into its left neighbour's -Y socket, so only the two end lanes can differ, and they
+// print as their own decks when they do.
+describe("joins on the left and right", () => {
+  const deckParts = (o: Options) => geo.arena(() =>
+    partList(buildAll(geo, o, solve(o)), o).filter((p) => p.name.startsWith("lane-top-deck")).map((p) => [p.name.replace(/-(front|rear)$/, ""), p.qty] as [string, number]));
+  const unique = (rows: [string, number][]) => Object.fromEntries(rows);
+
+  for (const left of SIDES) for (const right of SIDES) {
+    test(`left ${left}, right ${right}`, () => {
+      for (const lanesWide of [1, 2, 3]) {
+        const decks = unique(deckParts({ ...DEFAULTS, lanesWide, left, right }));
+        const expected: Record<string, number> = {};
+        const add = (name: string) => (expected[name] = (expected[name] ?? 0) + 1);
+        if (lanesWide === 1) add("lane-top-deck");
+        else {
+          add(left === "tongue" ? "lane-top-deck" : "lane-top-deck-left-end");
+          for (let i = 0; i < lanesWide - 2; i++) add("lane-top-deck");
+          add(right === "socket" ? "lane-top-deck" : "lane-top-deck-right-end");
+        }
+        expect(decks, `${lanesWide} lanes`).toEqual(expected);
+      }
+    });
+  }
+
+  // A unit whose right side is a tongue beside one whose left side is a socket: the -Y
+  // tongue sits in the +Y socket with nothing touching and binds both ways, like the
+  // inner joint.
+  test("a right-side tongue mates a left-side socket", () => {
+    const o: Options = { ...DEFAULTS, lanesWide: 1, left: "socket", right: "tongue" };
+    const d = solve(o);
+    const ln = laneOf(o, d, "top");
+    const near = buildDeck(geo, o, d, ln, ["socket", "tongue"]);
+    const far = buildDeck(geo, o, d, ln, ["socket", "tongue"]).translate([0, -d.gangPitch, 0]);
+    expect(geo.isect(near, far).volume()).toBeCloseTo(0, 6);
+    expect(geo.isect(near, far.translate([0, -1, 0])).volume()).toBeGreaterThan(10);
+    expect(geo.isect(near, far.translate([1, 0, 0])).volume()).toBeGreaterThan(10);
+    // the tongue reaches gangReach past the wall on -Y, and the +Y side is the socket
+    const box = near.boundingBox();
+    expect(box.min[1]).toBeCloseTo(-d.OW / 2 - gangReach(o), 3);
+    expect(box.max[1]).toBeCloseTo(d.OW / 2, 3);
+  });
+
+  test("on a grid nothing joins, whatever the sides say", () => {
+    const o: Options = { ...DEFAULTS, base: "gridfinity", lanesWide: 2, left: "socket", right: "tongue" };
+    const d = solve(o);
+    expect(laneOf(o, d, "top").tongues).toEqual([]);
+    expect(unique(deckParts(o))).toEqual({ "lane-top-deck": 2 });
+  });
+
+  // The solver charges every outer tongue: gangReach past the wall less the gap a pitch
+  // already holds. A lone lane with the default left tongue needs 14 mm more shelf.
+  test("the row's width charges 14 mm per outer tongue", () => {
+    for (const [left, right, tongues] of [["none", "none", 0], ["tongue", "socket", 1], ["tongue", "tongue", 2], ["socket", "socket", 0]] as [Side, Side, number][]) {
+      const base: Options = { ...DEFAULTS, left, right };
+      for (const layout of fitSpace({ w: 300, d: 520, h: 240, front: 0 }, base, { cascade: true })) {
+        const pitch = layout.derived.gangPitch;
+        expect(layout.footprint[0], `${left}/${right}`).toBeCloseTo(layout.options.lanesWide * pitch + tongues * (gangReach(base) - K.gangGap), 6);
+      }
+    }
+    // a shelf one lane wide: the stub has to fit beside it too
+    const lone = (left: Side) => fitSpace({ w: 152, d: 520, h: 240, front: 0 }, { ...DEFAULTS, left, right: "socket" }, { cascade: true });
+    expect(lone("none").length).toBeGreaterThan(0);
+    expect(lone("tongue")).toEqual([]);
+  });
 });

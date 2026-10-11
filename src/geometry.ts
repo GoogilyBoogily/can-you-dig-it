@@ -34,6 +34,10 @@ export type Across = "left" | "centre" | "right";
 export type Along = "front" | "centre" | "back";
 export const ACROSS: readonly Across[] = ["left", "centre", "right"];
 export const ALONG: readonly Along[] = ["front", "centre", "back"];
+/** What one side of a unit joins its neighbour by: the gang tongue, the T socket that
+ *  takes one, or nothing. Units mate only when printed from the same settings. */
+export type Side = "tongue" | "socket" | "none";
+export const SIDES: readonly Side[] = ["tongue", "socket", "none"];
 
 export interface Options {
   canD: number;
@@ -55,6 +59,7 @@ export interface Options {
   cover: boolean;
   rearLoad: boolean; // the tier cans slide into from the shelf's back prints without its end wall
   stackable: boolean; // a cascade's top tier gets the full end wall, so another tier can go on it later
+  left: Side; right: Side; // what the row's outer sides join a neighbouring unit by; left is +Y
   base: Base; // what the bottom tier stands on
   magnets: boolean; // pockets for 6 × 2 mm magnets (cut 6.5 × 2.4) in every Gridfinity foot
   across: Across; along: Along; // the lane on its Gridfinity floor
@@ -66,7 +71,7 @@ export interface Options {
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
   cascade: true, slope: 3, lipGap: 5, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
-  solid: false, design: "standard", pattern: "hex", cover: true, rearLoad: false, stackable: false, base: "flat", magnets: false, across: "centre", along: "centre", shelfCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
+  solid: false, design: "standard", pattern: "hex", cover: true, rearLoad: false, stackable: false, left: "tongue", right: "socket", base: "flat", magnets: false, across: "centre", along: "centre", shelfCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
 };
 
 // fixed design constants
@@ -217,7 +222,7 @@ export function solve(o: Options): Derived {
   // gangPitch keeps its gap: that is the spacing between lanes on the shelf, not a
   // plate's own footprint.
   const wallPlateY = Math.max(H, Hb) + snapTop(o);
-  const deckPlateY = grid ? foot[3] - foot[1] : OW + (gangs(o) ? gangReach(o) : 0);
+  const deckPlateY = grid ? foot[3] - foot[1] : OW + (gangs(o) ? widestTongues(o) * gangReach(o) : 0);
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall;
   return {
@@ -412,7 +417,7 @@ export class Geo {
 // is a pocket in the print face (recess, groove). Nothing on the bed face, nothing under
 // an edge. test/overhang.test.ts holds every snapshot part to it.
 export type LaneRole = "top" | "mid" | "bottom";
-export type PlateName = "deck" | "wall-left" | "wall-right" | "end-wall";
+export type PlateName = "deck" | "deck-left-end" | "deck-right-end" | "wall-left" | "wall-right" | "end-wall";
 export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
 export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
@@ -532,9 +537,33 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   return { bottom, top, xd, xe, dhi, te, H, ewh: top && !stacksOnTop(o) ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, tongues, edges, lipx };
 }
 
-/** Whether the deck carries the gang joint: more than one lane, and not on a grid,
- *  where the baseplate joins them. */
-const gangs = (o: Options) => o.lanesWide > 1 && o.base !== "gridfinity";
+/** Whether the decks carry the gang joint: some lane edge has a tongue or a socket - a
+ *  row's inner joints always do - and not on a grid, where the baseplate joins them. */
+const gangs = (o: Options) => o.base !== "gridfinity" && (o.lanesWide > 1 || o.left !== "none" || o.right !== "none");
+
+/** The sides of lane `lane`'s deck, +Y then -Y; lane 0 is the row's -Y (right) end. Inside
+ *  the row a lane's tongue runs into its left neighbour's socket; the row's two ends
+ *  are what the options say. */
+export function deckSides(o: Options, lane: number): [Side, Side] {
+  if (!gangs(o)) return ["none", "none"];
+  return [lane === o.lanesWide - 1 ? o.left : "tongue", lane === 0 ? o.right : "socket"];
+}
+
+/** The deck a lane prints as: the row's ends get their own when their sides differ from
+ *  the inner lanes'. A lone lane's deck is just the deck, whatever its sides. */
+export function deckVariant(o: Options, lane: number): PlateName {
+  const [left, right] = deckSides(o, lane);
+  if (o.lanesWide === 1 || (left === "tongue" && right === "socket") || !gangs(o)) return "deck";
+  return lane === 0 ? "deck-right-end" : "deck-left-end";
+}
+
+/** The most tongues any one deck carries: what its plate is charged across. */
+const widestTongues = (o: Options) =>
+  Math.max(...Array.from({ length: o.lanesWide }, (_, lane) => deckSides(o, lane).filter((side) => side === "tongue").length));
+
+/** Tongues on the row's outer sides: each stands gangReach past its wall, less the gap a
+ *  pitch already holds. What the solver charges the shelf. */
+export const outerTongues = (o: Options) => (gangs(o) ? [o.left, o.right].filter((side) => side === "tongue").length : 0);
 /** How far a tongue runs past its own wall's outer face: the gap, the neighbour's wall
  *  and the T inside the neighbour's rail. */
 export const gangReach = (o: Options) => K.gangGap + o.wall + K.spliceDepth;
@@ -546,7 +575,7 @@ export const gangInner = (o: Options, d: Derived) => d.OW / 2 + K.gangGap + o.wa
 const deckProfile = (g: Geo, d: Derived, ln: Lane, zb = 0): CS =>
   g.poly([[ln.xd, zb], [d.L / 2, zb], [d.L / 2, ln.te], [ln.xe, ln.te], [ln.xd, K.deckLo]]);
 
-export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
+export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane, sides: [Side, Side] = ["tongue", "socket"]): M {
   const { IW } = d;
   const minimal = o.design === "minimal";
   // the wedge sits between the walls. Under each wall it puts out an ear as tall as the
@@ -561,9 +590,12 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane): M {
   if (ln.tongues.length) {
     const inner = gangInner(o, d);
     const gang = gangJoint(g, { run: inner - (IW / 2 - 1), clearance: clearanceOf(o), through: ln.dhi, wall: o.wall });
-    for (const gx of ln.tongues) {
-      adds.push(gang.male.translate([gx, inner, 0]));
-      cuts.push(gang.female.translate([gx, -IW / 2, 0]));
+    // the joint is built for the +Y side; mirrored, the same tongue and socket serve -Y
+    for (const [side, sy] of [[sides[0], 1], [sides[1], -1]] as const) {
+      for (const gx of ln.tongues) {
+        if (side === "tongue") adds.push(placeSide(gang.male, sy, gx, sy * inner, 0));
+        if (side === "socket") cuts.push(placeSide(gang.female, -sy, gx, sy * IW / 2, 0));
+      }
     }
   }
   if (!o.solid) {
@@ -880,22 +912,37 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   return [m];
 }
 
-/** The four plates of one lane, laid flat, split at the seam when the lane is long. */
+/** Every deck a row prints, once each, with its sides and how many lanes use it. */
+export function deckKinds(o: Options): { name: PlateName; sides: [Side, Side]; count: number }[] {
+  const kinds = new Map<PlateName, { name: PlateName; sides: [Side, Side]; count: number }>();
+  for (let lane = 0; lane < o.lanesWide; lane++) {
+    const name = deckVariant(o, lane);
+    const kind = kinds.get(name) ?? { name, sides: deckSides(o, lane), count: 0 };
+    kind.count++;
+    kinds.set(name, kind);
+  }
+  return [...kinds.values()];
+}
+
+/** The four plates of one lane, laid flat, split at the seam when the lane is long. A row
+ *  whose ends join differently from its inner lanes has a deck for each end too. */
 export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole): Plate[] {
   const ln = laneOf(o, d, role);
-  const deck = buildDeck(g, o, d, ln);
+  const decks = deckKinds(o).map(({ name, sides }) => ({ name, deck: buildDeck(g, o, d, ln, sides) }));
   const walls = [1, -1].map((sy) => buildWall(g, o, d, ln, sy));
   const endWall = layEndWall(buildEndWall(g, o, d, ln), ln.xe);
   if (!d.split) {
     return [
-      { name: "deck", whole: deck },
+      ...decks.map(({ name, deck }): Plate => ({ name, whole: deck })),
       { name: "wall-left", whole: layWall(walls[0], 1, d.IW) },
       { name: "wall-right", whole: layWall(walls[1], -1, d.IW) },
       { name: "end-wall", whole: endWall },
     ];
   }
-  const [deckFront, deckRear] = splitDeck(g, o, d, ln, deck);
-  const plates: Plate[] = [{ name: "deck", front: deckFront, rear: deckRear }];
+  const plates: Plate[] = decks.map(({ name, deck }) => {
+    const [front, rear] = splitDeck(g, o, d, ln, deck);
+    return { name, front, rear };
+  });
   for (const [i, sy] of [1, -1].entries()) {
     const [front, rear] = splitWall(g, d, walls[i]);
     plates.push({ name: sy > 0 ? "wall-left" : "wall-right", front: layWall(front, sy, d.IW), rear: layWall(rear, sy, d.IW) });
@@ -952,10 +999,13 @@ export function partList(set: PartSet, o: Options): Part[] {
   };
   const shelfRole: LaneRole = o.cascade ? "bottom" : "top";
   const rear = rearTier(o);
+  const lanesOf = new Map(deckKinds(o).map(({ name, count }) => [name, count]));
   for (const lane of set.lanes) for (const plate of lane.plates) {
     const onGrid = set.gridDeck && lane.role === shelfRole && plate.name === "deck";
     const openEnd = plate.name === "end-wall" && rear >= 0 && tierRole(o, rear) === lane.role;
-    addPlate(laneName(o, lane.role, plate.name), plate, qtyOf[lane.role] - (onGrid || openEnd ? o.lanesWide : 0));
+    // a deck prints for the lanes that use it, once per tier of its role
+    const qty = lanesOf.has(plate.name) ? (qtyOf[lane.role] / o.lanesWide) * lanesOf.get(plate.name)! : qtyOf[lane.role];
+    addPlate(laneName(o, lane.role, plate.name), plate, qty - (onGrid || openEnd ? o.lanesWide : 0));
   }
   if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
   add("end-lip", set.lip, o.lanesWide * (o.cascade ? 1 : o.tiers), "lip");

@@ -69,12 +69,19 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     parts[`${pattern}-cover-rear`] = set.cover[1];
     lanes(`${pattern}-`, o, set, "top");
   }
-  // A single lane: the un-ganged deck, ears on both sides and no tongue or socket.
+  // A single lane: by default joinable, a tongue on its left and a socket on its right.
   {
     const o: Options = { ...base, lanesWide: 1 };
     const set = buildAll(geo, o, solve(o));
     for (const part of partList(set, o)) if (part.role === "cover") parts["single-" + part.name] = part.mesh;
     lanes("single-", o, set, "top"); lanes("single-", o, set, "bottom");
+  }
+  // A row whose ends join differently from its inner joint: the left end a socket, the
+  // right end nothing. Only the two end decks are new parts.
+  {
+    const o: Options = { ...base, left: "socket", right: "none" };
+    const set = buildAll(geo, o, solve(o));
+    for (const part of partList(set, o)) if (/^lane-top-deck-(left|right)-end/.test(part.name)) parts["ends-" + part.name] = part.mesh;
   }
   // A flat stack: the only style the solver offers when cascade is off, and the snapshot
   // had none of it but a grid deck. Its top-role end wall carries the 20 mm loading lip
