@@ -136,6 +136,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   slotted from its top edge down to the same line, closed behind by its own post. The
   end wall drops in last: X from the side wall's slot, the side walls' Y from its body
   and the deck ears. `laneXe` is the one place its x lives (the viewer uses it too).
+  `o.stackable` (2026-10-11, off by default) gives a cascade's top the full wall, so a
+  tier can go on it later, and keeps it even with `rearLoad` (`check()` says so). It does
+  nothing to a flat stack: its tiers are one lane, pins and ears and all, already.
 - Load from the back (`o.rearLoad`, 2026-09-29, off by default): one tier, `rearTier(o)`,
   prints without its end wall - the only tier, or the top of a stack (a cascade's lower
   tiers fill through it; a flat stack's still load from the front). A cascade's top faces the back on an odd tier count only; on an even one

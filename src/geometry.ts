@@ -54,6 +54,7 @@ export interface Options {
   pattern: Pattern;
   cover: boolean;
   rearLoad: boolean; // the tier cans slide into from the shelf's back prints without its end wall
+  stackable: boolean; // a cascade's top tier gets the full end wall, so another tier can go on it later
   base: Base; // what the bottom tier stands on
   magnets: boolean; // pockets for 6 × 2 mm magnets (cut 6.5 × 2.4) in every Gridfinity foot
   across: Across; along: Along; // the lane on its Gridfinity floor
@@ -65,7 +66,7 @@ export interface Options {
 export const DEFAULTS: Options = {
   canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
   cascade: true, slope: 3, lipGap: 5, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
-  solid: false, design: "standard", pattern: "hex", cover: true, rearLoad: false, base: "flat", magnets: false, across: "centre", along: "centre", shelfCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
+  solid: false, design: "standard", pattern: "hex", cover: true, rearLoad: false, stackable: false, base: "flat", magnets: false, across: "centre", along: "centre", shelfCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
 };
 
 // fixed design constants
@@ -267,7 +268,9 @@ export function check(o: Options, d: Derived): string[] {
     w.push("Lanes this short have no room for the joint that keys them together - they stand side by side, loose");
   if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
   if (o.rearLoad && rearTier(o) < 0)
-    w.push("Loading from the back needs an odd tier count here: the top tier's back is its chute, so every end wall stays");
+    w.push(stacksOnTop(o)
+      ? "Loading from the back is off: a stackable top keeps its end wall to close the chute of the tier that goes on it"
+      : "Loading from the back needs an odd tier count here: the top tier's back is its chute, so every end wall stays");
   return w;
 }
 
@@ -412,7 +415,7 @@ export interface PartSet {
 
 /** What every plate of one lane shares: where the deck is, how tall the walls are, and
  *  where the ties and tabs sit. bottom: no chute, full deck. top: a loading lip instead
- *  of a full end wall, since nothing drops in from above. */
+ *  of a full end wall, since nothing drops in from above - unless it is stackable. */
 export interface Lane {
   bottom: boolean; top: boolean;
   xd: number; // where the deck starts (-L/2 on the bottom lane)
@@ -439,7 +442,13 @@ export const tierRole = (o: Options, t: number): LaneRole =>
  *  back is the chute. The side walls keep their corner slot, empty: a flat stack's tiers
  *  share one set of walls. */
 export const rearTier = (o: Options) =>
-  o.rearLoad && (o.tiers === 1 || !o.cascade || o.tiers % 2 === 1) ? o.tiers - 1 : -1;
+  o.rearLoad && !stacksOnTop(o) && (o.tiers === 1 || !o.cascade || o.tiers % 2 === 1) ? o.tiers - 1 : -1;
+
+/** Whether the top tier is built for a tier on it: a cascade's next tier drops its chute
+ *  over this one's high end, so the top gets a mid tier's full end wall, not the loading
+ *  lip, and that wall stays even when the top would load from the back. A flat stack's
+ *  tiers are one lane already. */
+const stacksOnTop = (o: Options) => o.cascade && o.stackable;
 
 /** The end wall's inner face: it stands `post` in from the lane end, so the side wall
  *  keeps a post behind it and its slot is closed on both sides. The viewer stands the
@@ -513,7 +522,7 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
     } else edges.push(t - half, t + half);
   }
   edges.push(x1);
-  return { bottom, top, xd, xe, dhi, te, H, ewh: top ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, tongues, edges, lipx };
+  return { bottom, top, xd, xe, dhi, te, H, ewh: top && !stacksOnTop(o) ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, tongues, edges, lipx };
 }
 
 /** Whether the deck carries the gang joint: more than one lane, and not on a grid,
