@@ -22,6 +22,29 @@ afterAll(async () => {
   server?.stop(true);
 });
 
+test("the joins survive the hash, and a grid greys out the sides", async () => {
+  const page = await browser.newPage();
+  await page.goto(URL_);
+  await page.selectOption("#form [name=stackable]", "on");
+  await page.selectOption("#form [name=left]", "socket");
+  await page.selectOption("#form [name=right]", "none");
+  await page.waitForFunction(() => location.hash.includes("right=none")); // the hash write waits out the typing
+  const shared = page.url();
+  expect(shared).toContain("left=socket");
+  expect(shared).toContain("right=none");
+
+  const again = await browser.newPage();
+  await again.goto(shared);
+  expect(await again.inputValue("#form [name=stackable]")).toBe("on");
+  expect(await again.inputValue("#form [name=left]")).toBe("socket");
+  expect(await again.inputValue("#form [name=right]")).toBe("none");
+  expect(await again.isDisabled("#form [name=left]")).toBe(false);
+  await again.selectOption("#form [name=base]", "gridfinity");
+  expect(await again.isDisabled("#form [name=left]")).toBe(true);
+  expect(await again.isDisabled("#form [name=right]")).toBe(true);
+  await page.close(); await again.close();
+});
+
 test("every option survives the hash, including boxes turned off and the layout picked", async () => {
   const page = await browser.newPage();
   await page.goto(URL_);

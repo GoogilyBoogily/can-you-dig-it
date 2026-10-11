@@ -63,9 +63,16 @@ form.addEventListener("input", (e) => {
   }
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
   if (t.name === "lipGap") (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = t.value;
+  if (t.name === "base") syncJoins();
   refit(); // first: it resets the chosen layout, which the hash carries
   queueHash();
 });
+
+/** On a grid the baseplate joins the lanes, so the side selects have nothing to say. */
+function syncJoins() {
+  const grid = (form.elements.namedItem("base") as HTMLSelectElement).value === "gridfinity";
+  for (const side of ["left", "right"]) (form.elements.namedItem(side) as HTMLSelectElement).disabled = grid;
+}
 form.addEventListener("submit", (e) => e.preventDefault());
 
 // ------------------------------------------------------------- layouts
@@ -494,7 +501,7 @@ loadProfile();
 // Every field readOptions() consumes, plus the layout the user clicked. Checkboxes are
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
-const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "rearLoad", "stackable", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
+const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "rearLoad", "stackable", "left", "right", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
 // replaceState is rate limited - Chrome drops past ~100 in 30 s, Safari throws - and the
 // hash write used to run once per input event while the build was debounced. Holding an
 // arrow key in a number field is ~30 events a second, and the writes the browser dropped
@@ -563,4 +570,5 @@ $("share").addEventListener("click", async () => {
 // sender and recipient then see the same design, and Share copies what is on screen.
 const arrivedWithHash = location.hash.length > 0;
 refit(loadHash());
+syncJoins();
 if (arrivedWithHash) syncHash();

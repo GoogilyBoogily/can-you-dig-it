@@ -97,7 +97,7 @@ import { readNumbers, optionsFrom, LIMITS } from "../src/validate";
 const SHIPPED: Record<string, string> = {
   w: "300", d: "520", h: "240", front: "0", canD: "66", canL: "122.5", bedX: "256", bedY: "256", bedZ: "256",
   hexR: "13", slope: "3", lipGap: "5", fit: "0", design: "standard", pattern: "hex", base: "flat", across: "centre", along: "centre",
-  cascade: "on", cover: "on", hexAuto: "on",
+  cascade: "on", cover: "on", hexAuto: "on", stackable: "off", left: "tongue", right: "socket",
 };
 const formOf = (over: Record<string, string | null> = {}) => (name: string) => (name in over ? over[name] : SHIPPED[name] ?? null);
 
@@ -107,6 +107,16 @@ test("optionsFrom turns the shipped form into the default options", () => {
   expect(cascade).toBe(true);
   expect(base.bed).toEqual([256, 256, 256]);
   expect(base).toMatchObject({ canD: 66, canL: 122.5, design: "standard", pattern: "hex", base: "flat", cover: true, solid: false, magnets: false, hexAuto: true });
+  expect(base).toMatchObject({ stackable: false, left: "tongue", right: "socket" });
+});
+
+// The joins row: Top is on / off, left and right are a Side. On a grid the two side
+// selects are disabled, and a disabled field is absent from the form: it reads as none.
+test("the joins read from the form; a disabled side reads as none", () => {
+  expect(optionsFrom(formOf({ stackable: "on", left: "socket", right: "none" })).base).toMatchObject({ stackable: true, left: "socket", right: "none" });
+  expect(optionsFrom(formOf({ base: "gridfinity", left: null, right: null })).base).toMatchObject({ left: "none", right: "none" });
+  expect(() => optionsFrom(formOf({ left: "sideways" }))).toThrow(/left side: pick/);
+  expect(() => optionsFrom(formOf({ right: "glue" }))).toThrow(/right side: pick/);
 });
 
 test("an unticked box is absent from the form and reads as off", () => {

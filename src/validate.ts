@@ -2,7 +2,7 @@
 // Nothing downstream re-checks, so a value that gets past here reaches the
 // solver, the WASM kernel and the exported file unexamined.
 
-import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, type Design, type Pattern, type Base, type Across, type Along, type Options } from "./geometry";
+import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, SIDES, type Design, type Pattern, type Base, type Across, type Along, type Side, type Options } from "./geometry";
 import type { Space } from "./solver";
 
 interface Limit { min: number; max: number; label: string }
@@ -63,11 +63,18 @@ export function optionsFrom(field: (name: string) => string | null): FormValues 
   if (!BASES.includes(standsOn)) throw new Error("base: pick Flat, Feet or Gridfinity");
   const across = field("across") as Across, along = field("along") as Along;
   if (!ACROSS.includes(across) || !ALONG.includes(along)) throw new Error("grid position: pick left, centre or right, and front, centre or back");
+  // the side selects are disabled on a grid, where the baseplate joins the lanes, and a
+  // disabled field is absent from the form
+  const side = (k: "left" | "right"): Side => {
+    const value = field(k) ?? "none";
+    if (!SIDES.includes(value as Side)) throw new Error(`${k} side: pick Tongue, Socket or Nothing`);
+    return value as Side;
+  };
   const base: Options = {
     ...DEFAULTS,
     canD: num("canD"), canL: num("canL"),
     bed: [num("bedX"), num("bedY"), num("bedZ")],
-    cover: on("cover"), rearLoad: on("rearLoad"), stackable: on("stackable"), solid: on("solid"), design, pattern, base: standsOn, magnets: on("magnets"), across, along, fit: num("fit"),
+    cover: on("cover"), rearLoad: on("rearLoad"), stackable: on("stackable"), left: side("left"), right: side("right"), solid: on("solid"), design, pattern, base: standsOn, magnets: on("magnets"), across, along, fit: num("fit"),
     hexR: num("hexR"), hexAuto: on("hexAuto"), slope: num("slope"), lipGap: num("lipGap"),
   };
   return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: on("cascade") };

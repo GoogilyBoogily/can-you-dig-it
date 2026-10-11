@@ -63,7 +63,6 @@
       <label class="check"><input name="cascade" type="checkbox" checked> Auto-feed between tiers (cascade)</label>
       <label class="check"><input name="cover" type="checkbox" checked> Cover plate on the top tier</label>
       <label class="check"><input name="rearLoad" type="checkbox"> Load from the back</label>
-      <label class="check"><input name="stackable" type="checkbox"> Room for another tier on top</label>
       <div class="row">
         <label class="grow">Design
           <select name="design">
@@ -115,6 +114,23 @@
           <option value="back">Back</option>
         </select></label>
       </div>
+      <div class="row">
+        <label class="grow">Join on top <select name="stackable">
+          <option value="on">Another tier</option>
+          <option value="off" selected>Nothing</option>
+        </select></label>
+        <label class="grow">Left <select name="left">
+          <option value="tongue" selected>Tongue</option>
+          <option value="socket">Socket</option>
+          <option value="none">Nothing</option>
+        </select></label>
+        <label class="grow">Right <select name="right">
+          <option value="tongue">Tongue</option>
+          <option value="socket" selected>Socket</option>
+          <option value="none">Nothing</option>
+        </select></label>
+      </div>
+      <span class="hint">Every piece snaps together. Units join only when printed from the same settings; a Gridfinity baseplate joins them instead.</span>
       <label class="fit">Fit
         <!-- The two sliders span the useful range, not the LIMITS the gate allows: a value
              past a slider's end is clamped on load and the next edit writes the clamped
@@ -165,7 +181,7 @@
 </main>
 
 <footer class="foot">
-  <p>Every piece prints flat, face up, with nothing to support. A lane is a deck, two walls and an end wall that drop together on tabs; lanes key together on deck tongues; no glue. Long lanes split into two keyed halves at the bed size.
+  <p>Every piece prints flat, face up, with nothing to support. A lane is a deck, two walls and an end wall that snap together on tabs; lanes key together on deck tongues; no glue, and it lifts as one piece. Long lanes split into two keyed halves at the bed size.
      Source: <a href="https://github.com/GoogilyBoogily/can-you-dig-it">can-you-dig-it</a>.</p>
 </footer>
 <script type="module" src="main.js"></script>
