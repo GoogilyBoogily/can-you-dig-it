@@ -1,7 +1,8 @@
+import type { Geo } from "../kernel";
 // Pockets in the print face and the rounds on a top edge: the recess a wall's outer
 // face takes down to its web, and the two fillet substitutes (manifold has none).
 import type { CrossSection as CS, Manifold as M } from "manifold-3d";
-import { K, type Geo, type Options } from "../geometry";
+import { K, type Options } from "../model";
 
 /** How deep the outer-face recess goes: the wall less the web it leaves (the ligament
  *  width on the minimal design). Nothing under 0.2 mm: a recess that thin is a skin. */
@@ -28,15 +29,21 @@ export function roundOver(g: Geo, u: number, top: number, side: number, r: numbe
  * through the whole height: seats and tab roots.
  */
 export function roundTop(g: Geo, body: M, plan: CS, top: number, r: number, pads: CS[] = [], steps = 8): M {
+  if (!Number.isFinite(top) || !Number.isFinite(r) || r < 0 || !Number.isSafeInteger(steps) || steps < 1)
+    throw new Error("roundTop requires a finite top, nonnegative radius, and a positive integer step count");
+  if (r === 0) return body;
   const bb = body.boundingBox();
   const zMin = bb.min[2] - 1, zMax = bb.max[2] + 1;
-  const big = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1]) + 20;
-  const keep: M[] = [g.box(big, big, top - r - zMin, 0, 0, (top - r + zMin) / 2)];
+  const keep: M[] = [body.trimByPlane([0, 0, -1], -(top - r))];
   for (let k = 0; k < steps; k++) {
     const z0 = top - r + (r * k) / steps, z1 = top - r + (r * (k + 1)) / steps;
     const rise = (z0 + z1) / 2 - (top - r);
     const inset = r - Math.sqrt(r * r - rise * rise);
-    keep.push(g.prismZ(plan.offset(-inset, "Round", 2, 24), z1 - z0 + 0.01, z0));
+    // The half-space boundary may round a few ulps below top-r. Overlap the
+    // first slab with the lower body just as adjacent slabs overlap each other;
+    // an exact coplanar join can otherwise serialize as two disconnected shells.
+    const lowerOverlap = k === 0 ? 0.01 : 0;
+    keep.push(g.prismZ(plan.offset(-inset, "Round", 2, 24), z1 - z0 + 0.01 + lowerOverlap, z0 - lowerOverlap));
   }
   for (const pad of pads) keep.push(g.prismZ(pad, zMax - zMin, zMin));
   return g.isect(body, g.union(keep));

@@ -4,6 +4,7 @@
 import { test, expect } from "bun:test";
 import { DEFAULTS, K, solve, check, buildAll, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
+import { gridUnit } from "../src/features/gridfinity";
 import { snapTop } from "../src/features/joints";
 
 import { geo } from "./geo";
@@ -65,13 +66,57 @@ test("magnet pockets take four 6.5 × 2.4 cylinders a cell, none where the seam 
   const withMagnets = buildAll(geo, { ...grid, magnets: true }, d).gridDeck!;
   const pockets = whole.volume() - geo.union([withMagnets.front!, withMagnets.rear!]).volume();
   const cylinder = Math.PI * 3.25 ** 2 * 2.4 * (48 / (2 * Math.PI)) * Math.sin(2 * Math.PI / 48); // 48-gon
-  expect(pockets).toBeCloseTo(40 * 4 * cylinder, -2); // centred, ten cells: the seam is a cell line
-  // flush front the cells sit at x = −184.25 + 42i, so one cell's pockets land at x = −3.25:
-  // on the seam, and skipped - four rows, two pockets each
+  const actualPockets = gridUnit(geo, d, true).pockets;
+  const centers = actualPockets.map((pocket) => {
+    const bounds = pocket.boundingBox();
+    return [(bounds.min[0] + bounds.max[0]) / 2, (bounds.min[1] + bounds.max[1]) / 2];
+  });
+  const missing = [];
+  for (let column = 0; column < 10; column++) for (let row = 0; row < 4; row++)
+    for (const horizontal of [-13, 13]) for (const vertical of [-13, 13]) {
+      const x = -189 + column * 42 + horizontal, y = -63 + row * 42 + vertical;
+      if (!centers.some(([px, py]) => Math.abs(px - x) < 1e-6 && Math.abs(py - y) < 1e-6)) missing.push([x, y]);
+    }
+  // The actual T tongue reaches across the cell line: these two supports straddle it.
+  expect(missing.sort((first, second) => first[1] - second[1])).toEqual([[-8, -8], [-8, 8]]);
+  expect(actualPockets).toHaveLength(158);
+  expect(actualPockets).toHaveLength(40 * 4 - missing.length);
+  expect(pockets).toBeCloseTo(actualPockets.length * cylinder, -2);
+  // Every retained pocket near the joint has its full 1 mm rim on one printed half.
+  for (const [x, y] of [...centers.filter(([x]) => Math.abs(x) < K.spliceDepth + K.magnetR + 1), ...missing]) {
+    const rim = geo.diff(geo.cyl(K.magnetR + 1, K.magnetDepth, x, y, -K.unitH),
+      [geo.cyl(K.magnetR, K.magnetDepth, x, y, -K.unitH)]);
+    expect([deck.front!, deck.rear!].some((half) => Math.abs(geo.isect(half, rim).volume() - rim.volume()) < 1e-5))
+      .toBe(!missing.some(([mx, my]) => mx === x && my === y));
+  }
+  // Flush-front pockets at x=-3.25 survive only where the T head owns their full rim.
   const front: Options = { ...grid, along: "front", magnets: true };
   const df = solve(front);
-  const cutAt = (o: Options) => { const p = buildAll(geo, o, df).gridDeck!; return geo.union([p.front!, p.rear!]).volume(); };
-  expect(cutAt({ ...front, magnets: false }) - cutAt(front)).toBeCloseTo((40 * 4 - 8) * cylinder, -2);
+  const frontPockets = gridUnit(geo, df, true).pockets;
+  const frontCenters = frontPockets.map((pocket) => {
+    const bounds = pocket.boundingBox();
+    return [(bounds.min[0] + bounds.max[0]) / 2, (bounds.min[1] + bounds.max[1]) / 2];
+  });
+  const frontMissing = [];
+  for (let column = 0; column < 10; column++) for (let row = 0; row < 4; row++)
+    for (const horizontal of [-13, 13]) for (const vertical of [-13, 13]) {
+      const x = -184.25 + column * 42 + horizontal, y = -63 + row * 42 + vertical;
+      if (!frontCenters.some(([px, py]) => Math.abs(px - x) < 1e-6 && Math.abs(py - y) < 1e-6)) frontMissing.push([x, y]);
+    }
+  expect(frontMissing.map(([, y]) => y).sort((first, second) => first! - second!)).toEqual([-76, -50, -34, 34, 50, 76]);
+  expect(frontMissing.every(([x]) => x === -3.25)).toBe(true);
+  expect(frontPockets).toHaveLength(154);
+  expect(frontPockets).toHaveLength(40 * 4 - frontMissing.length);
+  const frontPlain = buildAll(geo, { ...front, magnets: false }, df).gridDeck!;
+  for (const [x, y] of [...frontCenters.filter(([x]) => Math.abs(x) < K.spliceDepth + K.magnetR + 1), ...frontMissing]) {
+    const rim = geo.diff(geo.cyl(K.magnetR + 1, K.magnetDepth, x, y, -K.unitH),
+      [geo.cyl(K.magnetR, K.magnetDepth, x, y, -K.unitH)]);
+    expect([frontPlain.front!, frontPlain.rear!].some((half) => Math.abs(geo.isect(half, rim).volume() - rim.volume()) < 1e-5))
+      .toBe(!frontMissing.some(([mx, my]) => mx === x && my === y));
+  }
+  const frontCut = buildAll(geo, front, df).gridDeck!;
+  expect(geo.union([frontPlain.front!, frontPlain.rear!]).volume() - geo.union([frontCut.front!, frontCut.rear!]).volume())
+    .toBeCloseTo(frontPockets.length * cylinder, -2);
 });
 
 // A 150 × 304 × 150 shelf: 7 × 3 cells. Four cells (167.5) do not fit across, so the lane's

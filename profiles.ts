@@ -74,7 +74,8 @@ for (const name of await presetNames("process")) {
   if (preset.instantiation !== "true") continue;
   const printers = compatible(preset);
   if (!printers.length) continue;
-  processes.push({ name, layerHeight: Number(preset.layer_height), printers, extruderVariants: preset.print_extruder_variant, extruderIds: preset.print_extruder_id });
+  const estimateSettings = Object.fromEntries(["layer_height", "wall_loops", "line_width", "outer_wall_line_width", "inner_wall_line_width", "sparse_infill_density", "top_shell_layers", "bottom_shell_layers", "top_shell_thickness", "bottom_shell_thickness"].filter((key) => preset[key] !== undefined).map((key) => [key, preset[key]]));
+  processes.push({ estimateSettings, name, layerHeight: Number(preset.layer_height), printers, extruderVariants: preset.print_extruder_variant, extruderIds: preset.print_extruder_id });
 }
 
 const filaments = [];
@@ -83,7 +84,8 @@ for (const name of await presetNames("filament")) {
   if (preset.instantiation !== "true") continue;
   const printers = compatible(preset);
   if (!printers.length) continue;
-  filaments.push({ name, label: name.replace(/ @.*$/, ""), vendor: preset.filament_vendor?.[0] ?? "Other", colour: preset.default_filament_colour?.[0] ?? "#00AE42", printers });
+  const estimateSettings = { filament_density: preset.filament_density };
+  filaments.push({ estimateSettings, name, label: name.replace(/ @.*$/, ""), vendor: preset.filament_vendor?.[0] ?? "Other", colour: preset.default_filament_colour?.[0] ?? "#00AE42", printers });
 }
 
 const index: ProfileIndex = { version, machines, processes, filaments };

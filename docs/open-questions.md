@@ -3,9 +3,9 @@
 Concerns and decisions we've parked for later. Each one says what's open, what the code
 does today, and where it lives, so whoever picks it up doesn't have to rebuild the context.
 
-When one gets decided, delete it here and put the decision where it belongs: a
-design-rules bullet in `CLAUDE.md`, a spec in `docs/superpowers/specs/`, or a code comment.
-This file only holds what's still open.
+When one gets decided, mark it resolved with the date and put the decision where it
+belongs: a design-rules bullet in `CLAUDE.md`, a spec in `docs/superpowers/specs/`, or a
+code comment. Resolved entries retain the original evidence for comparison.
 
 ## Snap joins (added 2026-10-11)
 
@@ -71,7 +71,8 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
   - `2026-09-21-sleek-outside-design.md`: built (`e58c03d`), `deck-end` dropped. Nothing
     left open.
   - `2026-09-21-print-cost-design.md`: the `filamentGrams` fix and the hours line are
-    built. Loop term, slabs on layers, `reduce_crossing_wall` and baked keys were dropped.
+    built at that date. The hours line was removed on 2026-10-15 (see resolved entry
+    below). Loop term, slabs on layers, `reduce_crossing_wall` and baked keys were dropped.
     Arachne only ever with `wall_distribution_count = 1` pinned beside it.
   - `2026-09-21-fit-calibration-design.md`: nothing built, on purpose. It waits on the
     first print (see Next steps).
@@ -80,17 +81,22 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
   ear-to-notch pitch over a 240 mm half, which is the whole clearance, and `fit` can't
   fix pitch because it opens every joint equally. Only a print shows whether it matters.
   If it does: never turn a deck or a side wall.
-- **`filamentGrams` reads a bit heavy.** Against Bambu Studio on the default job it's
+- **Resolved 2026-10-15: fixed reference assumptions in material estimates.** The UI
+  now uses `src/estimate.ts`, resolving the selected process/filament and project overrides
+  for perimeters, infill, distinct skins and density; missing values are shown explicitly.
+  Profile changes recalculate from cached meshes. Supports, adhesion and purge remain
+  excluded, and accuracy against real sliced jobs still needs calibration. Historical
+  reference-model evidence: against Bambu Studio on the default job `filamentGrams` was
   +4.6 % (at our PETG density 1.27 against Bambu PETG Basic's 1.25, +6 % raw). Decks land
   within ±3 %, walls and covers +8 to +10 %. Good enough for a "~" number. The model
-  assumes 6 % infill, but the stock 0.20 Standard
-  process is 15 % grid and we don't write infill into the config, so the hint and what
-  gets printed disagree.
-- **One print-hours number for every printer and filament.** `JOB_FLOW` in `src/main.ts`
-  is 7.95 mm³/s, measured on the P2S (0.20mm Standard, Bambu PETG Basic): 40.4 h for the
+  assumed 6 % infill while the stock 0.20 Standard process used 15 % grid, so the hint
+  and the selected process disagreed. The UI no longer applies that fixed model to every profile.
+- **Resolved 2026-10-15: removed the universal print-hours number.** The UI delegates
+  time to the slicer rather than predicting every printer and filament from one flow.
+  Historical evidence: `JOB_FLOW` was 7.95 mm³/s, measured on the P2S (0.20mm Standard, Bambu PETG Basic): 40.4 h for the
   default job, plates spread ±10 % around it. An X1C came out 7.77. PLA and the H2D's high
-  flow entries will be off. Upgrade path: scale by the filament's max volumetric speed once
-  the profile scraper pulls it into the index. Re-measure with `bun run slice.ts`.
+  flow entries were not calibrated. `bun run slice.ts` remains available for real slicer
+  measurements; a future time model would need validation beyond volumetric speed scaling.
 - **Outer-wall acceleration was the "biggest lever" and isn't.** Raising it to 10000 saved
   0.8 % on the P2S (stock 6000) and 1.1 % on the X1C (stock 5000); PETG time is flow-capped,
   not acceleration-capped. Not baked. Don't re-open it without a slice that says otherwise.
@@ -137,13 +143,19 @@ In order. The first one decides most of what comes after it.
    240 mm halves, and two decks set side by side keying at the tongues.
 4. **Then the rear-load print questions above** (bracing without a cover, the 3 mm
    headroom), which a print of a rear-load top tier answers the same way.
-5. **Small things, whenever:** the layout card's gram estimate for rear-load, scaling
-   `JOB_FLOW` by filament.
+5. **Small things, whenever:** the layout card's rough gram estimate for rear-load.
+   Calibrate the profile-aware built-part estimate against sliced jobs; the universal
+   `JOB_FLOW` UI estimate was retired on 2026-10-15.
 
 ## How to re-measure print time
 
 `bun run slice.ts` builds the default job, packs it for the machine given (P2S 0.4 by
 default), slices every plate with the installed Bambu Studio's CLI, and prints Bambu's
-time and grams per plate beside ours, with the `JOB_FLOW` they imply. The second argument
+time and grams per plate beside the legacy reference estimate, with the implied
+flow labelled `JOB_FLOW` for historical comparison. The UI no longer uses that constant. The second argument
 is a JSON of process overrides, for trying a key before baking it. Output lands in
-`.slice/`, git-ignored. The file's header says why the presets are flattened by hand.
+`.slice/run-*`, git-ignored; every run retains its model, presets, G-code and logs.
+Internal slicer errors fail validation even when Bambu returns exit code 0.
+The file's header says why the presets are flattened by hand. See
+[the ZFiller investigation](zfiller-diagnostics.md) for the reduced convex-wedge
+reproducer and the remaining upstream floating-infill defect.

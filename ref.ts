@@ -40,7 +40,7 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     "cover-front": twoTiers.cover[0],
     "cover-rear": twoTiers.cover[1],
     "end-lip": twoTiers.lip,
-    "riser-24": twoTiers.riser,
+    "riser-24": buildAll(geo, { ...base, base: "feet" }, derived).riser!,
     "minimal-cover-front": minimalTwo.cover[0],
     "minimal-cover-rear": minimalTwo.cover[1],
   };

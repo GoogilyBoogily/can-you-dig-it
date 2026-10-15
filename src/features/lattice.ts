@@ -1,8 +1,9 @@
+import type { Geo } from "../kernel";
 // The pattern cells cut into a wall, end wall or cover panel: hex, circle, kumiko, breeze
 // and slat. Pure functions of the kernel (g: Geo); geometry.ts places the panel and the
 // keep-outs and calls cellsOf to dispatch on the chosen pattern.
 import type { CrossSection as CS } from "manifold-3d";
-import { K, type Geo, type Pattern, type Vec2 } from "../geometry";
+import { K, type Pattern, type Vec2 } from "../model";
 
 /** Cell pitch and half-extents for Geo.cells; `stagger` offsets odd rows by dx/2. */
 interface Lattice { dx: number; dy: number; hw: number; hh: number; stagger: boolean }
@@ -59,7 +60,7 @@ function hexCells(g: Geo, R: number, t: number, bounds: CS, holes: CS[] = []): C
  * the `holes` keep-outs dropped. `cell` draws the shape at a centred centre and gets
  * the lattice indices, for patterns that alternate.
  */
-function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number, cy: number, i: number, j: number) => CS): CS | null {
+function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number, cy: number, i: number, j: number) => CS, boundary: "whole" | "clipped" = "whole"): CS | null {
   const { dx, dy, hw, hh, stagger } = lat;
   const { min: [x0, y0], max: [x1, y1] } = bounds.bounds();
   const centres: [number, number, number, number][] = [];
@@ -76,9 +77,17 @@ function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number,
   const shiftX = (x0 + x1) / 2 - (Math.min(...xs) + Math.max(...xs)) / 2;
   const shiftY = (y0 + y1) / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
   const blocked = holes.length ? g.cs2d(...holes) : null;
+  const rectangular = Math.abs(bounds.area() - (x1 - x0) * (y1 - y0)) < 1e-6;
   const out: CS[] = [];
   for (const [cx, cy, i, j] of centres) {
-    const c = cell(cx + shiftX, cy + shiftY, i, j);
+    let c = cell(cx + shiftX, cy + shiftY, i, j);
+    // Bounding extents place the lattice; the contour decides which holes survive.
+    // Discrete patterns retain their complete cells. Slats deliberately follow the
+    // field's boundary because one opening spans each component's width.
+    if (!rectangular) {
+      if (boundary === "whole" && c.subtract(bounds).area() > 1e-6) continue;
+      if (boundary === "clipped") c = c.intersect(bounds);
+    }
     if (blocked) {
       if (c.intersect(blocked).area() > 1e-6) continue;
     }
@@ -89,6 +98,8 @@ function cells(g: Geo, lat: Lattice, bounds: CS, holes: CS[], cell: (cx: number,
 
 /** The chosen pattern's holes in `panel`, radius R, ligament t, clear of `keep`. */
 export function cellsOf(g: Geo, p: Pattern, R: number, t: number, panel: CS, keep: CS[]): CS | null {
+  if (!Number.isFinite(R) || R <= 0 || !Number.isFinite(t) || t < 0)
+    throw new Error("Lattice cells require a finite positive radius and nonnegative ligament");
   const square = { dx: 2 * R + t, dy: 2 * R + t, hw: R, hh: R, stagger: false };
   switch (p) {
     case "hex":
@@ -132,7 +143,7 @@ function slats(g: Geo, R: number, t: number, panel: CS, keep: CS[]): CS | null {
       g.circle(R, 48).translate([cx - w / 2 + R, cy]),
       g.circle(R, 48).translate([cx + w / 2 - R, cy]),
     );
-    const cut = cells(g, { dx: w + 1, dy: 2 * R + 2 * t, hw: w / 2, hh: R, stagger: false }, comp, [], stadium);
+    const cut = cells(g, { dx: w + 1, dy: 2 * R + 2 * t, hw: w / 2, hh: R, stagger: false }, comp, [], stadium, "clipped");
     if (cut) rows.push(cut.intersect(comp));
   }
   return rows.length ? g.cs2d(...rows) : null;

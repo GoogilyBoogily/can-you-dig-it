@@ -15,6 +15,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveDist } from "../dev";
+import { DEFAULTS } from "../src/geometry";
+import { estimateSettings } from "../src/estimate";
 import { INDEX_URL, type ProfileIndex } from "../src/profiles";
 
 const index: ProfileIndex = await Bun.file(INDEX_URL).json();
@@ -50,6 +52,17 @@ afterAll(async () => {
 /** Fresh page with a model built, so #results and the profile row are reachable. */
 async function buildOnce(): Promise<Page> {
   const page = await browser.newPage();
+  await page.addInitScript(() => {
+    const state = window as any;
+    state.estimateRequests = [];
+    const NativeWorker = window.Worker;
+    window.Worker = class extends NativeWorker {
+      override postMessage(message: any) {
+        if (message.type === "estimate") state.estimateRequests.push(structuredClone(message));
+        super.postMessage(message);
+      }
+    };
+  });
   await page.goto(URL_);
   for (const [name, value] of [["w", "300"], ["d", "520"], ["h", "240"]] as const) await page.fill(`#form [name=${name}]`, value);
   await page.waitForSelector(".layout");
@@ -228,28 +241,105 @@ test("a non-numeric dimension names the field instead of building NaN", async ()
   await page.close();
 });
 
-// Hours come from JOB_FLOW, measured on a Bambu Studio slice of this very job: 40.4 h.
-test("the default build shows about 40 hours", async () => {
+async function completedSummary(page: Page) {
+  await page.waitForFunction(() => document.getElementById("summary")?.textContent?.includes("kg (")
+    && !document.getElementById("summary")?.textContent?.includes("recalculating")
+    && !document.getElementById("status")?.classList.contains("busy")
+    && !(document.getElementById("dl3mf") as HTMLButtonElement).disabled, null, { timeout: 90000 });
+  return page.locator("#summary").innerText();
+}
+
+function exportedObjects(files: Record<string, Uint8Array>, bed: [number, number, number]) {
+  const plates = [...strFromU8(files["Metadata/model_settings.config"]!).matchAll(/<plate>([\s\S]*?)<\/plate>/g)];
+  const objectPlates = new Map<number, number>();
+  for (const plate of plates) {
+    const number = Number(plate[1]!.match(/key="plater_id" value="(\d+)"/)![1]) - 1;
+    for (const object of plate[1]!.matchAll(/key="object_id" value="(\d+)"/g)) objectPlates.set(Number(object[1]), number);
+  }
+  const columns = Math.ceil(Math.sqrt(plates.length));
+  return [...strFromU8(files["3D/3dmodel.model"]!).matchAll(/<object id="(\d+)"[^>]*name="([^"]*)"[^>]*>([\s\S]*?)<\/object>/g)].map((object) => {
+    const plate = objectPlates.get(Number(object[1]));
+    expect(plate).toBeDefined();
+    const origin = [(plate! % columns) * bed[0] * 1.2, -Math.floor(plate! / columns) * bed[1] * 1.2];
+    const vertices = [...object[3]!.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"\/>/g)]
+      .map((vertex) => [Number(vertex[1]) - origin[0]!, Number(vertex[2]) - origin[1]!, Number(vertex[3])]);
+    const triangles = [...object[3]!.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)]
+      .map((triangle) => triangle.slice(1).map(Number));
+    let volume = 0;
+    for (const triangle of triangles) {
+      const [a, b, c] = triangle.map((index) => vertices[index]!);
+      volume += (a![0]! * (b![1]! * c![2]! - b![2]! * c![1]!)
+        + a![1]! * (b![2]! * c![0]! - b![0]! * c![2]!)
+        + a![2]! * (b![0]! * c![1]! - b![1]! * c![0]!)) / 6;
+    }
+    return { name: object[2]!, plate: plate!, vertices, triangles, volume };
+  });
+}
+
+test("default estimates disclose reference assumptions and respond to density settings", async () => {
   const page = await buildOnce();
-  const hours = Number((await page.locator("#summary").innerText()).match(/about (\d+) h \(±30 %\)/)?.[1]);
-  expect(hours).toBeGreaterThanOrEqual(39);
-  expect(hours).toBeLessThanOrEqual(44);
+  const before = await completedSummary(page);
+  expect(before).toContain("approximate; assumed");
+  expect(before).toContain("sparse_infill_density=6");
+  expect(before).toContain("filament_density=1.27");
+  expect(before).not.toContain("about");
+  const config = JSON.stringify({ filament_density: ["2.54"] });
+  await page.setInputFiles("#profileIn", upload("dense.3mf", config));
+  await waitForLabel(page, "dense.3mf");
+  const after = await completedSummary(page);
+  const kilograms = (summary: string) => Number(summary.match(/~([\d.]+) kg/)![1]);
+  expect(Math.abs(kilograms(after) - kilograms(before) * 2)).toBeLessThanOrEqual(0.015);
+  expect(after).not.toContain("filament_density=1.27");
+  const requests = await page.evaluate(() => (window as any).estimateRequests);
+  expect(requests.at(-1).settings.density).toBe(2.54);
+  expect(requests.at(-1).settings.infill).toBe(0.06);
+  const files = await downloadTo(page, "#dl3mf", "density.3mf");
+  expect(strFromU8(files["Metadata/project_settings.config"]!)).toBe(config);
   await page.close();
 });
 
-// An X1 keeps an 18 × 28 mm corner off the bed, and the packer goes round it: picking
-// one repacks the plates though the bed size does not change, and a P2S packs as before.
+// Check the coordinates the slicer receives, even when the two printers need equal plate counts.
 test("picking a printer with a keep-out corner repacks the plates round it", async () => {
   const page = await buildOnce();
-  const plates = async (count: number) => {
-    await page.waitForFunction((n) => (document.getElementById("status")!.textContent ?? "").includes(`· ${n} plates ·`), count, { timeout: 90000 });
-  };
-  await page.selectOption("#pickPrinter", "Bambu Lab X1 Carbon");
-  await waitForLabel(page, "Bambu Lab X1 Carbon · 0.4 nozzle");
-  await plates(20);
-  await page.selectOption("#pickPrinter", "Bambu Lab P2S");
-  await waitForLabel(page, "Bambu Lab P2S · 0.4 nozzle");
-  await plates(18);
+  const margin = DEFAULTS.bedMargin;
+  const exports = [];
+  for (const printer of ["Bambu Lab X1 Carbon", "Bambu Lab P2S"]) {
+    await page.selectOption("#pickPrinter", printer);
+    await waitForLabel(page, `${printer} · 0.4 nozzle`);
+    await completedSummary(page);
+    const files = await downloadTo(page, "#dl3mf", `${printer.includes("Carbon") ? "keepout" : "clear-bed"}.3mf`);
+    const config = JSON.parse(strFromU8(files["Metadata/project_settings.config"]!));
+    const bed: [number, number, number] = [256, 256, Number(config.printable_height)];
+    const corners = (config.bed_exclude_area ?? []).map((point: string) => point.split("x").map(Number));
+    const exclusion = corners.length ? [Math.min(...corners.map((point: number[]) => point[0])), Math.min(...corners.map((point: number[]) => point[1])), Math.max(...corners.map((point: number[]) => point[0])), Math.max(...corners.map((point: number[]) => point[1]))] : null;
+    if (printer.includes("Carbon")) expect(exclusion).toEqual([0, 0, 18, 28]);
+    else expect(exclusion).toBeNull();
+    const objects = exportedObjects(files, bed);
+    expect(objects.length).toBeGreaterThan(0);
+    for (const object of objects) {
+      const minimumX = Math.min(...object.vertices.map((vertex) => vertex[0]!));
+      const minimumY = Math.min(...object.vertices.map((vertex) => vertex[1]!));
+      const maximumX = Math.max(...object.vertices.map((vertex) => vertex[0]!));
+      const maximumY = Math.max(...object.vertices.map((vertex) => vertex[1]!));
+      for (const [x, y, z] of object.vertices) {
+        expect(x!).toBeGreaterThanOrEqual(margin - 1e-4);
+        expect(y!).toBeGreaterThanOrEqual(margin - 1e-4);
+        expect(x!).toBeLessThanOrEqual(bed[0] - margin + 1e-4);
+        expect(y!).toBeLessThanOrEqual(bed[1] - margin + 1e-4);
+        expect(z!).toBeGreaterThanOrEqual(-1e-4);
+        expect(z!).toBeLessThanOrEqual(bed[2] - margin + 1e-4);
+      }
+      if (exclusion) expect(minimumX >= exclusion[2]! + margin - 1e-4 || maximumX <= exclusion[0]! - margin + 1e-4
+        || minimumY >= exclusion[3]! + margin - 1e-4 || maximumY <= exclusion[1]! - margin + 1e-4).toBe(true);
+    }
+    exports.push(objects);
+  }
+  const geometry = (objects: ReturnType<typeof exportedObjects>) => objects.map((object) => ({
+    name: object.name, vertices: object.vertices.length, triangles: object.triangles.length, volume: Math.round(object.volume * 1000),
+  })).sort((first, second) => first.name.localeCompare(second.name));
+  expect(geometry(exports[0]!)).toEqual(geometry(exports[1]!));
+  expect(exports[0]!.map((object) => [object.name, object.plate, object.vertices[0]]))
+    .not.toEqual(exports[1]!.map((object) => [object.name, object.plate, object.vertices[0]]));
   await page.close();
 });
 
@@ -267,9 +357,13 @@ test("picking printer, nozzle and filament composes a config naming those preset
   await waitForLabel(page, "0.6 nozzle");
   await page.selectOption("#pickFilament", { label: "Generic PETG" });
   await waitForLabel(page, "Generic PETG");
+  const sparseSummary = await completedSummary(page);
   await page.check("#pickTranslucent");
   await waitForLabel(page, "translucent");
-  expect(await page.locator("#summary").innerText()).toMatch(/kg PETG solid, about \d+ h at 20 mm\/s/);
+  const solidSummary = await completedSummary(page);
+  expect(solidSummary).toContain("solid;");
+  expect(solidSummary).not.toContain("about");
+  expect(Number(solidSummary.match(/~([\d.]+) kg/)![1])).toBeGreaterThan(Number(sparseSummary.match(/~([\d.]+) kg/)![1]));
   expect(await page.inputValue("#form [name=bedZ]")).toBe("250");
   await page.waitForFunction(() => !document.getElementById("status")!.classList.contains("busy"), { timeout: 90000 });
 
@@ -281,6 +375,14 @@ test("picking printer, nozzle and filament composes a config naming those preset
   expect(index.filaments.some((f) => f.name === config.filament_settings_id[0])).toBe(true);
   expect(config.different_settings_to_system[0]).toContain("wall_loops");
   expect(config.line_width).toBe("0.62");
+  const settings = estimateSettings(zip["Metadata/project_settings.config"]!, index);
+  expect(settings.infill).toBe(1);
+  expect(settings.density).toBeGreaterThan(0);
+  const requests = await page.evaluate(() => (window as any).estimateRequests);
+  expect(requests.at(-1).settings).toEqual(settings);
+  const volume = exportedObjects(zip, [256, 256, 250]).reduce((total, object) => total + object.volume, 0);
+  const kilograms = volume / 1e6 * settings.density;
+  expect(Number(solidSummary.match(/~([\d.]+) kg/)![1])).toBeCloseTo(kilograms, 2);
 
   await page.reload();
   await waitForLabel(page, "translucent");

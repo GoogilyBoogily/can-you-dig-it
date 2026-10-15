@@ -1,128 +1,21 @@
+import { estimateVolume } from "./estimate";
 // Geometry for the can-storage system, on the manifold-3d kernel. Units: mm, Z up.
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
-import type { CrossSection as CS, Manifold as M, ManifoldToplevel } from "manifold-3d";
+import type { CrossSection as CS, Manifold as M } from "manifold-3d";
 import { clearanceOf, earNotchH, tSlotJoint, gangJoint, lipSnap, lipPocket, crossLap, pinJoint, placeSide, earJoint, tabBox, snapTop, pinSnap, tabSnap } from "./features/joints";
 import { lay, platePose, riserPose } from "./features/pose";
 import { cellsOf, ligFor, autoR, rowsRadius, ROWS } from "./features/lattice";
 import { recessDepth, roundOver, roundTop } from "./features/pocket";
 import { gridUnit } from "./features/gridfinity";
-
-export type Vec2 = [number, number];
-export type Vec3 = [number, number, number];
-
-// ---------------------------------------------------------------- spec
-/** standard: the lattice as designed. minimal: same joints and dimensions; wall web, deck
- *  rails, ties and end wall thinned to what the loads need, the cover a perforated sheet. */
-export type Design = "standard" | "minimal";
-export const DESIGNS: readonly Design[] = ["standard", "minimal"];
-
-/** The perforation of the walls, end wall and cover; orthogonal to the design. Every one
- *  is an in-plane through-cut. Spec in docs/superpowers/specs/2026-09-18-pattern-axis-design.md. */
-export type Pattern = "hex" | "circle" | "kumiko" | "slat" | "breeze";
-export const PATTERNS: readonly Pattern[] = ["hex", "circle", "kumiko", "slat", "breeze"];
-
-/** flat: the lane sits on the shelf. feet: 24 mm risers under the bottom tier (wire
- *  shelves, a lip to clear). gridfinity: the bottom deck grows a 7 mm unit of Gridfinity
- *  feet and drops into the baseplate you have. Spec in
- *  docs/superpowers/specs/2026-09-19-gridfinity-base-design.md. */
-export type Base = "flat" | "feet" | "gridfinity";
-export const BASES: readonly Base[] = ["flat", "feet", "gridfinity"];
-/** Where the lane sits on its floor of whole cells: the spare goes to the other side.
- *  Across the lane, left is +Y (seen from the front); along it, front is the lip end. */
-export type Across = "left" | "centre" | "right";
-export type Along = "front" | "centre" | "back";
-export const ACROSS: readonly Across[] = ["left", "centre", "right"];
-export const ALONG: readonly Along[] = ["front", "centre", "back"];
-/** What one side of a unit joins its neighbour by: the gang tongue, the T socket that
- *  takes one, or nothing. Units mate only when printed from the same settings. */
-export type Side = "tongue" | "socket" | "none";
-export const SIDES: readonly Side[] = ["tongue", "socket", "none"];
-
-export interface Options {
-  canD: number;
-  canL: number;
-  length: number; // target lane length; > usable bed → two keyed halves
-  tiers: number;
-  lanesWide: number;
-  cascade: boolean; // true: drop chute at the low end, tiers alternate 180°. false: flat decks
-  slope: number; // degrees
-  lipGap: number; // headroom over the lip crest for the can leaving over it; the tier grows to give it
-  wall: number;
-  clearance: number;
-  fit: number;
-  hexR: number; // cell radius when hexAuto is off
-  hexAuto: boolean; // size cells so three whole rows fill the wall
-  solid: boolean; // no lattice at all; overrides design and pattern
-  design: Design;
-  pattern: Pattern;
-  cover: boolean;
-  rearLoad: boolean; // the tier cans slide into from the shelf's back prints without its end wall
-  stackable: boolean; // a cascade's top tier gets the full end wall, so another tier can go on it later
-  left: Side; right: Side; // what the row's outer sides join a neighbouring unit by; left is +Y
-  base: Base; // what the bottom tier stands on
-  magnets: boolean; // pockets for 6 × 2 mm magnets (cut 6.5 × 2.4) in every Gridfinity foot
-  across: Across; along: Along; // the lane on its Gridfinity floor
-  shelfCells: [number, number]; // Gridfinity cells the shelf has room for, along and across the lane
-  bed: [number, number, number];
-  bedMargin: number;
-}
-
-export const DEFAULTS: Options = {
-  canD: 66, canL: 122.5, length: 480, tiers: 2, lanesWide: 2,
-  cascade: true, slope: 3, lipGap: 5, wall: 6, clearance: 3.5, fit: 0, hexR: 13, hexAuto: true,
-  solid: false, design: "standard", pattern: "hex", cover: true, rearLoad: false, stackable: false, left: "tongue", right: "socket", base: "flat", magnets: false, across: "centre", along: "centre", shelfCells: [10, 7], bed: [256, 256, 256], bedMargin: 3,
-};
-
-// fixed design constants
-export const K = {
-  deckLo: 4, topgap: 2, slack: 8, lipH: 20, edgeR: 3,
-  lipInset: 8, // the lip pockets, and the first can, this far in from the deck start
-  minimalT: 2.5, // the minimal design's fins, ties and end ties
-  padRise: 4, // the recess frame, and every field but hex, starts this far above the ear notch
-  hexMin: 8, hexMax: 16, ligMin: 1.7, ligRatio: 0.17,
-  border: 5, web: 3.5,
-  cl: 0.25, // every joint's clearance a side, before `fit`
-  // one tab for every joint: 16 wide, 3 thick, flush with the plate's inner face. A pin
-  // is a tab as tall as the cover is thick, so it sits flush through the cover's hole.
-  // The ear a wall notches over is earW long; the wall's front ear starts 1 mm inside
-  // the deck end (laneOf's tabIn), and the two rules that keep an ear clear of a pin
-  // (laneOf's clear, check) derive from these, so they move together
-  tabW: 16, tabT: 3, pinH: 2.4, coverT: 2.4, earW: 24,
-  earRoot: 1, // an ear runs this far into the deck past the wall's inner face, so it is rooted and not a coplanar butt
-  // the lip's tab is its own shape, 5 thick by 12 wide, and its pocket is turned 90° from
-  // it: the lip lies on its back to print and stands on the deck
-  lipTabT: 5, lipTabW: 12,
-  // the cover's grille: the field stops coverInset in from every edge (the pin holes at
-  // IW/2 + 1.5 are 6.5 mm outside it), its bars are coverBar of the cell radius, and a
-  // split cover keeps a coverSeam-wide solid band each side of x = 0
-  coverInset: 14, coverBar: 0.5, coverSeam: 6,
-  riserL: 20, // a riser foot along the lane; the boss and the wall notch it goes in set nothing wider
-  // the corner is a cross-lap: the end wall stands `post` in from the lane end so the
-  // side wall keeps a post behind it that closes its slot, and each plate is slotted -
-  // the end wall from its bottom edge up `lap`, the side wall from its top edge down to
-  // that line. 3, not the 5 mm border: the post comes out of the deck's can run, and at
-  // 5 the default 480 mm bottom deck lost its seventh can
-  post: 3, lap: 12,
-  // ganged lanes sit gangGap apart, keyed by the deck: every +Y ear runs on under both
-  // walls as a tongue that ends in a T (an ear-wide neck, a gangHead-wide head, the
-  // splice's depths) in a socket in the neighbour's rail. The neck is the ear's width
-  // because the neighbour wall's tab hole crosses it: a tab-wide neck was all hole
-  gangGap: 3, gangHead: 30,
-  // the T at every splice and gang joint: a neck spliceNeck deep, a head the rest of
-  // spliceDepth; the x = 0 splice is spliceBase / spliceTip wide
-  spliceBase: 30, spliceTip: 40, spliceNeck: 3, spliceDepth: 8,
-  // Gridfinity: 42 mm cells, a 7 mm unit; a bin is n·42 − 0.5 across. A foot, bottom
-  // up: a 35.6 flat, 0.8 chamfer, 1.8 wall, 2.15 chamfer, 41.5 at the top, corners
-  // concentric with r 3.75 at the top. Magnets 6 × 2 on a 26 mm square in every cell
-  gridPitch: 42, gridGap: 0.25, unitH: 7, footFlat: 35.6, footChamferLo: 0.8, footWall: 1.8,
-  footChamferHi: 2.15, footR: 3.75, magnetR: 3.25, magnetDepth: 2.4, magnetPitch: 26,
-  // the snap: every tab is two snapT prongs at its edges with a hook snapCatch past the
-  // mouth it springs through, freed by relief slots so the hook sits snapLen from the
-  // prong's root - 2.5 % strain in PETG at that catch. A tab's catch is a snapFlare-deep
-  // 45° flare at the far side of the slot it drops through
-  snapT: 1.6, snapCatch: 0.5, snapLen: 7, snapFlare: 2,
-};
+import { Geo } from "./kernel";
+import { partManifest } from "./assembly";
+import { tierRole, rearTier, stacksOnTop, laneXe, gangs, deckSides, deckVariant, laneName } from "./layout";
+export { tierRole, rearTier, laneXe, deckSides, deckVariant, laneName } from "./layout";
+import { chuteInset, queueGeometry, minimumQueueLength } from "./queue";
+import { K, DENSITY, baseHeight, gridCells, gridSpan, type Vec2, type Vec3, type Options, type Derived, type Side, type LaneRole, type PlateName } from "./model";
+export * from "./model";
+export { Geo } from "./kernel";
 
 /** Where the end ears sit in from the deck ends: the ear starts 1 mm inside. */
 const tabIn = K.earW / 2 + 1;
@@ -136,29 +29,6 @@ const tabClear = K.earW / 2 + K.tabW / 2 + K.snapCatch + 2 * K.cl + 2;
  *  reached. */
 const pinIn = (o: Options) => o.wall + K.post + tabIn + tabClear;
 
-/** PETG, g/cm³: the filament estimates and the solid-print weight. */
-export const DENSITY = 1.27;
-
-/** Height the base adds under the bottom tier: what the solver charges the shelf for. On
- *  a grid the feet sit inside the baseplate, so the unit is the whole of it. */
-export const baseHeight = (o: Options) => (o.base === "feet" ? 24 : o.base === "gridfinity" ? K.unitH : 0);
-/** Whole Gridfinity cells that cover `span` mm. */
-export const gridCells = (span: number) => Math.ceil((span + 2 * K.gridGap) / K.gridPitch);
-/** The width of `cells` whole cells, gap included: the bin's edge. */
-export const gridSpan = (cells: number) => cells * K.gridPitch - 2 * K.gridGap;
-
-export interface Derived {
-  n: number; nBottom: number; split: boolean;
-  L: number; IW: number; OW: number; H: number; Hb: number;
-  dhi: number; dhiB: number; tan: number; inset: number;
-  hexR: number; lig: number;
-  xd: number; px: number; py: number; lipy: number; railHy: number;
-  gangPitch: number; plateX: number; plateY: number; plateZ: number; usableX: number; usableY: number; usableZ: number;
-  floorCells: [number, number]; // the lane's cells along and across: what covers it, or what the shelf has
-  floor: [number, number, number, number]; // the floor of feet, x0 y0 x1 y1 in the lane frame
-  foot: [number, number, number, number]; // lane and floor together: what stands on the shelf and fits the bed
-}
-
 /** Where a wall's lattice field starts. A hexagon only lands a 60° tip over an ear notch;
  *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
  *  across 12.5 mm, so every other pattern starts above the recess pads that guard the
@@ -166,7 +36,7 @@ export interface Derived {
 const fieldBottom = (o: Options) => (o.pattern === "hex" ? K.border : earNotchH(clearanceOf(o)) + K.padRise);
 
 /** Drop-chute length at the low end of an upper deck: one can plus play, plus the wall. */
-const insetFor = (o: Options) => (o.cascade ? o.canD + 6 + o.wall : 0);
+const insetFor = chuteInset;
 
 /** Where a span of whole cells sits round the lane's `size`: flush with one end or
  *  centred, the spare on the other side. */
@@ -184,10 +54,10 @@ export function solve(o: Options): Derived {
   // One margin, not two: a part has an edge at each end of X and Y, but it sits on the
   // bed, so the only thing to keep clear in Z is headroom under the gantry.
   const usableZ = o.bed[2] - o.bedMargin;
-  const L = Math.min(o.length, 2 * (usableX - K.spliceDepth));
+  const L = Math.min(o.length, 2 * (Math.max(usableX, usableY) - K.spliceDepth));
   // the end wall and the corner post behind it take the last wall + post of every deck
-  const n = Math.floor((L - inset - o.wall - K.post - K.slack) / o.canD);
-  const nBottom = Math.floor((L - o.wall - K.post - K.slack) / o.canD);
+  const n = queueGeometry(o, L).count;
+  const nBottom = queueGeometry(o, L, true).count;
   const IW = Math.round((o.canL + o.clearance) * 10) / 10;
   const OW = IW + 2 * o.wall;
   const run = L - inset;
@@ -212,7 +82,6 @@ export function solve(o: Options): Derived {
   const [fx0, fx1] = grid ? alignSpan(L, floorCells[0], o.along === "front" ? "lo" : o.along === "back" ? "hi" : "centre") : [-L / 2, L / 2];
   const [fy0, fy1] = grid ? alignSpan(OW, floorCells[1], o.across === "right" ? "lo" : o.across === "left" ? "hi" : "centre") : [-OW / 2, OW / 2];
   const foot: Derived["foot"] = [Math.min(fx0, -L / 2), Math.min(fy0, -OW / 2), Math.max(fx1, L / 2), Math.max(fy1, OW / 2)];
-  const split = foot[2] - foot[0] > usableX;
   const gangPitch = grid ? Math.max(floorCells[1] * K.gridPitch, OW + 2 * K.gridGap) : OW + K.gangGap;
   // What a plate needs on the bed, not what the assembly measures. layWall lays a wall
   // down, so its height becomes the bed's Y and its thickness the bed's Z; the deck is
@@ -223,6 +92,9 @@ export function solve(o: Options): Derived {
   // plate's own footprint.
   const wallPlateY = Math.max(H, Hb) + snapTop(o);
   const deckPlateY = grid ? foot[3] - foot[1] : OW + (gangs(o) ? widestTongues(o) * gangReach(o) : 0);
+  const plateY = Math.max(deckPlateY, wallPlateY);
+  const wholePlateX = foot[2] - foot[0];
+  const split = !((wholePlateX <= usableX && plateY <= usableY) || (wholePlateX <= usableY && plateY <= usableX));
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall;
   return {
@@ -231,7 +103,7 @@ export function solve(o: Options): Derived {
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
     plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
-    plateY: Math.max(deckPlateY, wallPlateY),
+    plateY,
     plateZ: Math.max(deckPlateZ, wallPlateZ), // a riser prints on its side, as thick as a wall
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
@@ -240,7 +112,7 @@ export function solve(o: Options): Derived {
 /** Inverse of the deck count in solve(): the shortest lane whose deck holds `cans` whole
  *  cans. `bottom` is the cascade's bottom deck, which has no chute to make room for. */
 export function laneLengthFor(o: Options, cans: number, bottom = false): number {
-  return cans * o.canD + (bottom ? 0 : insetFor(o)) + o.wall + K.post + K.slack;
+  return minimumQueueLength(o, cans, bottom);
 }
 
 export function check(o: Options, d: Derived): string[] {
@@ -286,142 +158,16 @@ export function check(o: Options, d: Derived): string[] {
   return w;
 }
 
-// ---------------------------------------------------------------- kernel helpers
-// manifold-3d registers no finalizer on its shapes: one nobody deletes stays on the WASM
-// heap for good, and a build makes thousands - a third of them from methods on other
-// shapes (translate, subtract, offset), not from Geo. So every function that can return a
-// shape is wrapped, once per module, to hand what it makes to the open arena, and
-// Geo.arena frees the lot when its build is done. Outside an arena nothing is tracked:
-// tests and scripts keep the shapes they cache.
-// isDeleted exists at runtime (embind) but not in manifold-3d's typings
-type Shape = { delete(): void; isDeleted(): boolean };
-let arenaShapes: Set<Shape> | null = null;
-const trackedModules = new WeakSet<object>();
-
-function trackShapes(wasm: ManifoldToplevel) {
-  if (trackedModules.has(wasm)) return;
-  trackedModules.add(wasm);
-  // the instance prototypes are not the constructors' .prototype; take them off a shape
-  const probeManifold = wasm.Manifold.cube([1, 1, 1]), probeSection = wasm.CrossSection.square([1, 1]);
-  const prototypes = [Object.getPrototypeOf(probeManifold), Object.getPrototypeOf(probeSection)];
-  probeManifold.delete(); probeSection.delete();
-  const isShape = (value: unknown): value is Shape => value != null && prototypes.includes(Object.getPrototypeOf(value));
-  const record = (result: unknown) => {
-    if (!arenaShapes) return;
-    if (isShape(result)) arenaShapes.add(result);
-    else if (Array.isArray(result)) for (const item of result) if (isShape(item)) arenaShapes.add(item);
-  };
-  const wrapFunctions = (owner: Record<string, unknown>, skip: string[]) => {
-    for (const name of Object.getOwnPropertyNames(owner)) {
-      const original = owner[name];
-      if (skip.includes(name) || typeof original !== "function") continue;
-      owner[name] = function (this: unknown, ...args: unknown[]) {
-        const result = original.apply(this, args);
-        record(result);
-        return result;
-      };
-    }
-  };
-  for (const prototype of prototypes) wrapFunctions(prototype, ["constructor"]);
-  for (const kernelClass of [wasm.Manifold, wasm.CrossSection]) wrapFunctions(kernelClass as unknown as Record<string, unknown>, ["prototype", "length", "name"]);
-}
-
-export class Geo {
-  private Manifold: typeof M;
-  private CrossSection: typeof CS;
-  constructor(wasm: ManifoldToplevel) {
-    trackShapes(wasm);
-    this.Manifold = wasm.Manifold;
-    this.CrossSection = wasm.CrossSection;
-  }
-
-  /** Run `build` and free every shape made while it runs. Whatever has to outlive it
-   *  leaves as plain data (meshDataOf, a volume). A shape already deleted is skipped:
-   *  filamentGrams frees its slices as it goes, and union([x]) hands back x itself. */
-  arena<T>(build: () => T): T {
-    if (arenaShapes) throw new Error("arenas do not nest: the inner one would free the outer one's shapes");
-    const shapes = new Set<Shape>();
-    arenaShapes = shapes;
-    try {
-      return build();
-    } finally {
-      arenaShapes = null;
-      let undeletable = 0;
-      for (const shape of shapes) {
-        try { if (!shape.isDeleted()) shape.delete(); } catch { undeletable++; }
-      }
-      // after a kernel abort the heap is gone and delete throws; the abort is the error
-      // worth reporting, and it is already on its way up
-      if (undeletable) console.warn(`arena: ${undeletable} of ${shapes.size} shapes could not be freed (kernel aborted?)`);
-    }
-  }
-
-  box(sx: number, sy: number, sz: number, cx = 0, cy = 0, cz = 0): M {
-    return this.Manifold.cube([sx, sy, sz], true).translate([cx, cy, cz]);
-  }
-  cyl(r: number, h: number, cx = 0, cy = 0, z0 = 0, seg = 48): M {
-    return this.Manifold.cylinder(h, r, r, seg, false).translate([cx, cy, z0]);
-  }
-  poly(pts: Vec2[]): CS {
-    const section = new this.CrossSection([pts], "EvenOdd"); // a constructor, so no wrapper sees it
-    arenaShapes?.add(section as unknown as Shape);
-    return section;
-  }
-  rect(x0: number, y0: number, x1: number, y1: number): CS {
-    return this.poly([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
-  }
-  prismZ(cs: CS, h: number, z0 = 0): M {
-    return cs.extrude(h).translate([0, 0, z0]);
-  }
-  /** Extrude an (x,z) profile along +Y from y0 to y0+depth. */
-  prismY(cs: CS, depth: number, y0: number): M {
-    return cs.extrude(depth).rotate([90, 0, 0]).translate([0, y0 + depth, 0]);
-  }
-  /** Extrude a (y,z) profile along +X from x0 to x0+depth. */
-  prismX(cs: CS, depth: number, x0: number): M {
-    // (u,v,w) -> (w,u,v): columns are images of e_u, e_v, e_w
-    return cs.extrude(depth).transform([0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, x0, 0, 0, 1]);
-  }
-  roundedRect(L: number, W: number, r: number): CS {
-    return this.rect(-L / 2 + r, -W / 2 + r, L / 2 - r, W / 2 - r).offset(r, "Round", 2, 24);
-  }
-  union(parts: M[]): M {
-    return parts.length === 1 ? parts[0] : this.Manifold.union(parts);
-  }
-  diff(a: M, cuts: M[]): M {
-    return cuts.length ? this.Manifold.difference([a, ...cuts]) : a;
-  }
-  /** A part the way every builder makes one: everything that grows, then everything cut
-   *  away, each in one batch boolean. */
-  assemble(adds: M[], cuts: M[]): M {
-    return this.diff(this.union(adds), cuts);
-  }
-  isect(a: M, b: M): M {
-    return this.Manifold.intersection([a, b]);
-  }
-  hull(points: (M | Vec3)[]): M {
-    return this.Manifold.hull(points);
-  }
-  cs2d(...cs: CS[]): CS {
-    return this.CrossSection.union(cs);
-  }
-  circle(r: number, seg = 48): CS {
-    return this.CrossSection.circle(r, seg);
-  }
-}
-
 // ---------------------------------------------------------------- parts
 // Every plate is modelled in the orientation it prints in, outer face up, so the packer
 // only has to drop it on the bed. The rule each feature has to pass: it is in-plane (tab,
 // notch, slot, T-slot, hex cell), it grows up from the print face (rib, pin, boss), or it
 // is a pocket in the print face (recess, groove). Nothing on the bed face, nothing under
 // an edge. test/overhang.test.ts holds every snapshot part to it.
-export type LaneRole = "top" | "mid" | "bottom";
-export type PlateName = "deck" | "deck-left-end" | "deck-right-end" | "wall-left" | "wall-right" | "end-wall";
 export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
 export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
-  lip: M; riser: M; cover: M[];
+  lip: M; riser?: M; cover: M[];
   gridDeck?: Plate; // the deck of the lane on the shelf, on its Gridfinity unit
 }
 
@@ -441,31 +187,6 @@ export interface Lane {
 }
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
-
-/** The role tier `t` (0 on the shelf) prints as. A flat stack's tiers are all one lane. */
-export const tierRole = (o: Options, t: number): LaneRole =>
-  !o.cascade ? "top" : t === 0 ? "bottom" : t === o.tiers - 1 ? "top" : "mid";
-
-/** The tier cans slide into from the shelf's back, or -1: the only tier, or the top of a
- *  stack (a cascade's lower tiers fill through it; a flat stack's still load from the
- *  front). It has no end wall - a can fills the tier
- *  over the deck there, ~3 mm spare, so no stop or bar fits. A cascade's tiers alternate,
- *  and its top tier's high end faces the back on an odd count only; on an even one the
- *  back is the chute. The side walls keep their corner slot, empty: a flat stack's tiers
- *  share one set of walls. */
-export const rearTier = (o: Options) =>
-  o.rearLoad && !stacksOnTop(o) && (o.tiers === 1 || !o.cascade || o.tiers % 2 === 1) ? o.tiers - 1 : -1;
-
-/** Whether the top tier is built for a tier on it: a cascade's next tier drops its chute
- *  over this one's high end, so the top gets a mid tier's full end wall, not the loading
- *  lip, and that wall stays even when the top would load from the back. A flat stack's
- *  tiers are one lane already. */
-const stacksOnTop = (o: Options) => o.cascade && o.stackable;
-
-/** The end wall's inner face: it stands `post` in from the lane end, so the side wall
- *  keeps a post behind it and its slot is closed on both sides. The viewer stands the
- *  end wall here too. */
-export const laneXe = (o: Options, d: Derived) => d.L / 2 - o.wall - K.post;
 
 /** Where the gang tongues go: one in the middle of every stretch of rail between the end
  *  ears that is clear of everything else under a wall - an ear's width and a 4 mm web from
@@ -535,26 +256,6 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   }
   edges.push(x1);
   return { bottom, top, xd, xe, dhi, te, H, ewh: top && !stacksOnTop(o) ? dhi + K.lipH : H, lapZ: te + K.lap, tabs, tongues, edges, lipx };
-}
-
-/** Whether the decks carry the gang joint: some lane edge has a tongue or a socket - a
- *  row's inner joints always do - and not on a grid, where the baseplate joins them. */
-const gangs = (o: Options) => o.base !== "gridfinity" && (o.lanesWide > 1 || o.left !== "none" || o.right !== "none");
-
-/** The sides of lane `lane`'s deck, +Y then -Y; lane 0 is the row's -Y (right) end. Inside
- *  the row a lane's tongue runs into its left neighbour's socket; the row's two ends
- *  are what the options say. */
-export function deckSides(o: Options, lane: number): [Side, Side] {
-  if (!gangs(o)) return ["none", "none"];
-  return [lane === o.lanesWide - 1 ? o.left : "tongue", lane === 0 ? o.right : "socket"];
-}
-
-/** The deck a lane prints as: the row's ends get their own when their sides differ from
- *  the inner lanes'. A lone lane's deck is just the deck, whatever its sides. */
-export function deckVariant(o: Options, lane: number): PlateName {
-  const [left, right] = deckSides(o, lane);
-  if (o.lanesWide === 1 || (left === "tongue" && right === "socket") || !gangs(o)) return "deck";
-  return lane === 0 ? "deck-right-end" : "deck-left-end";
 }
 
 /** The most tongues any one deck carries: what its plate is charged across. */
@@ -787,9 +488,8 @@ export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb 
  *  hold it in X and Y, and the tier above and the cover bridge the seam. A T here had to
  *  slide in Y before the wall went on: the one joint that did not drop in. */
 export function splitWall(g: Geo, d: Derived, wall: M): [M, M] {
-  const big = d.L + 20;
-  const half = (sx: number) => g.isect(wall, g.box(big, big, big, sx * big / 2, 0, 0));
-  return [half(-1), half(1)];
+  const [rear, front] = wall.splitByPlane([1, 0, 0], 0);
+  return [front, rear];
 }
 
 /** How deep the lip's tab drops: the deck's thickness at the lip pocket, so the tab ends
@@ -811,7 +511,15 @@ export function buildLip(g: Geo, o: Options, d: Derived): M {
   // other: K.cl + fit a side. It was a flat 0.5 mm a side however the fit was set, then
   // 0.5 + fit; now the same 0.25 every other joint gets.
   const outline = g.roundedRect(K.lipH, d.IW - 2 * clearanceOf(o), 2.4).translate([-K.lipH / 2, 0]);
-  const parts = [roundTop(g, g.prismZ(outline, t), outline, t, 2)];
+  let blade = roundTop(g, g.prismZ(outline, t), outline, t, 2);
+  if (d.tan > 0) {
+    // Standing maps print (x, z) to (z, -x). Past the pocket centre,
+    // the uphill deck rises into the blade by (z - t/2) * tan.
+    // Relieve only the blade, before adding the snap tabs and their roots.
+    const seat = g.poly([[0, t / 2], [0, t], [-t / 2 * d.tan, t]]);
+    blade = g.diff(blade, [g.prismY(seat, d.IW + 2, -d.IW / 2 - 1)]);
+  }
+  const parts = [blade];
   const snap = lipSnap(g, tabLen, clearanceOf(o));
   const cuts = [g.cyl(22, t + 2, -K.lipH - 12, 0, -1, 64)]; // the scoop
   for (const sy of [1, -1]) {
@@ -842,7 +550,7 @@ function buildRiser(g: Geo, o: Options, h: number): M {
  *  z = 0; the lip's tab now ends flush with the pan, and its pocket keeps 1 mm of
  *  clearance under it for the fit. Prints as it sits, feet down, like every bin. */
 function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
-  const unit = gridUnit(g, d, o.magnets);
+  const unit = gridUnit(g, d, o.magnets, clearanceOf(o));
   const adds = [deck, unit.floor];
   if (unit.skirt) adds.push(unit.skirt);
   // plain bosses, not snaps: the grid deck prints feet down, so a prong here would flex
@@ -907,8 +615,8 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   }
   const m = g.diff(plate, cuts);
   if (d.split) {
-    const big = L + 20;
-    return [g.isect(m, g.box(big, big, 10, -big / 2, 0, 0)), g.isect(m, g.box(big, big, 10, big / 2, 0, 0))];
+    const [rear, front] = m.splitByPlane([1, 0, 0], 0);
+    return [front, rear];
   }
   return [m];
 }
@@ -927,40 +635,46 @@ export function deckKinds(o: Options): { name: PlateName; sides: [Side, Side]; c
 
 /** The four plates of one lane, laid flat, split at the seam when the lane is long. A row
  *  whose ends join differently from its inner lanes has a deck for each end too. */
-export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole): Plate[] {
+export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, requested?: ReadonlySet<PlateName>): Plate[] {
   const ln = laneOf(o, d, role);
-  const decks = deckKinds(o).map(({ name, sides }) => ({ name, deck: buildDeck(g, o, d, ln, sides) }));
-  const walls = [1, -1].map((sy) => buildWall(g, o, d, ln, sy));
-  const endWall = layEndWall(buildEndWall(g, o, d, ln), ln.xe);
-  if (!d.split) {
-    return [
-      ...decks.map(({ name, deck }): Plate => ({ name, whole: deck })),
-      { name: "wall-left", whole: layWall(walls[0], 1, d.IW) },
-      { name: "wall-right", whole: layWall(walls[1], -1, d.IW) },
-      { name: "end-wall", whole: endWall },
-    ];
+  const wanted = (name: PlateName) => !requested || requested.has(name);
+  const plates: Plate[] = [];
+  for (const { name, sides } of deckKinds(o)) {
+    if (!wanted(name)) continue;
+    const deck = buildDeck(g, o, d, ln, sides);
+    if (d.split) {
+      const [front, rear] = splitDeck(g, o, d, ln, deck);
+      plates.push({ name, front, rear });
+    } else plates.push({ name, whole: deck });
   }
-  const plates: Plate[] = decks.map(({ name, deck }) => {
-    const [front, rear] = splitDeck(g, o, d, ln, deck);
-    return { name, front, rear };
-  });
-  for (const [i, sy] of [1, -1].entries()) {
-    const [front, rear] = splitWall(g, d, walls[i]);
-    plates.push({ name: sy > 0 ? "wall-left" : "wall-right", front: layWall(front, sy, d.IW), rear: layWall(rear, sy, d.IW) });
+  for (const side of [1, -1]) {
+    const name = side > 0 ? "wall-left" : "wall-right";
+    if (!wanted(name)) continue;
+    const wall = buildWall(g, o, d, ln, side);
+    if (d.split) {
+      const [front, rear] = splitWall(g, d, wall);
+      plates.push({ name, front: layWall(front, side, d.IW), rear: layWall(rear, side, d.IW) });
+    } else plates.push({ name, whole: layWall(wall, side, d.IW) });
   }
-  plates.push({ name: "end-wall", whole: endWall });
+  if (wanted("end-wall")) plates.push({ name: "end-wall", whole: layEndWall(buildEndWall(g, o, d, ln), ln.xe) });
   return plates;
 }
 
 export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
-  const cascade = o.cascade;
-  const roles: LaneRole[] = cascade ? (o.tiers >= 3 ? ["bottom", "mid", "top"] : ["bottom", "top"]) : ["top"];
+  const requested = new Map<LaneRole, Set<PlateName>>();
+  for (const descriptor of partManifest(o, d)) {
+    if (descriptor.source.kind !== "lane") continue;
+    const { laneRole, plate } = descriptor.source;
+    const plates = requested.get(laneRole!) ?? new Set<PlateName>();
+    plates.add(plate!);
+    requested.set(laneRole!, plates);
+  }
   return {
-    lanes: roles.map((role) => ({ role, plates: buildLanePlates(g, o, d, role) })),
+    lanes: [...requested].map(([role, plates]) => ({ role, plates: buildLanePlates(g, o, d, role, plates) })),
     lip: buildLip(g, o, d),
-    riser: buildRiser(g, o, 24),
+    riser: o.base === "feet" ? buildRiser(g, o, 24) : undefined,
     cover: o.cover ? buildCover(g, o, d) : [],
-    gridDeck: o.base === "gridfinity" ? buildGridDeckPlate(g, o, d, cascade ? "bottom" : "top") : undefined,
+    gridDeck: o.base === "gridfinity" ? buildGridDeckPlate(g, o, d, tierRole(o, 0)) : undefined,
   };
 }
 
@@ -977,42 +691,23 @@ function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Pla
 export type PartRole = "lane" | "lip" | "riser" | "cover";
 interface Part { name: string; mesh: M; qty: number; role: PartRole }
 
-/** The name a lane plate prints under. A flat stack's tiers are all the same lane, so
- *  the role is left out; the viewer and the snapshot look parts up by this name. */
-export const laneName = (o: Options, role: LaneRole, plate: PlateName) =>
-  o.cascade ? `lane-${role}-${plate}` : `lane-${plate}`;
-
 /** Every part to print, named and counted, in the order they are packed. A split plate
  *  is two parts, -front and -rear. On a Gridfinity base the shelf lane's deck is
  *  grid-deck and its plain deck is not printed; risers only come with feet. */
 export function partList(set: PartSet, o: Options): Part[] {
-  const parts: Part[] = [];
-  const add = (name: string, mesh: M | undefined, qty: number, role: PartRole) => {
-    if (mesh && qty > 0) parts.push({ name, mesh, qty, role });
-  };
-  const addPlate = (base: string, plate: Plate, qty: number) => {
-    add(base, plate.whole, qty, "lane");
-    add(`${base}-front`, plate.front, qty, "lane");
-    add(`${base}-rear`, plate.rear, qty, "lane");
-  };
-  const qtyOf: Record<LaneRole, number> = {
-    bottom: o.lanesWide, mid: o.lanesWide * Math.max(0, o.tiers - 2), top: o.cascade ? o.lanesWide : o.lanesWide * o.tiers,
-  };
-  const shelfRole: LaneRole = o.cascade ? "bottom" : "top";
-  const rear = rearTier(o);
-  const lanesOf = new Map(deckKinds(o).map(({ name, count }) => [name, count]));
-  for (const lane of set.lanes) for (const plate of lane.plates) {
-    const onGrid = set.gridDeck && lane.role === shelfRole && plate.name === "deck";
-    const openEnd = plate.name === "end-wall" && rear >= 0 && tierRole(o, rear) === lane.role;
-    // a deck prints for the lanes that use it, once per tier of its role
-    const qty = lanesOf.has(plate.name) ? (qtyOf[lane.role] / o.lanesWide) * lanesOf.get(plate.name)! : qtyOf[lane.role];
-    addPlate(laneName(o, lane.role, plate.name), plate, qty - (onGrid || openEnd ? o.lanesWide : 0));
-  }
-  if (set.gridDeck) addPlate("grid-deck", set.gridDeck, o.lanesWide);
-  add("end-lip", set.lip, o.lanesWide * (o.cascade ? 1 : o.tiers), "lip");
-  if (o.base === "feet") add("riser-24", set.riser, o.lanesWide * 4, "riser");
-  set.cover.forEach((mesh, i) => add(set.cover.length > 1 ? (i === 0 ? "cover-front" : "cover-rear") : "cover", mesh, o.lanesWide, "cover"));
-  return parts;
+  const split = set.lanes.some((lane) => lane.plates.some((plate) => !!plate.front)) || !!set.gridDeck?.front || set.cover.length > 1;
+  const manifest = partManifest(o, { ...solve(o), split });
+  return manifest.map(({ name, source, qty, role }) => {
+    let mesh: M | undefined;
+    if (source.kind === "lane") {
+      const plate = set.lanes.find((lane) => lane.role === source.laneRole)?.plates.find((plate) => plate.name === source.plate);
+      mesh = source.half ? plate?.[source.half] : plate?.whole;
+    } else if (source.kind === "grid") mesh = source.half ? set.gridDeck?.[source.half] : set.gridDeck?.whole;
+    else if (source.kind === "cover") mesh = set.cover[source.half === "rear" ? 1 : 0];
+    else mesh = source.kind === "lip" ? set.lip : set.riser;
+    if (!mesh) throw new Error(`Missing requested part ${name}`);
+    return { name, mesh, qty, role };
+  });
 }
 
 
@@ -1027,26 +722,5 @@ export function partList(set: PartSet, o: Options): Part[] {
  *  default part is more than 7.3 % off a 0.1 mm sampling and the set is within 3 %; 1.5
  *  was 15 % on the lip and the decks, for 20 ms a build saved. */
 export function filamentGrams(m: M, dz = 0.5, shell = 1.26, infill = 0.06, density = DENSITY, skin = 1): number {
-  const bb = m.boundingBox();
-  const h = bb.max[2] - bb.min[2];
-  const steps = Math.max(Math.ceil(h / dz), 8);
-  const step = h / steps;
-  let solid = 0;
-  for (let i = 0; i < steps; i++) {
-    const z = bb.min[2] + (i + 0.5) * step;
-    // Six cross-sections a layer, and this runs on every part of every build. manifold-3d
-    // holds them on the WASM heap and the JS collector only sees a handle, so unfreed they
-    // are what fills it: a 400 mm lane is ~270 a part. Freed here, in one place.
-    const s = m.slice(z);
-    const a = s.area();
-    if (a <= 0) { s.delete(); continue; }
-    const shrunk = s.offset(-shell, "Miter");
-    const above = m.slice(z + skin), below = m.slice(z - skin);
-    const capped = shrunk.intersect(above);
-    const core = capped.intersect(below);
-    const ia = Math.max(core.area(), 0);
-    solid += a - ia + infill * ia;
-    for (const section of [s, shrunk, above, below, capped, core]) section.delete();
-  }
-  return (solid * step) / 1000 * density;
+  return estimateVolume(m, { shell, infill, density, topSkin: skin, bottomSkin: skin, assumptions: [] }, dz) / 1000 * density;
 }

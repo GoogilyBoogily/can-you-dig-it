@@ -2,7 +2,7 @@
 // `lay` takes a lane-frame build flat for the bed and `stand` is its inverse, and the
 // viewer builds its three.js pose from the same numbers - one place, not three.
 import type { Manifold as M } from "manifold-3d";
-import { K, type PlateName, type Vec3 } from "../geometry";
+import { K, type PlateName, type Vec3 } from "../model";
 
 /** A standing transform: rotate about X, then Y, then Z (manifold's order), then move. */
 export interface Pose { rotate: Vec3; translate: Vec3 }

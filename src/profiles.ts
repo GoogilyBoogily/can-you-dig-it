@@ -23,8 +23,8 @@ export interface Machine {
 }
 // extruderVariants: Bambu's per-nozzle-type slots ("Direct Drive Standard", "... High Flow");
 // per-variant values are arrays of that length, and a process pairs each with an extruder id.
-interface Process { name: string; layerHeight: number; printers: number[]; extruderVariants: string[]; extruderIds: string[] }
-export interface Filament { name: string; label: string; vendor: string; colour: string; printers: number[] }
+interface Process { estimateSettings?: Record<string, unknown>; name: string; layerHeight: number; printers: number[]; extruderVariants: string[]; extruderIds: string[] }
+export interface Filament { estimateSettings?: Record<string, unknown>; name: string; label: string; vendor: string; colour: string; printers: number[] }
 export interface ProfileIndex { version: string; machines: Machine[]; processes: Process[]; filaments: Filament[] }
 
 export interface Picks { machine: string; process: string; filament: string; translucent?: boolean }
@@ -129,6 +129,12 @@ export function composeProfile(index: ProfileIndex, picks: Picks): Uint8Array {
   const process = index.processes.find((p) => p.name === picks.process);
   const filament = index.filaments.find((f) => f.name === picks.filament);
   if (!machine || !process || !filament) throw new Error(`unknown preset in ${JSON.stringify(picks)}`);
+  if (!processesFor(index, machine.name).includes(process))
+    throw new Error(`process ${process.name} is incompatible with ${machine.name}`);
+  if (!filamentsFor(index, machine.name).includes(filament))
+    throw new Error(`filament ${filament.name} is incompatible with ${machine.name}`);
+  if (picks.translucent && machine.nozzle === "0.2")
+    throw new Error("translucent mode is unavailable for a 0.2 mm nozzle");
   const config = {
     version: index.version,
     printer_technology: "FFF",
@@ -173,10 +179,12 @@ export function picksFromConfig(index: ProfileIndex, config: Uint8Array): Picks 
   // Any project Bambu Studio saved carries different_settings_to_system too, so look for
   // the override itself rather than the list.
   if (parsed?.sparse_infill_pattern === "alignedrectilinear" && parsed?.fan_max_speed?.[0] === "0") picks.translucent = true;
-  const known = index.machines.some((m) => m.name === picks.machine)
-    && index.processes.some((p) => p.name === picks.process)
-    && index.filaments.some((f) => f.name === picks.filament);
-  return known ? picks : null;
+  const machine = index.machines.find((candidate) => candidate.name === picks.machine);
+  const supported = machine
+    && processesFor(index, machine.name).some((process) => process.name === picks.process)
+    && filamentsFor(index, machine.name).some((filament) => filament.name === picks.filament)
+    && !(picks.translucent && machine.nozzle === "0.2");
+  return supported ? picks : null;
 }
 
 /** The keep-out rectangle of a project_settings.config's bed_exclude_area, or none. Bambu

@@ -1,8 +1,10 @@
+import type { Geo } from "../kernel";
 // The Gridfinity unit a shelf lane's deck grows below z = 0: a floor of whole cells with
 // the spec foot proud under every one, a skirt where the lane runs past its floor, and
 // magnet pockets in every foot. docs/gridfinity-spec.md has every number and its K.
 import type { Manifold as M } from "manifold-3d";
-import { K, gridSpan, type Derived, type Geo, type Vec3 } from "../geometry";
+import { K, gridSpan, type Derived, type Vec3 } from "../model";
+import { tProfile } from "./joints";
 
 /** One Gridfinity foot, centred, from z = 0 up: hulls of the profile's rounded
  *  rectangles, so the 45° faces are exact and the corners concentric. An extrude with
@@ -24,7 +26,7 @@ function buildFoot(g: Geo, over: number): M {
 /** The floor of feet clipped to the bin outline, the skirt beside it, and the magnet
  *  pockets, all in the lane frame with the unit from -unitH to 0. A pocket the seam
  *  would halve is skipped. */
-export function gridUnit(g: Geo, d: Derived, magnets: boolean): { floor: M; skirt: M | null; pockets: M[] } {
+export function gridUnit(g: Geo, d: Pick<Derived, "floorCells" | "floor" | "L" | "OW" | "split">, magnets: boolean, clearance = K.cl): { floor: M; skirt: M | null; pockets: M[] } {
   const { floorCells: [nx, ny], floor: [fx0, fy0, fx1, fy1] } = d;
   const footH = K.footChamferLo + K.footWall + K.footChamferHi;
   const z0 = -K.unitH;
@@ -44,14 +46,27 @@ export function gridUnit(g: Geo, d: Derived, magnets: boolean): { floor: M; skir
   const foot = buildFoot(g, K.unitH - footH + 0.5);
   const cx = (i: number) => fx0 - K.gridGap + (i + 0.5) * K.gridPitch, cy = (j: number) => fy0 - K.gridGap + (j + 0.5) * K.gridPitch;
   const feet: M[] = [], pockets: M[] = [];
+  // Ownership follows the same T profiles as splitDeck: rear owns the male,
+  // front excludes the female (including fit). Keep a full 1 mm supporting rim
+  // on one part; a pocket shared across a tongue edge cannot retain a magnet.
+  const owners = magnets && d.split ? [
+    g.rect(Math.min(fx0, -d.L / 2) - 1, Math.min(fy0, -d.OW / 2) - 1, 0, Math.max(fy1, d.OW / 2) + 1)
+      .subtract(tProfile(g, K.spliceBase, K.spliceTip, clearance)),
+    g.rect(0, Math.min(fy0, -d.OW / 2) - 1, Math.max(fx1, d.L / 2) + 1, Math.max(fy1, d.OW / 2) + 1)
+      .add(tProfile(g, K.spliceBase, K.spliceTip)),
+  ] : null;
   for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
     feet.push(foot.translate([cx(i), cy(j), z0]));
     // No fit on the magnet pockets: 6.5 x 2.4 is the Gridfinity figure for a 6 x 2 magnet,
     // so the 0.5 and the 0.4 are already the clearance, and a magnet wants interference.
     if (magnets) for (const sx of [1, -1]) for (const sy of [1, -1]) {
       const mx = cx(i) + sx * K.magnetPitch / 2;
-      if (d.split && Math.abs(mx) < K.magnetR + 1) continue; // half a pocket a side holds nothing
-      pockets.push(g.cyl(K.magnetR, K.magnetDepth + 1, mx, cy(j) + sy * K.magnetPitch / 2, z0 - 1));
+      const my = cy(j) + sy * K.magnetPitch / 2;
+      if (owners) {
+        const support = g.circle(K.magnetR + 1).translate([mx, my]);
+        if (!owners.some((owner) => support.subtract(owner).area() < 1e-6)) continue;
+      }
+      pockets.push(g.cyl(K.magnetR, K.magnetDepth + 1, mx, my, z0 - 1));
     }
   }
   const clip = g.prismZ(outline, K.unitH, z0);

@@ -5,7 +5,8 @@ dist
 .playwright-mcp/
 
 # Local agent-tool state, not project files
-.claude/
+.claude/*
+!.claude/skills/
 .headroom/
 .serena/
 .remember/

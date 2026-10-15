@@ -1,5 +1,6 @@
 // Slice the default job with the installed Bambu Studio's CLI and print its time and
-// grams beside ours: how JOB_FLOW (src/main.ts) was measured, and how to re-check it.
+// grams beside the reference estimate. The implied JOB_FLOW is historical calibration,
+// not a universal print-time prediction.
 //
 //   bun run slice.ts                                  # P2S 0.4, 0.20mm Standard, PETG Basic
 //   bun run slice.ts "Bambu Lab X1 Carbon 0.4 nozzle" '{"outer_wall_acceleration":["10000","10000"]}'
@@ -7,11 +8,12 @@
 // The CLI cannot slice a 3MF that only names system presets: it looks for flattened
 // machine_full/ and process_full/ files that only Bambu's CI builds ship, and segfaults.
 // So the three presets are flattened here and passed in. The process override is JSON;
-// per-extruder values need one entry a slot (the P2S has three). Output goes to .slice/,
-// which git ignores. About 15 s for 18 plates.
+// per-extruder values need one entry a slot (the P2S has three). Each run retains its
+// profiles, model, G-code and logs in a fresh .slice/ directory. Internal slicer errors
+// fail the run even when the CLI returns zero.
 import Module from "manifold-3d";
-import { mkdirSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { DEFAULTS, DENSITY, Geo, solve, buildAll, partList, filamentGrams } from "./src/geometry";
 import { pack, threeMf, meshDataOf } from "./src/export";
 import { composeProfile, defaultPicks, filamentsFor, keepOutFromConfig, type ProfileIndex } from "./src/profiles";
@@ -19,8 +21,9 @@ import { composeProfile, defaultPicks, filamentsFor, keepOutFromConfig, type Pro
 const APP = "/Applications/BambuStudio.app/Contents";
 const machine = process.argv[2] ?? "Bambu Lab P2S 0.4 nozzle";
 const overrides = JSON.parse(process.argv[3] ?? "{}");
-const out = ".slice";
-mkdirSync(out, { recursive: true });
+mkdirSync(".slice", { recursive: true });
+const out = mkdtempSync(resolve(".slice", "run-"));
+console.log(`Slice artifacts: ${out}`);
 
 // the default job, packed and written the way the worker does it
 const wasm = await Module(); wasm.setup();
@@ -52,11 +55,19 @@ await Bun.write(join(out, "machine.json"), JSON.stringify({ ...flatten("machine"
 await Bun.write(join(out, "process.json"), JSON.stringify({ ...flatten("process", picks.process), ...overrides, ...system }));
 await Bun.write(join(out, "filament.json"), JSON.stringify({ ...flatten("filament", picks.filament), ...system }));
 
-for (const file of readdirSync(out).filter((f) => f.endsWith(".gcode"))) await Bun.file(join(out, file)).delete();
-const run = Bun.spawnSync([`${APP}/MacOS/BambuStudio`, "--load-settings", `${out}/machine.json;${out}/process.json`,
-  "--load-filaments", `${out}/filament.json`, "--slice", "0", "--outputdir", out, `${out}/job.3mf`]);
+const run = Bun.spawnSync([`${APP}/MacOS/BambuStudio`, "--datadir", join(out, "datadir"),
+  "--load-settings", `${out}/machine.json;${out}/process.json`,
+  "--load-filaments", `${out}/filament.json`, "--slice", "0", "--outputdir", out, `${out}/job.3mf`], { cwd: out });
+const stdout = new TextDecoder().decode(run.stdout), stderr = new TextDecoder().decode(run.stderr);
+await Bun.write(join(out, "stdout.log"), run.stdout);
+await Bun.write(join(out, "stderr.log"), run.stderr);
+const errors = `${stdout}\n${stderr}`.split(/\r?\n/).filter((line) => /\[(?:error|fatal)\]|\bZFiller:/i.test(line));
+if (errors.length)
+  throw new Error(`Bambu Studio reported ${errors.length} internal error(s), despite exit ${run.exitCode}. `
+    + `Slicing is not validated. Artifacts: ${out}\n${errors.slice(0, 5).join("\n")}`);
 const result = await Bun.file(join(out, "result.json")).json();
-if (run.exitCode !== 0) throw new Error(`Bambu Studio: ${result.error_string} (exit ${run.exitCode})`);
+if (run.exitCode !== 0 || result.return_code !== 0)
+  throw new Error(`Bambu Studio: ${result.error_string} (exit ${run.exitCode}, result ${result.return_code}). Artifacts: ${out}`);
 
 // Bambu's header against ours, plate by plate
 const seconds = (text: string) => text.match(/(\d+)([dhms])/g)!.reduce((sum, part) => sum + Number(part.slice(0, -1)) * { d: 86400, h: 3600, m: 60, s: 1 }[part.at(-1) as "d"], 0);

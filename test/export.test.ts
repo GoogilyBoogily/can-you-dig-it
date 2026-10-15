@@ -4,7 +4,9 @@
 import { test, expect } from "bun:test";
 import { strFromU8, unzipSync } from "fflate";
 import { stlBinary, stlZip, threeMf, plateCols, plateOrigin, plateSummary, bboxOf, type MeshData, type Placement } from "../src/export";
+import { solidFixture } from "./solid-fixture";
 
+const solid = solidFixture("triangle");
 const BED: [number, number, number] = [256, 256, 256];
 
 /** One triangle in the z=0 plane, wound counter-clockwise, so its normal is exactly +Z. */
@@ -47,7 +49,7 @@ test("the facet normal is the unit normal of the winding", () => {
 });
 
 test("stlZip names one entry per part", () => {
-  const entries = unzipSync(stlZip([triangle, { ...triangle, name: "end-lip" }]));
+  const entries = unzipSync(stlZip([solid, { ...solid, name: "end-lip" }]));
   expect(Object.keys(entries).sort()).toEqual(["end-lip.stl", "triangle.stl"]);
 });
 
@@ -81,14 +83,16 @@ test("a 5th plate wraps onto a 3-wide grid", () => {
 
 // The grid is only useful if it reaches the geometry: objects are baked into place,
 // and model_settings.config is belt-and-braces on top.
-const onPlate = (plate: number): Placement => ({ ...triangle, name: `part-${plate}`, part: `part-${plate}`, plate });
+const onPlate = (plate: number): Placement => ({ ...solid, name: `part-${plate}`, part: `part-${plate}`, plate });
 
 test("a 3MF bakes each object onto its plate origin", () => {
   const model = strFromU8(unzipSync(threeMf([onPlate(0), onPlate(1)], BED))["3D/3dmodel.model"]);
   const xs = [...model.matchAll(/<vertex x="([-\d.]+)"/g)].map((m) => Number(m[1]));
-  const firstObject = xs.slice(0, 3);
-  const secondObject = xs.slice(3, 6);
-  expect(firstObject).toEqual([0, 10, 0]);
+  const vertexCount = solid.pos.length / 3;
+  const firstObject = xs.slice(0, vertexCount);
+  const secondObject = xs.slice(vertexCount, vertexCount * 2);
+  expect(xs).toHaveLength(vertexCount * 2);
+  expect(firstObject).toEqual([0, 10, 0, 0]);
   expect(secondObject).toEqual(firstObject.map((x) => x + 256 * 1.2));
 });
 
@@ -103,9 +107,9 @@ test("a 3MF declares one plate block per plate, with its objects", () => {
 // plate says what is on it instead of "Plate 1".
 test("a 3MF names each plate after what is on it", () => {
   const placed: Placement[] = [
-    { ...triangle, name: "deck-01", part: "deck", plate: 0 },
-    { ...triangle, name: "deck-02", part: "deck", plate: 0 },
-    { ...triangle, name: "end-lip", part: "end-lip", plate: 1 },
+    { ...solid, name: "deck-01", part: "deck", plate: 0 },
+    { ...solid, name: "deck-02", part: "deck", plate: 0 },
+    { ...solid, name: "end-lip", part: "end-lip", plate: 1 },
   ];
   const config = strFromU8(unzipSync(threeMf(placed, BED))["Metadata/model_settings.config"]);
   expect(config).toContain(`<metadata key="plater_name" value="2x deck"/>`);
@@ -118,7 +122,7 @@ test("a 3MF names each plate after what is on it", () => {
 // every plate, and those read 0 g in the panel and put a 3-digit name in the 3MF.
 test("plateSummary counts copies, keeps pack order, and is not fooled by a digit or a 3-digit copy", () => {
   const on = (part: string, copy?: number): Placement =>
-    ({ ...triangle, name: copy === undefined ? part : `${part}-${String(copy).padStart(2, "0")}`, part, plate: 0 });
+    ({ ...solid, name: copy === undefined ? part : `${part}-${String(copy).padStart(2, "0")}`, part, plate: 0 });
   expect(plateSummary([on("lane-deck", 1), on("riser-24", 1), on("lane-deck", 2), on("riser-24", 2), on("end-lip")]))
     .toBe("2x lane-deck, 2x riser-24, end-lip");
   expect(plateSummary([on("lane-deck", 100), on("lane-deck", 101)])).toBe("2x lane-deck");

@@ -19,11 +19,18 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
 
 ## Layout
 
-    src/geometry.ts   parts: lanes (upper / bottom, split halves), lip, risers, cover
+    src/model.ts      product options, dimensions, constants and shared contracts
+    src/kernel.ts     Manifold operations and scoped WASM shape ownership
+    src/queue.ts      shared can capacity, minimum lane length and positions
+    src/layout.ts     tier roles, deck variants and joint layout rules
+    src/assembly.ts   part identities, quantities and assembly placements
+    src/features/    reusable joints, poses, lattice, rounds and Gridfinity units
+    src/geometry.ts   composes the required parts from the assembly manifest
     src/solver.ts     shelf W×D×H + can → ranked layouts (pure arithmetic)
-    src/export.ts     plate packing, binary STL, Bambu multi-plate 3MF
-    src/worker.ts     runs geometry + export off the UI thread
-    src/viewer.ts     three.js: parts, assembled stack with cans, individual plates
+    src/export.ts     mesh validation, shared-geometry packing, STL and multi-plate 3MF
+    src/estimate.ts   approximate filament use from resolved print settings
+    src/worker.ts     runs geometry, estimates and export off the UI thread
+    src/viewer.ts     three.js instances for assemblies, cans and plate placements
     src/main.ts       form → solver → worker → viewer / downloads; state in the URL hash
     ref.ts            builds ref.json: volumes/bounds pinned by test/regress.test.ts
 
@@ -66,6 +73,12 @@ Plates follow Bambu Studio's own grid (`compute_colum_count` = ceil√n columns,
 stride = bed × 1.2, rows toward −Y) and are declared in
 `Metadata/model_settings.config`, so the file opens with parts already on plates.
 Load a project 3MF saved from your slicer and its `project_settings.config` rides into the export, so the file opens on your printer and filament. Import nothing and the slicer's own defaults apply.
+
+Filament estimates resolve selected process and filament settings, including infill,
+perimeters, skins and density. Missing values are shown as explicit assumptions.
+They exclude supports, adhesion and purge; use the slicer for print time. Geometry is
+shared between repeated parts in memory, with placement transforms applied at export.
+Large assembly previews show a labelled sample; capacity and exports retain every part.
 
 ## Known gaps, in order
 

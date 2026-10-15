@@ -1,6 +1,8 @@
 import * as THREE from "three";
-import type { MeshData } from "./export";
-import { K, laneName, laneXe, platePose, lipPose, riserPose, tierRole, rearTier, deckVariant, type Derived, type Options, type PlateName, type Pose } from "./geometry";
+import type { MeshData, PackedPlan } from "./export";
+import type { Derived, Options } from "./model";
+import type { Pose } from "./features/pose";
+import { assemblyPlacements, assemblyCans, partManifest, previewCounts } from "./assembly";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -17,9 +19,8 @@ export class Viewer {
   private bed: THREE.Object3D = new THREE.Group();
   private gridOn = true;
   private bedOn = false;
-  /** Assembly meshes with where they sit and where the explode slider pushes them at 1. */
-  private exploded: { mesh: THREE.Object3D; rest: THREE.Vector3; push: THREE.Vector3 }[] = [];
   private explodeT = 0;
+  private instanceBatches: { mesh: THREE.InstancedMesh; entries: { rest: THREE.Matrix4; push: THREE.Vector3 }[] }[] = [];
   private theta = 2.45; private phi = 1.05; private dist = 600;
   private target = new THREE.Vector3();
   private geoms = new Map<string, THREE.BufferGeometry>();
@@ -94,6 +95,7 @@ export class Viewer {
 
   private clear() {
     this.scene.remove(this.group);
+    this.instanceBatches = [];
     // three.js holds GPU buffers until they are disposed; dropping the JS reference frees
     // nothing. Every view change built a new group and left the old one's buffers behind,
     // so clicking between two plate tabs leaked both plates' geometry every time. Cached
@@ -102,6 +104,7 @@ export class Viewer {
     this.group.traverse((object) => {
       const mesh = object as Partial<THREE.Mesh>;
       if (!mesh.geometry) return;
+      if (object instanceof THREE.InstancedMesh) object.dispose();
       if (!cached.has(mesh.geometry)) mesh.geometry.dispose();
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material!]) material?.dispose();
     });
@@ -123,8 +126,10 @@ export class Viewer {
 
   /** What the WebGL context still holds. The only way to see a leak from outside; the UI
    *  test reads it through a window hook, since nothing else can observe the renderer. */
-  info(): { geometries: number; textures: number } {
-    return { geometries: this.ren.info.memory.geometries, textures: this.ren.info.memory.textures };
+  info(): { geometries: number; textures: number; instances: number; objects: number } {
+    let instances = 0, objects = 0;
+    this.group.traverse((object) => { objects++; if (object instanceof THREE.InstancedMesh) instances += object.count; });
+    return { geometries: this.ren.info.memory.geometries, textures: this.ren.info.memory.textures, instances, objects };
   }
 
   reset() {
@@ -145,7 +150,18 @@ export class Viewer {
   /** Pull the assembly apart along each joint: 0 is assembled, 1 is fully open. */
   explode(t: number) {
     this.explodeT = t;
-    for (const { mesh, rest, push } of this.exploded) mesh.position.copy(rest).addScaledVector(push, t);
+    const matrix = new THREE.Matrix4();
+    for (const { mesh, entries } of this.instanceBatches) {
+      entries.forEach(({ rest, push }, index) => {
+        matrix.copy(rest);
+        matrix.elements[12] += push.x * t;
+        matrix.elements[13] += push.y * t;
+        matrix.elements[14] += push.z * t;
+        mesh.setMatrixAt(index, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingBox(); mesh.computeBoundingSphere();
+    }
   }
 
   showPart(p: PartOut, bed: [number, number, number]) {
@@ -160,99 +176,64 @@ export class Viewer {
    *  carries the tier's position and the cascade's 180° turn. */
   showAssembly(parts: PartOut[], o: Options, d: Derived) {
     this.clear();
-    const by = new Map(parts.map((p) => [p.name, p]));
-    const cascade = o.cascade;
-    const G = d.gangPitch;
-    this.exploded = [];
-    const STEP = 40; // mm of travel per joint at full explode
-    const track = (mesh: THREE.Object3D, px: number, py: number, pz: number) =>
-      this.exploded.push({ mesh, rest: mesh.position.clone(), push: new THREE.Vector3(px, py, pz) });
-    const IW = d.IW, xe = laneXe(o, d);
-    const rad = (deg: number) => (deg * Math.PI) / 180;
-    // plate -> lane frame: the same pose geometry lays the plate flat with. three.js
-    // "ZYX" is manifold's order - X first, seen from the model
-    const posed = (m: THREE.Object3D, p: Pose) => {
-      m.rotation.set(rad(p.rotate[0]), rad(p.rotate[1]), rad(p.rotate[2]), "ZYX");
-      m.position.set(...p.translate);
-    };
-    const pose: Record<string, (m: THREE.Object3D) => void> = {
-      "deck": () => {},
-      "wall-left": (m) => posed(m, platePose("wall-left", IW, xe)),
-      "wall-right": (m) => posed(m, platePose("wall-right", IW, xe)),
-      "end-wall": (m) => posed(m, platePose("end-wall", IW, xe)),
-    };
-    const push: Record<string, [number, number, number]> = {
-      "deck": [0, 0, 0], "wall-left": [0, STEP, 0], "wall-right": [0, -STEP, 0], "end-wall": [STEP, 0, 0],
-    };
-    // a plate into a lane group, standing, with its explode push; split halves also part along X
-    const putPlate = (lane: THREE.Group, name: string, plate: string, half: "" | "-front" | "-rear") => {
-      const p = by.get(name); if (!p) return;
-      const m = this.mesh(p.mesh, COL[p.role]);
-      pose[plate](m); lane.add(m);
-      const [px, py, pz] = push[plate];
-      track(m, px + (half === "-front" ? -STEP : half === "-rear" ? STEP : 0), py, pz);
-    };
-    const put = (parent: THREE.Object3D, name: string, x: number, y: number, z: number, rot = false, pushBy: [number, number, number] = [0, 0, 0], ry = 0, rx = 0) => {
-      const p = by.get(name); if (!p) return;
-      const m = this.mesh(p.mesh, COL[p.role]);
-      m.rotation.set(rx, ry, rot ? Math.PI : 0, "ZYX");
-      m.position.set(x, y, z); parent.add(m);
-      track(m, ...pushBy);
-    };
-    const can = new THREE.CylinderGeometry(o.canD / 2, o.canD / 2, o.canL, 36); // axis = Y = across the lane
-    const canMat = new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 });
-    const cans = new THREE.Group(); cans.visible = this.cans.visible; this.cans = cans; this.group.add(cans);
-    for (let gI = 0; gI < o.lanesWide; gI++) {
-      const y = gI * G;
-      for (let t = 0; t < o.tiers; t++) {
-        const isBottom = cascade && t === 0;
-        const z = cascade ? (t === 0 ? 0 : d.Hb + (t - 1) * d.H) : t * d.H;
-        const rot = cascade ? t % 2 === 1 : false;
-        const role = tierRole(o, t);
-        // each tier lifts off the one below and across from its gang neighbour
-        const lane = new THREE.Group();
-        lane.position.set(0, y, z); if (rot) lane.rotation.z = Math.PI;
-        this.group.add(lane); track(lane, 0, gI * STEP, t * STEP);
-        for (const plate of ["deck", "wall-left", "wall-right", "end-wall"] as PlateName[]) {
-          if (plate === "end-wall" && t === rearTier(o)) continue;
-          // the shelf lane's deck carries the Gridfinity unit below z = 0, like the risers do
-          // a row's end lanes print their own decks when they join differently from the rest
-          const name = plate === "deck" && t === 0 && o.base === "gridfinity" ? "grid-deck" : laneName(o, role, plate === "deck" ? deckVariant(o, gI) : plate);
-          if (d.split && plate !== "end-wall") { putPlate(lane, `${name}-front`, plate, "-front"); putPlate(lane, `${name}-rear`, plate, "-rear"); }
-          else putPlate(lane, name, plate, "");
-        }
-        const xd = isBottom || !cascade ? -d.L / 2 : d.xd;
-        if (isBottom || !cascade) { const lp = lipPose(xd, d.tan); put(lane, "end-lip", ...lp.translate, false, [-2 * STEP, 0, 0], rad(lp.rotate[1])); }
-        // cans, in the lane's own frame
-        const n = isBottom || !cascade ? (cascade ? d.nBottom : d.n) : d.n;
-        for (let i = 0; i < n; i++) {
-          const xl = xd + K.lipInset + 2.5 + o.canD / 2 + i * (o.canD + 0.5);
-          const zl = K.deckLo + (xl - xd) * d.tan + o.canD / 2;
-          const c = new THREE.Mesh(can, canMat);
-          c.position.set(rot ? -xl : xl, y, z + zl); cans.add(c); track(c, 0, gI * STEP, t * STEP);
-        }
-      }
-      const top = cascade ? d.Hb + (o.tiers - 1) * d.H : o.tiers * d.H;
-      // the cover turns with the top lane so its loading window sits over that lane's high end
-      const coverRot = cascade && (o.tiers - 1) % 2 === 1;
-      const coverPush: [number, number, number] = [0, gI * STEP, (o.tiers + 1) * STEP];
-      if (d.split) { put(this.group, "cover-front", 0, y, top, coverRot, coverPush); put(this.group, "cover-rear", 0, y, top, coverRot, coverPush); } else put(this.group, "cover", 0, y, top, coverRot, coverPush);
-      if (o.base === "feet") for (const sx of [1, -1]) for (const sy of [1, -1]) put(this.group, "riser-24", sx * d.px, y + sy * d.py, -24, false, [0, gI * STEP, -STEP], 0, rad(riserPose.rotate[0]));
+    const byName = new Map(parts.map((part) => [part.name, part]));
+    const { stride, sampled, cans: canCount } = previewCounts(o, d);
+    const batches = new Map<string, typeof this.instanceBatches[number]>();
+    for (const descriptor of partManifest(o, d)) {
+      const part = byName.get(descriptor.name);
+      if (!part) throw new Error(`Assembly is missing ${descriptor.name}`);
+      const material = new THREE.MeshStandardMaterial({ color: COL[part.role], metalness: 0.05, roughness: 0.62, flatShading: true });
+      const mesh = new THREE.InstancedMesh(this.geom(part.mesh), material, Math.ceil(descriptor.qty / stride));
+      const batch = { mesh, entries: [] as { rest: THREE.Matrix4; push: THREE.Vector3 }[] };
+      batches.set(descriptor.name, batch);
+      this.instanceBatches.push(batch); this.group.add(mesh);
     }
+    const matrixOf = (pose: Pose) => {
+      const rotation = new THREE.Euler(...pose.rotate.map((angle) => angle * Math.PI / 180) as [number, number, number], "ZYX");
+      return new THREE.Matrix4().compose(new THREE.Vector3(...pose.translate), new THREE.Quaternion().setFromEuler(rotation), new THREE.Vector3(1, 1, 1));
+    };
+    const seen = new Map<string, number>();
+    for (const placement of assemblyPlacements(o, d)) {
+      const index = seen.get(placement.name) ?? 0; seen.set(placement.name, index + 1);
+      if (index % stride !== 0) continue;
+      batches.get(placement.name)!.entries.push({ rest: matrixOf(placement.pose), push: new THREE.Vector3(...placement.push) });
+    }
+    const cans = new THREE.Group(); cans.visible = this.cans.visible; this.cans = cans; this.group.add(cans);
+    const cylinder = new THREE.CylinderGeometry(o.canD / 2, o.canD / 2, o.canL, sampled ? 16 : 36);
+    const canMesh = new THREE.InstancedMesh(cylinder, new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 }), Math.ceil(canCount / stride));
+    const canBatch = { mesh: canMesh, entries: [] as { rest: THREE.Matrix4; push: THREE.Vector3 }[] };
+    let index = 0;
+    for (const placement of assemblyCans(o, d)) {
+      if (index++ % stride !== 0) continue;
+      canBatch.entries.push({ rest: matrixOf(placement.pose), push: new THREE.Vector3(...placement.push) });
+    }
+    this.instanceBatches.push(canBatch); cans.add(canMesh);
+    this.explode(this.explodeT);
     this.addFloor(o.bed);
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
-    this.explode(this.explodeT);
+    return { sampled, shownCans: canBatch.entries.length, totalCans: canCount };
   }
 
   /** A print plate as the slicer will see it. */
-  showPlate(placed: { name: string; pos: Float32Array; idx: Uint32Array; bbox: MeshData["bbox"] }[], bed: [number, number, number]) {
+  showPlate(plan: PackedPlan, bed: [number, number, number]) {
     this.clear();
     const bedMesh = new THREE.Mesh(new THREE.BoxGeometry(bed[0], bed[1], 2), new THREE.MeshStandardMaterial({ color: COL.bed, roughness: 0.9 }));
     bedMesh.position.set(bed[0] / 2, bed[1] / 2, -1); this.group.add(bedMesh);
-    for (const p of placed) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(p.pos, 3)); g.setIndex(new THREE.BufferAttribute(p.idx, 1)); g.computeVertexNormals();
-      this.group.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: COL.lane, roughness: 0.62, flatShading: true })));
+    const placementsByGeometry = new Map<number, PackedPlan["placements"]>();
+    for (const placement of plan.placements) {
+      const placements = placementsByGeometry.get(placement.geometry) ?? [];
+      placements.push(placement); placementsByGeometry.set(placement.geometry, placements);
+    }
+    const matrix = new THREE.Matrix4();
+    for (const [geometry, placements] of placementsByGeometry) {
+      const mesh = new THREE.InstancedMesh(this.geom(plan.geometries[geometry]), new THREE.MeshStandardMaterial({ color: COL.lane, roughness: 0.62, flatShading: true }), placements.length);
+      placements.forEach((placement, index) => {
+        matrix.makeRotationZ(placement.rotation90 ? Math.PI / 2 : 0);
+        matrix.setPosition(...placement.translation); mesh.setMatrixAt(index, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingBox(); mesh.computeBoundingSphere();
+      this.group.add(mesh);
     }
     this.phi = 0.8; this.frame(1.1);
   }

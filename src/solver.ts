@@ -91,10 +91,14 @@ function lanesAcross(space: Space, seed: Options): number {
  *  shelf spent on nothing, and what it frees at the front is where a hand goes. */
 function candidateLengths(usableD: number, seed: Options): number[] {
   const lengths = new Set<number>();
-  const maxLen = Math.min(usableD, 2 * (seed.bed[0] - 2 * seed.bedMargin - 10)); // 10: 2 mm inside solve()'s spliceDepth cap
+  const bedLengths = seed.bed.slice(0, 2).map((length) => length - 2 * seed.bedMargin);
+  const maxLen = Math.min(usableD, 2 * (Math.max(...bedLengths) - 10)); // 10: 2 mm inside solve()'s spliceDepth cap
   lengths.add(Math.floor(maxLen));
   // The single-plate size is only a candidate while it still fits the shelf.
-  lengths.add(Math.floor(Math.min(maxLen, seed.bed[0] - 2 * seed.bedMargin)));
+  for (const length of bedLengths) {
+    lengths.add(Math.floor(Math.min(maxLen, length)));
+    lengths.add(Math.floor(Math.min(maxLen, 2 * (length - 10))));
+  }
   for (const bottom of seed.cascade ? [false, true] : [false]) {
     for (let cans = 1; laneLengthFor(seed, cans, bottom) <= maxLen; cans++) lengths.add(Math.ceil(laneLengthFor(seed, cans, bottom)));
   }

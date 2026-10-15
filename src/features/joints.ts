@@ -1,3 +1,4 @@
+import type { Geo } from "../kernel";
 // Joints as pieces: every function here builds both halves of one joint from one spec at
 // a local origin, and geometry.ts places them. The wall joints (ear, pin, cross-lap) share
 // one frame - x along the lane, y the wall's centreline (+y toward the wall's outer face),
@@ -7,7 +8,7 @@
 // cuts through; the male is the exact shape. That is the whole guarantee: a slot cannot
 // drift from its tab because there is no second copy of the numbers.
 import type { CrossSection as CS, Manifold as M } from "manifold-3d";
-import { K, type Geo, type Options } from "../geometry";
+import { K, type Options } from "../model";
 
 /** Every joint's clearance a side: the design's, plus the user's fit. */
 export const clearanceOf = (o: Options) => K.cl + o.fit;
@@ -24,23 +25,36 @@ export const OVER = 1;
 
 interface Pair { male: M; female: M }
 
+/** A T pointing along -X from its root. All dimensions are local millimetres;
+ *  overlap roots the shape inside its host rather than leaving a coplanar face. */
+export interface TeeDimensions { neckWidth: number; headWidth: number; neckDepth: number; depth: number; overlap: number }
+
+export function teeProfile(g: Geo, dimensions: TeeDimensions, clearance = 0): CS {
+  const { neckWidth, headWidth, neckDepth, depth, overlap } = dimensions;
+  if (![neckWidth, headWidth, neckDepth, depth, overlap, clearance].every(Number.isFinite)
+    || neckWidth <= 0 || headWidth < neckWidth || neckDepth <= 0 || depth <= neckDepth || overlap <= 0 || clearance < 0)
+    throw new Error("T profile requires finite positive dimensions, head at least neck width, depth beyond neck, and nonnegative clearance");
+  const neck = neckWidth / 2, head = headWidth / 2;
+  const profile = g.poly([[overlap, -neck], [overlap, neck], [-neckDepth, neck], [-neckDepth, head], [-depth, head], [-depth, -head], [-neckDepth, -head], [-neckDepth, -neck]]);
+  return clearance ? profile.offset(clearance, "Miter") : profile;
+}
+
+export type TeeDepths = Pick<TeeDimensions, "neckDepth" | "depth" | "overlap">;
+const spliceDimensions: TeeDepths = { neckDepth: K.spliceNeck, depth: K.spliceDepth, overlap: 0.5 };
+
 /** The T in profile, pointing -X from the seam: a `neck`-wide neck spliceNeck deep, then a
  *  `head`-wide head to spliceDepth, centred on y = 0. Grown by `grow`, it is the socket: a
  *  miter offset of a right-angled outline is the same outline, bigger. */
-export const tProfile = (g: Geo, neck: number, head: number, grow = 0): CS => {
-  const n = neck / 2, h = head / 2, xn = -K.spliceNeck, xh = -K.spliceDepth;
-  const t = g.poly([[0.5, -n], [0.5, n], [xn, n], [xn, h], [xh, h], [xh, -h], [xn, -h], [xn, -n]]);
-  if (!grow) return t;
-  return t.offset(grow, "Miter");
-};
+export const tProfile = (g: Geo, neck: number, head: number, grow = 0, dimensions: TeeDepths = spliceDimensions): CS =>
+  teeProfile(g, { neckWidth: neck, headWidth: head, ...dimensions }, grow);
 
 /** The x = 0 splice: the tongue is the T through the plate from `zb` (the underside) to
  *  H; the caller intersects it with the plate so it carries the deck's slope. The socket
  *  is the grown T, OVER taller each way. */
-export function tSlotJoint(g: Geo, spec: { neck: number; head: number; clearance: number; zb: number; H: number }): Pair {
-  const { neck, head, clearance, zb, H } = spec;
-  const male = g.prismZ(tProfile(g, neck, head), H - zb, zb - OVER);
-  const female = g.prismZ(tProfile(g, neck, head, clearance), H + 2 * OVER - zb, zb - OVER);
+export function tSlotJoint(g: Geo, spec: { neck: number; head: number; clearance: number; zb: number; H: number; dimensions?: TeeDepths }): Pair {
+  const { neck, head, clearance, zb, H, dimensions } = spec;
+  const male = g.prismZ(tProfile(g, neck, head, 0, dimensions), H + OVER - zb, zb - OVER);
+  const female = g.prismZ(tProfile(g, neck, head, clearance, dimensions), H + 2 * OVER - zb, zb - OVER);
   return { male, female };
 }
 
@@ -129,8 +143,8 @@ const withRoots = (g: Geo, profile: CS, width: number): CS => {
 
 /** The notch in a wall's bottom edge that an ear-wide piece at deck level passes under:
  *  the ear's own (less the tab it leaves standing), and a gang tongue's. */
-const earPocket = (g: Geo, wall: number, c: number): M =>
-  g.box(K.earW + 2 * c, wall + 2 * OVER, earNotchH(c) + OVER, 0, 0, (earNotchH(c) - OVER) / 2);
+const earPocket = (g: Geo, wall: number, c: number, width = K.earW): M =>
+  g.box(width + 2 * c, wall + 2 * OVER, earNotchH(c) + OVER, 0, 0, (earNotchH(c) - OVER) / 2);
 
 /** The corner: the end wall keeps a wall-square post from the lap line to the tier top,
  *  and the side wall is slotted from its top edge down to that line to take it. The
@@ -147,14 +161,14 @@ export function crossLap(g: Geo, spec: { wall: number; lapZ: number; H: number; 
  *  socket is the grown T cut through the neighbour's rail from below the deck; `notch` is
  *  what each wall the run passes under has cut from its bottom edge, at the wall's
  *  centreline. */
-export function gangJoint(g: Geo, spec: { run: number; clearance: number; through: number; wall: number }): Pair & { notch: M } {
-  const { run, clearance, through, wall } = spec;
-  const t = (grow = 0) => tProfile(g, K.earW, K.gangHead, grow).rotate(-90);
-  const runBox = g.box(K.earW, run, K.deckLo, 0, -run / 2, K.deckLo / 2);
+export function gangJoint(g: Geo, spec: { run: number; clearance: number; through: number; wall: number; neck?: number; head?: number; dimensions?: TeeDepths }): Pair & { notch: M } {
+  const { run, clearance, through, wall, neck = K.earW, head: headWidth = K.gangHead, dimensions } = spec;
+  const t = (grow = 0) => tProfile(g, neck, headWidth, grow, dimensions).rotate(-90);
+  const runBox = g.box(neck, run, K.deckLo, 0, -run / 2, K.deckLo / 2);
   const head = g.prismZ(t(), K.deckLo);
   const male = g.union([runBox, head]);
   const female = g.prismZ(t(clearance), through + 2 * OVER, -OVER);
-  return { male, female, notch: earPocket(g, wall, clearance) };
+  return { male, female, notch: earPocket(g, wall, clearance, neck) };
 }
 
 /** One prong pair, in (v, u): v across the tab, the way the prongs flex, u along them

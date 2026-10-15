@@ -42,10 +42,20 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 ## Open questions
 - `docs/open-questions.md` holds every parked concern and deferred decision: what is
   open, what the code does today, where it lives. Add to it when a decision is put off
-  or a risk is accepted unverified. When one is settled, delete it there and record the
-  decision in this file, a spec or a code comment.
+  or a risk is accepted unverified. When one is settled, mark it resolved with the date
+  and record the decision in this file, a spec or a code comment.
 
 ## Layout
+- `src/model.ts` — product configuration, constants, dimensions and shared contracts.
+- `src/kernel.ts` — `Geo` operations and scoped WASM shape ownership (`arena`). Feature
+  modules import this layer and product contracts directly, never the composer.
+- `src/queue.ts` — one queue geometry for capacity, minimum lane length and can positions;
+  centres sit a radius normal to the sloping deck, with explicit stop and can clearance.
+- `src/layout.ts` — pure tier, rear-load, deck-variant and joint layout rules.
+- `src/assembly.ts` — shared part manifest and assembly placements. Geometry builders,
+  quantities and the viewer consume explicit part sources rather than parsing names.
+  Repeated geometry uses instances; large assembly previews sample at a labelled limit
+  while capacity and manufacturing quantities stay complete.
 - `src/geometry.ts` — parts. `solve()` derives every dimension from can + options;
   `laneOf(o,d,role)` the per-role numbers every plate shares (deck line, ties, tab
   positions); `buildDeck`, `buildWall`, `buildEndWall` in the lane frame, `layWall` /
@@ -54,23 +64,36 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `src/features/` — the pieces `geometry.ts` composes, each built at a local origin (x
   along the lane, y the wall's centreline, z = 0 at the deck underside) and placed with
   `.translate()` / `.mirror([0,1,0])`. `joints.ts`: every joint from one spec — `earJoint`,
-  `pinJoint`, `crossLap`, `tSlotJoint`, `gangJoint`, `lipTab`/`lipPocket`; `placeSide`
+  `pinJoint`, `crossLap`, `tSlotJoint`, `gangJoint`, `lipSnap`/`lipPocket`; `placeSide`
   puts a piece on either wall; `clearanceOf(o)` is the only spelling of `K.cl + o.fit`,
   `OVER` the only overshoot. `pose.ts`: `platePose` / `lipPose`, used by `lay` in geometry
   and stood back up in the viewer — one set of numbers. `lattice.ts` (cells, `ROWS`,
   `autoR`), `pocket.ts` (`recessDepth`, rounds), `gridfinity.ts` (`gridUnit`).
   `test/features.test.ts` holds every pair to "male inside female, shell = clearance".
+  `teeProfile` accepts explicit dimensions; product joint wrappers supply defaults.
+  Discrete lattice cells stay inside the actual panel contour; slats deliberately clip
+  to their field components. Magnet pockets retain a supporting rim owned entirely by
+  one half according to the actual T tongue/socket and fit clearance.
   Spec in `docs/superpowers/specs/2026-09-20-feature-library-design.md`.
 - `src/solver.ts` — `fitSpace(space, base, {cascade})` → ranked layouts. Pure arithmetic.
   Lane length candidates are the longest that fits plus the shortest lane for every whole
   can count (`laneLengthFor`, the inverse of `solve()`'s deck count), so a lane never
   carries deck that holds no can. Hand room is `space.front`, a form field, not a constant:
   40 mm baked in once cost a 12-inch shelf its fourth can. Slope is the user's too.
-- `src/export.ts` — shelf packer, binary STL, 3MF writer (Bambu plate grid + `model_settings.config`).
-- `src/worker.ts` — build + export off-thread; keeps `last` for export (do not transfer buffers).
+- `src/export.ts` — mesh validation, shelf packer, binary STL and 3MF writer (Bambu
+  plate grid + `model_settings.config`). `packPlan` shares geometry between rigid copy
+  placements; `pack` materializes coordinates for compatibility. Validate actual mesh
+  coordinates, topological vertex merges, winding and build volume at manufacturing
+  boundaries. Do not weld coincident coordinates or silently remove zero-area faces.
+- `src/estimate.ts` — resolves catalogue presets plus imported overrides into shell,
+  infill, asymmetric skin and density settings. Missing values are explicit assumptions;
+  approximate material use excludes supports, adhesion and purge. No universal print-time
+  estimate is displayed: obtain time from the slicer.
+- `src/worker.ts` — build, estimates and export off-thread; keeps unique meshes and a
+  packed plan in `last` for export and settings-only re-estimation (do not transfer buffers).
 - `src/validate.ts` — `LIMITS` + `readNumbers()`, the single gate for every number typed
-  into the form or arriving in a shared hash. Nothing downstream re-checks, so a value
-  past here reaches the solver and the WASM kernel unexamined. New dimension → new limit.
+  into the form or arriving in a shared hash. Reusable feature and manufacturing
+  boundaries also validate their own contracts. New user dimension → new limit.
 - `src/profile.ts` — the imported slicer profile, cached in `localStorage` as versioned
   base64 (`FORMAT_VERSION`). Bytes, not text: a BOM or a cp1252 config does not survive a
   decode/encode round trip. Every access is guarded — reading `localStorage` throws
@@ -155,7 +178,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   prints without its end wall - the only tier, or the top of a stack (a cascade's lower
   tiers fill through it; a flat stack's still load from the front). A cascade's top faces the back on an odd tier count only; on an even one
   its back is the chute, nothing opens and `check()` says so. It is a part count, not a
-  shape: `partList` prints one set fewer and the viewer skips it; the side walls keep
+  shape: the shared assembly manifest omits that instance for both geometry and viewer; the side walls keep
   their corner slot, since a flat stack's tiers share one set (an empty notch at the
   door, accepted 2026-09-30 over two more part names). A flat stack opens its top tier
   only; every tier from the back would need per-tier parts, and nobody needs it. A can
@@ -176,7 +199,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   lost a row whenever that changed — and only the seam band clips cells, so the pattern
   carries across the joint.
 - Pattern (2026-09-18): `o.pattern` (hex, circle, kumiko, slat, breeze) picks the cell
-  shape and nothing else; `Geo.cellsOf` dispatches, `Geo.cells` is the field/keep-out
+  shape and nothing else; `cellsOf` dispatches, `cells` in `features/lattice.ts` is the field/keep-out
   loop with the shape passed in, `ROWS` says how far three rows span (`a·R + b·lig`) so
   `autoR` and the cover radius work for every shape. `hexR`/`hexAuto` keep their names
   and mean cell radius. Every pattern but hex starts the wall field at the ear-pad top
@@ -237,26 +260,24 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   perforated sheet (1.5× the grille radius, ligament bars, clipped at the frame). Solid
   volume is 0.56–0.60 of standard on lanes; the filament model says about −17 % because
   what is left is thin and prints dense. Spec in `docs/superpowers/specs/2026-09-18-minimal-design.md`.
-- `filamentGrams` has skins: the core is what sits inside the perimeters with 1 mm of
-  material above and below. Without them a 2.4 mm plate read as 6 % infill. It samples a
-  part's height in whole steps of at most 0.5 mm, never fewer than eight: stepping 1.5
-  from the bottom sampled a 2.4 mm cover twice, both skin probes fell off its faces and
-  it read 43 % heavy. The solver's `laneGrams` / `coverGrams` come from it on the default
-  parts; remeasure them when it moves.
-- Print hours in the UI are `filamentGrams` volume over `JOB_FLOW` (`main.ts`), one
-  mm³/s for every printer, measured by slicing the default job in the Bambu Studio CLI
-  (P2S: 8.12 since the snap joins, 2026-10-11; plates spread ±10 %). Re-slice and update it, and the print-cost spec,
-  when geometry or `filamentGrams` moves the default job: `bun run slice.ts` does the
-  whole round trip and prints the number. Its scratch lives in the gitignored `.slice/`.
-- Rounding: manifold has no fillet. `Geo.roundTop` intersects a part with a stack of
-  slabs of its outline shrunk by the fillet inset, which follows the plan corners. Walls
-  and end walls round the outer top edge only (`Geo.roundOver`), so the 3 mm seat the
-  next tier sits on stays flat and nothing is rounded on a bed edge. No plan radius: it
-  cannot span two plates.
+- Filament estimates (updated 2026-10-15): `estimateVolume` in `src/estimate.ts`
+  samples perimeters, infill and distinct top/bottom skins using resolved profile settings.
+  Changing or clearing a profile recalculates material use from cached meshes. Missing
+  values use stated reference assumptions (3 walls, 6 % infill, 1 mm skins, density 1.27).
+  The legacy `filamentGrams` helper remains for reference scripts and snapshots; the
+  solver's layout-card `laneGrams` / `coverGrams` remain rough reference estimates.
+- Print hours (resolved 2026-10-15): removed the UI's universal `JOB_FLOW` time estimate.
+  Historical P2S measurements remain in dated specs; `bun run slice.ts` still measures
+  actual slicer time and reports an implied flow for comparison, not a UI prediction.
+- Rounding: manifold has no fillet. `roundTop` in `features/pocket.ts` keeps the lower
+  body with a half-space and rounds its top using slabs of the inset outline, preserving
+  arbitrary translation. Walls and end walls round only the outer top edge (`roundOver`),
+  so the next tier's seat stays flat and no bed edge is rounded.
 - Every clearance gets `fit` added. Don't add per-joint tolerance knobs.
 - Bambu plates: `cols = ceil(sqrt(n))`, stride = bed × 1.2, rows toward −Y
   (`compute_colum_count` / `compute_origin` in BambuStudio `PartPlate.cpp`). Objects are
-  baked into place; the config is belt-and-braces.
+  baked into place at serialization from shared meshes and rigid placements; the config
+  declares each plate and its objects.
 - `pack()` is shelf packing with first fit across *every* plate opened so far, not just
   the newest, and each part is tried flat then turned 90°. That is what drops an end-lip
   or an end wall into the strip behind a deck instead of giving it a plate of its own. A
@@ -292,7 +313,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   stands on the shelf, fits the bed and splits at x = 0 - through a foot as often as
   not; a foot cut square prints as it is and the pocket locks it. `o.magnets` cuts
   6.5 × 2.4 pockets on the 26 mm square in every foot, skipping any the seam would
-  halve: the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()` is 7,
+  divide between printed parts, including the supporting rim at a T boundary: the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()` is 7,
   what the solver charges. Spec in `docs/superpowers/specs/2026-09-19-gridfinity-base-design.md`.
   The Gridfinity standard itself (pitch, foot and socket profiles, lip, magnet pockets,
   sources) is digested in `docs/gridfinity-spec.md`, with a column mapping each number to

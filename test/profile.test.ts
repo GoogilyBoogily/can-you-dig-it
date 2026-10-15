@@ -1,7 +1,8 @@
 import { test, expect } from "bun:test";
 import { zipSync, unzipSync, strToU8 } from "fflate";
-import { extractProfile, threeMf, bboxOf, type Placement } from "../src/export";
+import { extractProfile, threeMf, type Placement } from "../src/export";
 import { readStoredProfile, saveStoredProfile, PROFILE_KEY, type StoredProfile } from "../src/profile";
+import { solidFixture } from "./solid-fixture";
 
 const PROFILE_TEXT = `{"printer_settings_id":"Bambu Lab P1S 0.4 nozzle","layer_height":"0.28","filament_type":["PETG"]}`;
 const PROFILE = strToU8(PROFILE_TEXT);
@@ -41,9 +42,8 @@ test("extractProfile fails loudly on something that is not a zip", () => {
 });
 
 const BED: [number, number, number] = [256, 256, 256];
-const pos = new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]);
 const placed: Placement[] = [
-  { name: "end-lip", part: "end-lip", pos, idx: new Uint32Array([0, 1, 2]), bbox: bboxOf(pos), plate: 0 },
+  { ...solidFixture("end-lip"), part: "end-lip", plate: 0 },
 ];
 
 test("a 3MF built with a profile carries it through byte for byte", () => {

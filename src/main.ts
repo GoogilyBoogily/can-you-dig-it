@@ -1,11 +1,13 @@
-import { K, DENSITY, rearTier, type Options } from "./geometry";
+import { previewCounts } from "./assembly";
+import { estimateSettings } from "./estimate";
+import { K, rearTier, type Options } from "./geometry";
 import { fitSpace, laneNeeds, type Layout, type Space } from "./solver";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
-import { extractProfile, plateSummary, type Placement } from "./export";
+import { extractProfile, plateSummary, type PackedPlan, type PackedPlacement } from "./export";
 import { hasStoredProfile, loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
 import { optionsFrom, type FormValues } from "./validate";
-import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, parseConfig, picksFromConfig, bedFromConfig, keepOutFromConfig, translucentFeed, type ProfileIndex, type Picks } from "./profiles";
+import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, parseConfig, picksFromConfig, bedFromConfig, keepOutFromConfig, type ProfileIndex, type Picks } from "./profiles";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -37,9 +39,11 @@ let worker = startWorker();
 let layouts: Layout[] = [];
 let chosen: Layout | null = null;
 let chosenIndex = 0; // position in the ranked list; the hash carries it so a shared link opens on the same layout
-let built: { parts: PartOut[]; placed: Placement[]; nplates: number; layout: Layout } | null = null;
+let built: { parts: PartOut[]; plan: PackedPlan; nplates: number; layout: Layout } | null = null;
 let buildId = 0, exportId = 0, buildTimer = 0;
 let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
+let inFlightBuildIdentifier: number | null = null;
+let pendingBuild: Extract<Req, { type: "build" }> | null = null;
 let workerDead: string | null = null; // the worker script failed to load: the message every build() shows instead
 let restartedFor = -1; // the build a kernel abort last restarted the worker on
 
@@ -124,6 +128,8 @@ function choose(i: number) {
   // new capacity over old geometry, and the downloads unlocked on top of it.
   buildId++;
   clearTimeout(buildTimer);
+  pendingBuild = null;
+  pendingEstimate = null;
   setBuildPending(true);
   buildTimer = window.setTimeout(build, 250);
 }
@@ -131,6 +137,11 @@ function choose(i: number) {
 /** The form no longer describes what was built: take the old result off the page so the
  *  downloads cannot hand out geometry for numbers that are gone. */
 function dropBuild() {
+  buildId++;
+  clearTimeout(buildTimer);
+  pendingBuild = null;
+  buildPending = false;
+  pendingEstimate = null;
   chosen = null; chosenIndex = 0; built = null;
   for (const id of ["dl3mf", "dlstl"]) $<HTMLButtonElement>(id).disabled = true; // nothing to export
   $("results").hidden = true;
@@ -152,8 +163,18 @@ function build() {
   const id = buildId; // choose() already claimed it
   setBuildPending(true);
   setStatus("Building parts…", true);
-  const req: Req = { type: "build", id, options: chosen.options, keepOut };
-  worker.postMessage(req);
+  const req: Req = { type: "build", id, options: chosen.options, keepOut, estimateSettings: estimateSettings(profile?.config, index ?? undefined) };
+  pendingBuild = req;
+  sendPendingBuild();
+}
+
+/** A busy worker keeps one request on the page, replaced by each debounced edit. */
+function sendPendingBuild() {
+  if (inFlightBuildIdentifier !== null || !pendingBuild) return;
+  const request = pendingBuild;
+  pendingBuild = null;
+  inFlightBuildIdentifier = request.id;
+  worker.postMessage(request);
 }
 
 /** The geometry worker with the page's handlers on it: at load, and again after a kernel abort. */
@@ -171,6 +192,10 @@ function startWorker(): Worker {
  *  the export source, dies too; the rebuild restores it and the downloads wait for it. */
 function restartWorker(r: Extract<Res, { type: "error" }>) {
   worker.terminate();
+  inFlightEstimate = null; pendingEstimate = null;
+  inFlightBuildIdentifier = null;
+  pendingBuild = null;
+  clearTimeout(buildTimer);
   worker = startWorker();
   console.warn(`the geometry kernel aborted on ${r.of} #${r.id} (${r.message}); started a fresh worker`);
   if (!chosen) return;
@@ -185,7 +210,24 @@ function restartWorker(r: Extract<Res, { type: "error" }>) {
 
 function onWorkerMessage(e: MessageEvent<Res>) {
   const r = e.data;
+  if (r.type === "built" || (r.type === "error" && r.of === "build")) {
+    if (r.id === inFlightBuildIdentifier) inFlightBuildIdentifier = null;
+    if (!(r.type === "error" && r.fatal)) sendPendingBuild();
+  }
+  if (r.type === "estimated") {
+    if (r.id === inFlightEstimate) inFlightEstimate = null;
+    sendPendingEstimate();
+    if (r.id !== estimateIdentifier || r.buildId !== buildId || !built || buildPending) return;
+    estimatedGrams = r.grams;
+    renderResults();
+    return;
+  }
   if (r.type === "error") {
+    if (r.of === "estimate") {
+      if (r.id === inFlightEstimate) inFlightEstimate = null;
+      if (!r.fatal) sendPendingEstimate();
+      if (r.id !== estimateIdentifier && !r.fatal) return;
+    }
     if (r.fatal) { restartWorker(r); return; }
     // A superseded build's error is about numbers no longer on screen: it would overwrite
     // "Building parts…" or the build that replaced it with news about neither.
@@ -210,8 +252,9 @@ function onWorkerMessage(e: MessageEvent<Res>) {
   }
   if (r.id !== buildId || !chosen) return; // a newer build is already on its way
   setBuildPending(false);
-  built = { parts: r.parts, placed: r.placed, nplates: r.nplates, layout: chosen };
+  built = { parts: r.parts, plan: r.plan, nplates: r.nplates, layout: chosen };
   viewer.reset();
+  refreshEstimates(r.estimateKey);
   renderTabs(); renderResults();
   showTab("assembly");
   setStatus(`${built.layout.cans} cans · ${r.nplates} plates · ~${(totalGrams(r.parts) / 1000).toFixed(2)} kg · built in ${(r.ms / 1000).toFixed(1)} s`);
@@ -222,6 +265,10 @@ function onWorkerMessage(e: MessageEvent<Res>) {
 // re-raising it on window, where the generic handler would overwrite the message.
 function onWorkerError(e: ErrorEvent) {
   e.preventDefault();
+  clearTimeout(buildTimer);
+  pendingBuild = null;
+  inFlightBuildIdentifier = null;
+  inFlightEstimate = null; pendingEstimate = null;
   workerDead = `The geometry engine failed to start (${e.message || "no detail"}) - reload the page.`;
   fail(workerDead, e);
 }
@@ -241,53 +288,49 @@ function showTab(key: string) {
   if (!built) throw new Error("showTab before a build: dropBuild clears the tabs, so nothing can call it then");
   $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.key === key)));
   $("plates").querySelectorAll(".plate").forEach((b) => b.setAttribute("aria-pressed", String(b.getAttribute("data-key") === key)));
-  const { layout, parts, placed } = built;
+  const { layout, parts, plan } = built;
   $("showCans").hidden = $("explode").hidden = key !== "assembly";
   // the plate view is the bed, so its toggles make no sense there
   $("showGrid").hidden = $("showBed").hidden = key.startsWith("plate:");
   if (key === "assembly") viewer.showAssembly(parts, layout.options, layout.derived);
   else if (key.startsWith("part:")) { const p = parts.find((x) => x.name === key.slice(5)); if (p) viewer.showPart(p, layout.options.bed); }
-  else if (key.startsWith("plate:")) { const n = Number(key.slice(6)); viewer.showPlate(placed.filter((p) => p.plate === n), layout.options.bed); }
+  else if (key.startsWith("plate:")) { const n = Number(key.slice(6)); viewer.showPlate({ geometries: plan.geometries, placements: plan.placements.filter((p) => p.plate === n) }, layout.options.bed); }
 }
 
-// The translucent settings print every part solid at 20 mm/s, so the estimate follows the checkbox.
-const partGrams = (p: PartOut) => pick.translucent.checked ? p.solidGrams : p.grams;
-const totalGrams = (parts: PartOut[]) => parts.reduce((a, p) => a + partGrams(p) * p.qty, 0);
-/** Extruded mm³ a second over a whole job, travel and acceleration in: the default job's
- *  filamentGrams volume over Bambu Studio's sliced time. Measured 2026-09-28 with the
- *  Bambu Studio 02.08.02.61 CLI on all 18 plates: P2S 0.4, 0.20mm Standard @BBL P2S,
- *  Bambu PETG Basic; 1,155 cm³ in 40.4 h is 7.95. Plates ranged 7.21 (walls) to 8.75
- *  (bottom deck rear), so one number holds each plate to about ±10 %. An X1 Carbon on
- *  its own 0.20 Standard came out 7.77, 2 % off. Re-sliced 2026-10-11 after the snap
- *  joins: 41.2 h, 8.12, plates 7.62 to 8.77.
- *  ponytail: one number for every printer and filament; scale by the filament's max flow
- *  once that is scraped into the index. */
-const JOB_FLOW = 8.12;
-function jobHours(parts: PartOut[]) {
-  const mm3 = parts.reduce((a, p) => a + p.grams / DENSITY * 1000 * p.qty, 0);
-  return `, about ${(mm3 / JOB_FLOW / 3600).toFixed(0)} h (±30 %)`;
+let estimateIdentifier = 0;
+let estimatedGrams: Record<string, number> | null = null;
+let inFlightEstimate: number | null = null;
+let pendingEstimate: Extract<Req, {type:"estimate"}> | null = null;
+function sendPendingEstimate() {
+  if (inFlightEstimate !== null || !pendingEstimate || buildPending) return;
+  const request = pendingEstimate; pendingEstimate = null;
+  inFlightEstimate = request.id; worker.postMessage(request);
 }
-function translucentHours(parts: PartOut[]) {
-  const machine = index?.machines.find((m) => m.name === pick.nozzle.value);
-  if (!machine) return "";
-  const mm3 = parts.reduce((a, p) => a + p.solidGrams / DENSITY * 1000 * p.qty, 0);
-  return `, about ${(mm3 / translucentFeed(Number(machine.nozzle)) / 3600).toFixed(0)} h at 20 mm/s`;
+let estimateLabel = "reference settings: 3 walls, 6% infill, 1 mm skins, density 1.27 g/cm³";
+function refreshEstimates(completedKey?: string) {
+  estimatedGrams = null;
+  pendingEstimate = null;
+  estimateIdentifier++;
+  if (!built || buildPending) return;
+  const settings = estimateSettings(profile?.config, index ?? undefined);
+  estimateLabel = (settings.infill === 1 ? "solid; " : "") + (settings.assumptions.length
+    ? `approximate; assumed ${settings.assumptions.join(", ")}`
+    : "approximate from selected print settings; excludes supports, adhesion and purge");
+  if (completedKey === JSON.stringify(settings)) {
+    estimatedGrams = Object.fromEntries(built.parts.map((part) => [part.name, part.grams]));
+    return;
+  }
+  pendingEstimate = { type: "estimate", id: estimateIdentifier, buildId, settings };
+  sendPendingEstimate();
 }
-
-/** What the weight is made of. DENSITY is PETG's, so a picked filament that is not PETG
- *  is named with the estimate rather than silently reported as PETG: the mass is right to
- *  within the density difference, and the label no longer contradicts the picker. */
-function filamentNote(): string {
-  const picked = pick.filament.value;
-  if (!picked) return " PETG";
-  const family = /PETG|PLA|ABS|ASA|PC|PA|TPU|PVA|HIPS/i.exec(picked)?.[0].toUpperCase();
-  return family === "PETG" || !family ? " PETG" : ` ${family} (weighed at PETG's density)`;
-}
+const partGrams = (part: PartOut) => estimatedGrams?.[part.name] ?? part.grams;
+const totalGrams = (parts: PartOut[]) => parts.reduce((sum, part) => sum + partGrams(part) * part.qty, 0);
 
 function renderResults() {
-  const { parts, placed, nplates, layout } = built!;
+  const { parts, plan, nplates, layout } = built!;
   const d = layout.derived, o = layout.options;
   const grams = totalGrams(parts);
+  const preview = previewCounts(o, d);
   const g = (n: number) => `${n.toFixed(0)} g`;
   $("summary").innerHTML = `<h2>What you get</h2><dl>
     <dt>Capacity</dt><dd>${layout.cans} cans</dd>
@@ -297,12 +340,13 @@ function renderResults() {
     <dt>Deck slope</dt><dd>${o.slope}° — ${o.slope >= 3 ? "cans roll to the front on their own" : o.slope > 0 ? "shallow, cans may need a nudge" : "flat, cans stay where you put them"}</dd>
     <dt>Grab from</dt><dd>the front, over a ${K.lipH} mm lip on ${layout.style === "cascade" ? "the bottom tier" : "every tier"}; ${(d.Hb - K.deckLo - K.lipH - K.lipInset * d.tan - o.canD).toFixed(0)} mm over the can as it clears the lip</dd>
     <dt>Load from</dt><dd>${layout.style === "cascade" ? `the top, through the cover window at the ${o.tiers % 2 === 0 ? "front" : "back (odd tier count)"}` : "the front of each tier"}${rearTier(o) >= 0 ? `, or the back of ${o.tiers > 1 ? "the top tier" : "the lane"}` : ""}</dd>
-    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg${filamentNote()}${pick.translucent.checked ? ` solid${translucentHours(parts)}` : jobHours(parts)}</dd>
+    <dt>Filament</dt><dd>~${(grams / 1000).toFixed(2)} kg (${estimatedGrams ? estimateLabel : "recalculating for print settings"})</dd>
     <dt>Plates</dt><dd>${nplates} on a ${o.bed[0]} × ${o.bed[1]} bed</dd></dl>
+    ${preview.sampled ? `<p class="muted">Preview shows ${Math.ceil(preview.cans / preview.stride)} of ${preview.cans} cans; capacity and export quantities include every part.</p>` : ""}
     ${layout.warnings.length ? `<p class="warn">${layout.warnings.join("<br>")}</p>` : ""}`;
   const pl = $("plates"); pl.innerHTML = "<h2>Plates</h2>";
-  const byPlate = new Map<number, Placement[]>();
-  for (const p of placed) { if (!byPlate.has(p.plate)) byPlate.set(p.plate, []); byPlate.get(p.plate)!.push(p); }
+  const byPlate = new Map<number, PackedPlacement[]>();
+  for (const p of plan.placements) { if (!byPlate.has(p.plate)) byPlate.set(p.plate, []); byPlate.get(p.plate)!.push(p); }
   const gramsOf = (part: string) => { const p = parts.find((p) => p.name === part); return p ? partGrams(p) : 0; };
   for (const [n, items] of [...byPlate.entries()].sort((a, b) => a[0] - b[0])) {
     const b = document.createElement("button"); b.type = "button"; b.className = "plate"; b.setAttribute("data-key", `plate:${n}`);
@@ -326,6 +370,7 @@ $("dlstl").addEventListener("click", () => { if (!built || buildPending) return;
 // ------------------------------------------------------------- slicer profile
 // Kept out of the hash on purpose: it is tens of KB, and the hash is the shareable part.
 let profile: StoredProfile | null = null;
+let profileNote = "";
 /** The loaded printer's keep-out area, which the packer has to leave clear. */
 let keepOut: [number, number, number, number][] = [];
 
@@ -346,18 +391,21 @@ function showProfile() {
   keepOut = next;
   if (changed && chosen) choose(chosenIndex); // retires the build in flight, packed for the old one
   $("profileNow").textContent = profile
-    ? `Using settings from ${profile.name}.${note}`
+    ? `Using settings from ${profile.name}.${note}${profileNote}`
     // Bambu Studio 2.8 calls a project with no settings "invalid config" and pops a
     // dialog, but still loads every plate and part. Say so, or the dialog reads as failure.
-    : "No print settings loaded. Bambu Studio will warn about an invalid config and fall back to the slicer's own defaults; plates and parts still load.";
+    : `No print settings loaded. Bambu Studio will warn about an invalid config and fall back to the slicer's own defaults; plates and parts still load.${profileNote}`;
   $("profileClear").hidden = !profile;
   if (index) showPicks(picks);
+  refreshEstimates();
+  if (built && !buildPending) renderResults();
 }
-$("profileClear").addEventListener("click", () => { profile = null; clearStoredProfile(); showProfile(); });
+$("profileClear").addEventListener("click", () => { profile = null; profileNote = ""; clearStoredProfile(); showProfile(); });
 
 /** State and label move together, so the two can never disagree. */
 function adoptProfile(loaded: StoredProfile, persist = true) {
   profile = loaded;
+  profileNote = "";
   showProfile();
   if (!persist) return; // applied from a link: this session only, the stored profile stands
   const failure = saveStoredProfile(loaded);
@@ -415,10 +463,19 @@ function showPicks(picks: Picks | null) {
 }
 
 function applyPicks(picks: Picks, persist = true) {
-  const config = composeProfile(index!, picks);
-  adoptProfile({ name: describePicks(index!, picks), config }, persist);
+  const machine = index!.machines.find((candidate) => candidate.name === picks.machine);
+  const turnedOffTranslucent = !!picks.translucent && machine?.nozzle === "0.2";
+  const acceptedPicks = turnedOffTranslucent ? { ...picks, translucent: false } : { ...picks };
+  const config = composeProfile(index!, acceptedPicks);
+  adoptProfile({ name: describePicks(index!, acceptedPicks), config }, persist);
+  hashPicks = null;
+  if (turnedOffTranslucent) {
+    profileNote = " Translucent mode was turned off because it is unavailable for a 0.2 mm nozzle.";
+    showProfile();
+  }
   // The printer picked is the bed the parts must fit, so the form follows.
   followBed(bedFromConfig(config));
+  if (built && !buildPending) renderResults();
 }
 
 /** Put a profile's bed in the form, refit if it moved, and put it in the link. refit(chosenIndex),
@@ -445,6 +502,21 @@ for (const control of [pick.process, pick.filament, pick.translucent])
   control.addEventListener("change", () => applyPicks({ machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value, translucent: pick.translucent.checked }));
 pick.translucent.addEventListener("change", () => { if (built) renderResults(); });
 
+function applyHashProfile() {
+  try {
+    if (hashPicks) applyPicks(hashPicks, false);
+    else showProfile();
+  } catch (err) {
+    console.warn("rejected the link's print settings", err);
+    hashPicks = null;
+    const rejectedSettingsMessage = `That link's print settings are unavailable or incompatible, so your own are in use: ${reason(err)}`;
+    profileNote = ` ${rejectedSettingsMessage}`;
+    showProfile();
+    setStatus(rejectedSettingsMessage);
+    queueHash();
+  }
+}
+
 fetch(INDEX_URL)
   .then((response) => { if (!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); })
   .then((loaded: ProfileIndex) => {
@@ -456,14 +528,7 @@ fetch(INDEX_URL)
     // composeProfile throws when a preset name has moved on between Bambu releases, and
     // an uncaught throw here lands in the fetch's catch - which reports the catalogue as
     // unloadable and leaves every select empty, with no way to pick a printer.
-    try {
-      if (hashPicks && index.machines.some((machine) => machine.name === hashPicks!.machine)) applyPicks(hashPicks, false);
-      else showProfile();
-    } catch (err) {
-      hashPicks = null;
-      showProfile();
-      setStatus(`That link's print settings are no longer in the catalogue, so your own are in use: ${reason(err)}`);
-    }
+    applyHashProfile();
   })
   .catch((err) => {
     // On the print-settings label, not the status line: the first build lands ~250 ms
@@ -508,12 +573,16 @@ const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "c
 // arrow key in a number field is ~30 events a second, and the writes the browser dropped
 // included the one Share makes, so Share copied a stale link and said "Link copied."
 let hashTimer = 0;
+let appliedHash = location.hash;
 function queueHash() {
   clearTimeout(hashTimer);
   hashTimer = window.setTimeout(syncHash, 250);
 }
 function syncHash() {
   clearTimeout(hashTimer); // a queued write would only repeat this one
+  // Navigation changes location before hashchange runs. A queued edit must not
+  // replace that incoming link while its event is still waiting in the task queue.
+  if (location.hash !== appliedHash) { loadHashNavigation(); return; }
   const q = new URLSearchParams();
   for (const k of KEYS) {
     const el = form.elements.namedItem(k) as HTMLInputElement;
@@ -526,9 +595,9 @@ function syncHash() {
   // hashPicks until the catalogue lands: the selects are empty for the first few hundred
   // ms of a page load, and writing the hash from them in that window strips these four
   // keys out of the link that carried them. Permanently, if the fetch then fails.
-  const picks = pick.nozzle.value
+  const picks = hashPicks ?? (pick.nozzle.value
     ? { machine: pick.nozzle.value, process: pick.process.value, filament: pick.filament.value, translucent: pick.translucent.checked }
-    : hashPicks;
+    : null);
   if (picks) {
     q.set("machine", picks.machine);
     q.set("process", picks.process);
@@ -536,8 +605,10 @@ function syncHash() {
     if (picks.translucent) q.set("translucent", "on");
   }
   history.replaceState(null, "", "#" + q.toString());
+  appliedHash = location.hash;
 }
 function loadHash() {
+  hashPicks = null;
   if (!location.hash.length) return;
   const q = new URLSearchParams(location.hash.slice(1));
   for (const k of KEYS) {
@@ -552,6 +623,23 @@ function loadHash() {
   (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = (form.elements.namedItem("lipGap") as HTMLInputElement).value;
   return Number(q.get("layout") ?? 0);
 }
+
+/** Fragment navigation is a new shared design, just as opening it in a fresh tab is. */
+function loadHashNavigation() {
+  if (location.hash === appliedHash) return;
+  clearTimeout(hashTimer);
+  appliedHash = location.hash;
+  form.reset();
+  const layout = loadHash();
+  profile = loadStoredProfile();
+  profileNote = "";
+  showProfile();
+  refit(layout);
+  syncJoins();
+  if (index) applyHashProfile();
+  syncHash();
+}
+window.addEventListener("hashchange", loadHashNavigation);
 
 $("share").addEventListener("click", async () => {
   syncHash(); // a fresh page has no hash until the first edit

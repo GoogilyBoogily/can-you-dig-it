@@ -1,7 +1,7 @@
 // A 12 in deep, 10 in tall shelf holds four cans a deck on two tiers. It used to hold
 // three: 40 mm was kept for a hand whether the shelf had room to spare or not.
 import { test, expect } from "bun:test";
-import { DEFAULTS, laneLengthFor, solve, baseHeight, buildWall, buildDeck, laneOf } from "../src/geometry";
+import { DEFAULTS, K, laneLengthFor, solve, baseHeight, buildWall, buildDeck, laneOf } from "../src/geometry";
 import { geo } from "./geo";
 import { fitSpace, laneNeeds } from "../src/solver";
 
@@ -19,7 +19,12 @@ test("a 12 x 10 in shelf offers four cans a deck on two flat tiers", () => {
 test("the lane is the shortest that holds its cans, not the longest that fits", () => {
   const layout = fourByTwo(fitSpace(SHELF, DEFAULTS, { cascade: false }))!;
   expect(layout.derived.L).toBe(laneLengthFor({ ...DEFAULTS, cascade: false }, 4));
-  expect(layout.derived.L).toBe(281);
+  expect(layout.derived.L).toBe(286);
+  // Independently budget the front lip, four diameters, inter-can gaps and rear stop.
+  const required = K.lipInset + K.lipTabT / 2 + 0.5 + 4 * DEFAULTS.canD
+    + 3 * 0.5 + 0.5 + DEFAULTS.wall + K.post;
+  expect(layout.derived.L).toBe(Math.ceil(required));
+  expect(layout.derived.L - 1).toBeLessThan(required);
 });
 
 // Three tiers of three used to out-count two of four. They fitted only because a tier
