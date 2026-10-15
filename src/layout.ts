@@ -1,4 +1,4 @@
-import { K, type Options, type Derived, type LaneRole, type PlateName, type Side } from "./model";
+import { K, type Options, type Derived, type LaneRole, type PlateName, type Side, type WallPlateName } from "./model";
 
 /** The role tier `t` (0 on the shelf) prints as. A flat stack's tiers are all one lane. */
 export const tierRole = (o: Options, t: number): LaneRole =>
@@ -50,3 +50,13 @@ export function deckVariant(o: Options, lane: number): PlateName {
 export const laneName = (o: Options, role: LaneRole, plate: PlateName) =>
   o.cascade ? `lane-${role}-${plate}` : `lane-${plate}`;
 
+
+/** A wall's identity records only features that differ physically. Reversed tiers
+ * exchange their local sides before row-edge choices are applied. */
+export function wallVariant(o: Options, lane: number, tier: number, side: number): WallPlateName {
+  const reversed = o.cascade && tier % 2 === 1;
+  const worldSide = reversed ? -side : side;
+  const connected = deckSides(o, lane)[worldSide > 0 ? 0 : 1] !== "none";
+  const terminal = tier === o.tiers - 1 && !o.cover && !o.stackable;
+  return `${side > 0 ? "wall-left" : "wall-right"}${connected ? "" : "-closed"}${terminal ? "-terminal" : ""}${tier === rearTier(o) ? "-open" : ""}`;
+}

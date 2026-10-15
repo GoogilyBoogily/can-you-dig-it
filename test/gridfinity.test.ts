@@ -2,10 +2,9 @@
 // foot under each, for the baseplate you have. Spec in
 // docs/superpowers/specs/2026-09-19-gridfinity-base-design.md.
 import { test, expect } from "bun:test";
-import { DEFAULTS, K, solve, check, buildAll, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
+import { DEFAULTS, K, solve, check, buildAll, buildCover, buildLanePlates, baseHeight, gridSpan, gridCells, type Options } from "../src/geometry";
 import { fitSpace } from "../src/solver";
 import { gridUnit } from "../src/features/gridfinity";
-import { snapTop } from "../src/features/joints";
 
 import { geo } from "./geo";
 
@@ -54,7 +53,7 @@ test("the unit hangs 7 mm below the deck; a foot protrudes with the profile, 35.
 });
 
 test("the wall stands on the floor and its notch at ±px takes the boss; no gang rib on a grid", () => {
-  const wall = buildLanePlates(geo, grid, d, "bottom").find((p) => p.name === "wall-left")!;
+  const wall = buildLanePlates(geo, grid, d, "bottom").find((p) => p.name === "wall-left-closed")!;
   // the boss is flush with the wall's inner face: py less half the wall, plus half the tab
   const boss = geo.isect(whole, geo.box(K.tabW + 4, 3, 2.4, d.px, d.py + (K.tabT - grid.wall) / 2, 1.2));
   expect(boss.volume()).toBeCloseTo(K.tabW * K.tabT * K.pinH, 0);
@@ -168,7 +167,8 @@ test("the solver charges the unit and reports lane and floor together", () => {
     expect(l.options.lanesWide).toBe(2);
     expect(l.footprint[0]).toBe(168 + 167.5);
     const stack = l.style === "cascade" ? l.derived.Hb + (l.options.tiers - 1) * l.derived.H : l.options.tiers * l.derived.H;
-    expect(l.footprint[2]).toBeCloseTo(7 + stack + snapTop(l.options), 9); // the top tier's pins, their hooks over the cover
+    const builtCoverHeight = geo.arena(() => Math.max(...buildCover(geo, l.options, l.derived).map((cover) => cover.boundingBox().max[2])));
+    expect(l.footprint[2]).toBeCloseTo(7 + stack + builtCoverHeight, 9); // the finished cover encloses the pins
   }
   expect(fitSpace({ w: 130, d: 304, h: 150, front: 0 }, { ...DEFAULTS, base: "gridfinity" }, { cascade: true })).toEqual([]);
 });

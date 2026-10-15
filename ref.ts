@@ -40,6 +40,7 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     "cover-front": twoTiers.cover[0],
     "cover-rear": twoTiers.cover[1],
     "end-lip": twoTiers.lip,
+    "seam-key": twoTiers.key!,
     "riser-24": buildAll(geo, { ...base, base: "feet" }, derived).riser!,
     "minimal-cover-front": minimalTwo.cover[0],
     "minimal-cover-rear": minimalTwo.cover[1],
@@ -82,6 +83,17 @@ export function refParts(geo: Geo, over: Partial<Options> = {}): Record<string, 
     const o: Options = { ...base, left: "socket", right: "none" };
     const set = buildAll(geo, o, solve(o));
     for (const part of partList(set, o)) if (/^lane-top-deck-(left|right)-end/.test(part.name)) parts["ends-" + part.name] = part.mesh;
+  }
+  // Every additional shell-wall hand: closed unused gang notches, terminal tops without
+  // pins, and the rear-loading opening without an unused end-wall slot. Three tiers put
+  // the top at the back, so all eight feature combinations are real assembled variants.
+  // Keep these outside the baseline lane prefixes used by material-ratio checks.
+  for (const design of ["standard", "minimal"] as const) for (const closed of [false, true]) for (const terminal of [false, true]) for (const open of [false, true]) {
+    if (!closed && !terminal && !open) continue; // the normal top walls are already above
+    const o: Options = { ...base, design, tiers: 3, lanesWide: 1, left: closed ? "none" : "tongue", right: closed ? "none" : "socket", cover: !terminal, rearLoad: open, stackable: false };
+    const set = buildAll(geo, o, solve(o));
+    const prefix = design === "minimal" ? "shell-minimal-" : "shell-";
+    for (const part of partList(set, o)) if (part.name.startsWith("lane-top-wall-")) parts[prefix + part.name] = part.mesh;
   }
   // A flat stack: the only style the solver offers when cascade is off, and the snapshot
   // had none of it but a grid deck. Its top-role end wall carries the 20 mm loading lip

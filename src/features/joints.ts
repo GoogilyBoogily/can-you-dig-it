@@ -200,10 +200,9 @@ export function snapRelief(g: Geo, width: number, root: number): CS {
   );
 }
 
-/** The wall-top pin as a snap. The return face starts a clearance above the cover's top
- *  face and climbs 30° off square, so it holds a full lane and still comes apart with a
- *  firm pull; the lead-in is 45°, which keeps the tip under 4 mm. The wall above catches
- *  it in the same profile grown by the clearance. */
+/** The wall-top pin has a 30° return face and a 45° lead-in. The wall above receives
+ *  its profile grown by clearance; the finished cover catches the hooks inside its
+ *  supported blind chambers. The printed coupon must qualify insertion and retention. */
 export function pinSnap(clearance: number): SnapSpec {
   const hook = clearance + K.snapCatch;
   const returnSlope = Math.tan(Math.PI / 6);
@@ -213,6 +212,13 @@ export function pinSnap(clearance: number): SnapSpec {
 
 /** How far a pin's tip stands above its wall top: what the stack is charged on top. */
 export const snapTop = (o: Options) => pinSnap(clearanceOf(o)).tip;
+
+/** A blind cover socket rises clear of the pin, closes with a 45° roof across the
+ *  pin's narrow dimension, and keeps four 0.2 mm layers above that roof. */
+export const coverThicknessOf = (o: Options): number => {
+  const clearance = clearanceOf(o);
+  return snapTop(o) + clearance + K.tabT / 2 + clearance + 0.8;
+};
 
 /** A tab that drops through a slot `length` deep: the hook's return face runs parallel
  *  to the slot's 45° flare, a clearance off it, and the 30° lead-in is clipped at the
@@ -228,3 +234,53 @@ export function flareProfile(g: Geo, width: number, clearance: number, tip: numb
   const start = width / 2 + clearance, from = tip - K.snapFlare, wide = start + K.snapFlare + OVER;
   return g.poly([[-start, from], [start, from], [wide, tip + OVER], [-wide, tip + OVER]]);
 }
+
+/** Hidden seam splines stay inside the existing full-thickness seam bands. The
+ * diamond roof prints at 45 degrees; a short central collar locates the faces when
+ * fully seated while the rest of the key retains the ordinary insertion clearance. */
+export const seamKeyRadius = 1.8;
+export const seamKeyHalfLength = 6;
+export const seamKeyFrameHalfWidth = (o: Options) => seamKeyHalfLength + clearanceOf(o) + K.ligMin;
+export const seamKeyBedOffset = (o: Options) => seamKeyRadius - Math.SQRT2 * clearanceOf(o) - 0.8;
+export const wallSeamHeights = (height: number) => [height / 3, 2 * height / 3];
+export const coverSeamPositions = (outerWidth: number) => [-(outerWidth / 2 - (K.coverInset - seamKeyRadius - K.ligMin)), outerWidth / 2 - (K.coverInset - seamKeyRadius - K.ligMin)];
+
+const diamond = (g: Geo, radius: number): CS => g.poly([[0, -radius], [radius, 0], [0, radius], [-radius, 0]]);
+
+export function seamKeySocket(g: Geo, o: Options): M {
+  const clearance = clearanceOf(o);
+  return g.prismX(diamond(g, seamKeyRadius), 2 * (seamKeyHalfLength + clearance), -seamKeyHalfLength - clearance);
+}
+
+export function buildSeamKey(g: Geo, o: Options): M {
+  const radius = seamKeyRadius - Math.SQRT2 * clearanceOf(o);
+  const profile = diamond(g, radius);
+  const body = g.prismX(profile, 2 * seamKeyHalfLength, -seamKeyHalfLength);
+  const taper = profile.extrude(1, 0, 0, [seamKeyRadius / radius, seamKeyRadius / radius])
+    .transform([0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, -2.25, 0, 0, 1]);
+  const collar = g.prismX(diamond(g, seamKeyRadius), 2.5, -1.25);
+  // Two side rails flex in the printed plane. A conservative fixed-fixed beam
+  // estimate, 12*t*deflection/span², gives 1.8% at t=1.5, deflection=0.1,
+  // span=10 mm. This is a sizing assumption; the PETG coupon must qualify force.
+  const key = g.diff(g.union([body, collar, taper, taper.mirror([1, 0, 0])]), [g.box(2 * (seamKeyHalfLength - 1), 0.6, 10)]);
+  // The 1.6 mm bed flat leaves a full 0.5 mm extrusion on each side of the slot.
+  const bedOffset = seamKeyBedOffset(o);
+  return g.isect(key, g.box(2 * seamKeyHalfLength + 2, 2 * seamKeyRadius + 2, 10, 0, 0, 5 - bedOffset)).translate([0, 0, bedOffset]);
+}
+
+/** A tall end wall keeps a solid stem down through the deck. Only its final seven
+ * millimetres are prongs, so a tall wedge does not create long, weak spring fingers. */
+export function endWallSnap(g: Geo, spec: { height: number; wall: number; clearance: number }): { tab: M; slot: M; relief: M } {
+  const { height, wall, clearance } = spec;
+  const width = K.tabW, length = K.snapLen;
+  const profile = fromTip(withRoots(g, snapProfile(g, tabSnap(clearance, length, width)), width), length);
+  const tabParts = [g.prismX(profile, K.tabT, 0)];
+  if (height + OVER > length) tabParts.push(g.box(K.tabT, width, height + OVER - length, K.tabT / 2, 0, (height + OVER + length) / 2));
+  const reliefProfile = g.rect(-width / 2 - K.snapT, -OVER, width / 2 + K.snapT, length).subtract(profile);
+  const relief = g.prismX(reliefProfile, wall + 2 * OVER, -OVER);
+  const flare = g.prismX(fromTip(flareProfile(g, width, clearance, height), height), K.tabT + 2 * clearance, -clearance);
+  const slot = g.union([g.box(K.tabT + 2 * clearance, width + 2 * clearance, height + 2 * OVER, K.tabT / 2, 0, height / 2), flare]);
+  return { tab: g.union(tabParts), slot, relief };
+}
+
+export const endWallTabPositions = (innerWidth: number) => [-(innerWidth / 2 - K.tabW / 2 - 2), innerWidth / 2 - K.tabW / 2 - 2];

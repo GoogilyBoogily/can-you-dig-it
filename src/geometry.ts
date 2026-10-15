@@ -3,10 +3,11 @@ import { estimateVolume } from "./estimate";
 // test/regress.test.ts pins every part to the ref.json snapshot (bun run ref).
 
 import type { CrossSection as CS, Manifold as M } from "manifold-3d";
-import { clearanceOf, earNotchH, tSlotJoint, gangJoint, lipSnap, lipPocket, crossLap, pinJoint, placeSide, earJoint, tabBox, snapTop, pinSnap, tabSnap } from "./features/joints";
+import { clearanceOf, coverThicknessOf, earNotchH, tSlotJoint, gangJoint, lipSnap, lipPocket, crossLap, pinJoint, placeSide, earJoint, tabBox, snapTop, pinSnap, tabSnap } from "./features/joints";
+import { buildSeamKey, seamKeySocket, seamKeyFrameHalfWidth, wallSeamHeights, coverSeamPositions, endWallSnap, endWallTabPositions } from "./features/joints";
 import { lay, platePose, riserPose } from "./features/pose";
 import { cellsOf, ligFor, autoR, rowsRadius, ROWS } from "./features/lattice";
-import { recessDepth, roundOver, roundTop } from "./features/pocket";
+import { recessDepth, roundTop } from "./features/pocket";
 import { gridUnit } from "./features/gridfinity";
 import { Geo } from "./kernel";
 import { partManifest } from "./assembly";
@@ -104,7 +105,7 @@ export function solve(o: Options): Derived {
     gangPitch,
     plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
     plateY,
-    plateZ: Math.max(deckPlateZ, wallPlateZ), // a riser prints on its side, as thick as a wall
+    plateZ: Math.max(deckPlateZ, wallPlateZ, o.cover ? coverThicknessOf(o) : 0), // a riser prints on its side, as thick as a wall
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
 }
@@ -125,12 +126,12 @@ export function check(o: Options, d: Derived): string[] {
   const fitsTurned = d.plateY <= d.usableX && d.plateX <= d.usableY;
   if (!fitsSquare && !fitsTurned) w.push(`FAIL lane ${d.plateX.toFixed(0)} × ${d.plateY.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation`);
   if (d.plateZ > d.usableZ) w.push(`FAIL plate ${d.plateZ.toFixed(0)} mm is taller than the ${d.usableZ.toFixed(0)} mm of Z this printer leaves clear`);
-  // The end wall lies flat as OW by its standing height, H - te: posts to full tier height
-  // above the deck line at the lane end. Only the tiers that print one count.
+  // The end wall lies flat as OW by H: its snap tips reach the deck underside at
+  // z = 0 and its corner posts reach full tier height. Only printed end walls count.
   for (let tier = 0; tier < o.tiers; tier++) {
     if (tier === rearTier(o)) continue;
     const ln = laneOf(o, d, tierRole(o, tier));
-    const [along, across] = [ln.H - ln.te, d.OW];
+    const [along, across] = [ln.H, d.OW];
     const fits = (along <= d.usableX && across <= d.usableY) || (across <= d.usableX && along <= d.usableY);
     if (!fits) {
       w.push(`FAIL end wall ${along.toFixed(0)} × ${across.toFixed(0)} mm fits the ${d.usableX.toFixed(0)} × ${d.usableY.toFixed(0)} mm bed in neither orientation - use a smaller can or a bigger printer`);
@@ -145,6 +146,9 @@ export function check(o: Options, d: Derived): string[] {
   // solid, one piece, no overhang, and it will not seat.
   if (d.inset && Math.abs(d.inset + tabIn - pinIn(o)) < tabClear)
     w.push(`FAIL a ${o.canD} mm can puts the deck's front ear on the pin below - the tier will not seat`);
+  const pinKeepOut = K.tabW / 2 + Math.max(K.snapT, K.snapCatch + 2 * clearanceOf(o)) + K.ligMin;
+  if (d.px + 1e-8 < pinKeepOut)
+    w.push("FAIL opposing tier pins and their snap roots leave no solid ligament - lengthen the lane");
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   // a short lane's ears, pins and lip pockets leave no stretch of rail for a gang tongue.
   // It still stands on every ear; it just is not keyed to its neighbour
@@ -167,7 +171,7 @@ export function check(o: Options, d: Derived): string[] {
 export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
 export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
-  lip: M; riser?: M; cover: M[];
+  lip: M; riser?: M; cover: M[]; key?: M;
   gridDeck?: Plate; // the deck of the lane on the shelf, on its Gridfinity unit
 }
 
@@ -336,6 +340,8 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane, sides: [Side
     const pocket = lipPocket(g, clearanceOf(o), 40, 10);
     cuts.push(pocket.translate([ln.lipx, sy * d.lipy, 0]), lip.flare.translate([ln.lipx, sy * d.lipy, 0]));
   }
+  const endSnap = endWallSnap(g, { height: ln.te, wall: o.wall, clearance: clearanceOf(o) });
+  for (const position of endWallTabPositions(IW)) cuts.push(endSnap.slot.translate([ln.xe, position, 0]));
   const deck = g.assemble(adds, cuts);
   return deck;
 }
@@ -344,6 +350,10 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane, sides: [Side
  *  the right. Stands on the shelf or on the wall top of the tier below, full height, and
  *  notches over the deck's ears with a tab down through each. */
 export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number): M {
+  return buildWallFeatures(g, o, d, ln, sy, { gangNotches: true, topPins: true, endLap: true });
+}
+
+function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, features: { gangNotches: boolean; topPins: boolean; endLap: boolean }): M {
   const { L, IW, OW } = d;
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
@@ -352,10 +362,16 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   const pinJ = pinJoint(g, { wall: o.wall, clearance: c });
   const earJ = earJoint(g, { wall: o.wall, through: 0, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
-  for (const sx of [1, -1]) adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
-  const cuts: M[] = [g.prismX(roundOver(g, sy * OW / 2, H, sy, K.edgeR), L + 2, -L / 2 - 1)];
-  for (const sx of [1, -1]) cuts.push(pinJ.relief.translate([sx * d.px, sy * d.py, H]));
-  cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ));
+  const cuts: M[] = [];
+  if (features.topPins) for (const sx of [1, -1]) {
+    adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
+    cuts.push(pinJ.relief.translate([sx * d.px, sy * d.py, H]));
+  }
+  cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ, features));
+  if (d.split) {
+    const socket = seamKeySocket(g, o);
+    for (const height of wallSeamHeights(H)) cuts.push(socket.translate([0, sy * d.py, height]));
+  }
   if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
   const m = g.assemble(adds, cuts);
   return m;
@@ -365,14 +381,14 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
  *  it (so the ear's slot stays), the corner slot the end wall drops into from the top
  *  edge down to the lap line, and the notches for the tier below's pins or the risers'
  *  bosses. */
-function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>): M[] {
+function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>, features: { gangNotches: boolean; endLap: boolean }): M[] {
   const cuts = ln.tabs.map((tx) => placeSide(earJ.notch, sy, tx, sy * d.py, 0));
-  if (ln.tongues.length) {
+  if (features.gangNotches && ln.tongues.length) {
     const gang = gangJoint(g, { run: 1, clearance: c, through: 1, wall: o.wall });
     for (const gx of ln.tongues) cuts.push(gang.notch.translate([gx, sy * d.py, 0]));
   }
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H: ln.H, clearance: c });
-  cuts.push(lap.female.translate([ln.xe, sy * d.py, 0]));
+  if (features.endLap) cuts.push(lap.female.translate([ln.xe, sy * d.py, 0]));
   for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
   return cuts;
 }
@@ -399,7 +415,7 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   const H = ln.H, b = K.border;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const keep: CS[] = [];
-  if (d.split) keep.push(g.rect(-b, 0, b, H));
+  if (d.split) keep.push(g.rect(-seamKeyFrameHalfWidth(o), 0, seamKeyFrameHalfWidth(o), H));
   const endNotch = g.rect(ln.xe - 3 - c, -1, L / 2 + 1, H + 1);
   keep.push(endNotch, ...snapKeepOuts(g, o, d, ln, c));
   const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
@@ -419,7 +435,10 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
     const field = panel.subtract(g.cs2d(...keep));
     for (const comp of field.decompose()) {
       const { min: [gx0], max: [gx1] } = comp.bounds();
-      const face = g.rect(gx0, notchH + K.padRise, gx1, H - b).subtract(endNotch);
+      const tab = tabSnap(c, notchH, K.tabW);
+      const rootTop = notchH + K.snapLen - tab.peak;
+      const frameTop = Math.max(notchH + K.padRise, rootTop + K.ligMin);
+      const face = g.rect(gx0, frameTop, gx1, H - b).subtract(endNotch);
       cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
     }
   }
@@ -439,11 +458,13 @@ export function buildEndWall(g: Geo, o: Options, d: Derived, ln: Lane): M {
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H, clearance: clearanceOf(o) });
   const adds = [g.box(o.wall, IW, ewh - te, xe + o.wall / 2, 0, (ewh + te) / 2)];
   for (const sy of [1, -1]) adds.push(lap.male.translate([xe, sy * d.py, 0]));
-  // the outer top edge rounds, like the side walls'. A loading lip's inner edge stays
-  // square: printed outer face up it would be a round on the bed edge, and a can loaded
-  // over the lip slides over the outer edge anyway
-  const cuts: M[] = [g.prismY(roundOver(g, xo, ewh, 1, K.edgeR), IW, -IW / 2)];
-  for (const sy of [1, -1]) cuts.push(g.prismY(roundOver(g, xo, H, 1, K.edgeR), o.wall, sy > 0 ? IW / 2 : -OW / 2));
+  // Square upper faces meet the next tier or cover without a rounded seam groove.
+  const cuts: M[] = [];
+  const snap = endWallSnap(g, { height: te, wall: o.wall, clearance: clearanceOf(o) });
+  for (const position of endWallTabPositions(IW)) {
+    adds.push(snap.tab.translate([xe, position, 0]));
+    cuts.push(snap.relief.translate([xe, position, 0]));
+  }
   if (!o.solid) {
     const gy0 = -IW / 2 + b, gy1 = IW / 2 - b;
     const ecells = cellsOf(g, o.pattern, d.hexR, d.lig, g.rect(gy0, te + b, gy1, ewh - b), []);
@@ -484,9 +505,9 @@ export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb 
 }
 
 
-/** Wall: a plain cut at x = 0, the halves butted. Each half stands on its own ears, which
- *  hold it in X and Y, and the tier above and the cover bridge the seam. A T here had to
- *  slide in Y before the wall went on: the one joint that did not drop in. */
+/** Wall halves butt at x = 0 around their hidden splines before the continuous wall
+ *  snaps onto the assembled deck. The keyed walls bridge the deck seam in Z; the
+ *  cover halves have their own hidden keys. Each wall half keeps its own deck ears. */
 export function splitWall(g: Geo, d: Derived, wall: M): [M, M] {
   const [rear, front] = wall.splitByPlane([1, 0, 0], 0);
   return [front, rear];
@@ -564,12 +585,29 @@ function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
 }
 
 export function buildCover(g: Geo, o: Options, d: Derived): M[] {
-  const { L, OW } = d, t = K.coverT;
+  const { L, OW } = d, t = coverThicknessOf(o);
   const outline = g.rect(-L / 2, -OW / 2, L / 2, OW / 2);
-  const plate = roundTop(g, g.prismZ(outline, t), outline, t, t / 2);
+  const plate = roundTop(g, g.prismZ(outline, t), outline, t, K.coverT / 2);
   const cuts: M[] = [];
-  const pinJ = pinJoint(g, { wall: o.wall, clearance: clearanceOf(o) });
-  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(placeSide(pinJ.hole, sy, sx * d.px, sy * d.py, 0));
+  const clearance = clearanceOf(o), snap = pinSnap(clearance);
+  const halfWidth = K.tabW / 2 + clearance, halfDepth = K.tabT / 2 + clearance;
+  // The 45° return chamber contains the pin's shallower return face, including at
+  // the tightest fit. Its mouth catches the hooks without an unsupported ledge.
+  const flareStart = snap.peak + clearance - snap.hook;
+  const roofStart = snap.tip + clearance, roofTop = roofStart + halfDepth;
+  const chamber = g.prismY(g.poly([
+    [-halfWidth, -1], [halfWidth, -1], [halfWidth, flareStart],
+    [halfWidth + snap.hook, flareStart + snap.hook], [halfWidth + snap.hook, roofTop + 1],
+    [-halfWidth - snap.hook, roofTop + 1], [-halfWidth - snap.hook, flareStart + snap.hook],
+    [-halfWidth, flareStart],
+  ]), 2 * halfDepth, -halfDepth);
+  // Closing across the narrow dimension makes a blind socket printable from its
+  // open bed face. The outer cover surface stays solid above the 45° tent roof.
+  const roof = g.prismX(g.poly([
+    [-halfDepth, -1], [halfDepth, -1], [halfDepth, roofStart], [0, roofTop], [-halfDepth, roofStart],
+  ]), 2 * (halfWidth + snap.hook + 1), -halfWidth - snap.hook - 1);
+  const socket = g.isect(chamber, roof).translate([0, (K.tabT - o.wall) / 2, 0]);
+  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(placeSide(socket, sy, sx * d.px, sy * d.py, 0));
   // cascade loading window: the top tier loads from above at its high end, so the cover
   // opens there, one can wide and the full inner width (only the wall strips remain).
   // A flat top tier loads from the front over its lip and keeps a whole cover.
@@ -581,10 +619,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     keep.push(window.offset(4, "Miter"));
   }
   if (!o.solid) {
-    // No keep-out round the pin holes: the field stops coverInset in from OW/2 and the
-    // holes are at py + (tabT − wall)/2 = IW/2 + 1.5, 6.5 mm outside it - the cells never
-    // reach them. The rectangles that used to be here were centred on d.py, not the
-    // holes' own y, and were 2 mm short of the field even so.
+    // The field stays inside the wall strips containing the blind pin sockets.
     // bigger cells and fat bars than the walls: a grille, not a lattice
     const inset = K.coverInset;
     const field = g.rect(-L / 2 + inset, -OW / 2 + inset, L / 2 - inset, OW / 2 - inset);
@@ -607,11 +642,15 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     if (cells) {
       // the seam crosses the field; clip cells at its solid band rather than dropping
       // them, so the pattern carries over the joint instead of leaving a blank
-      if (d.split) cells = cells.subtract(g.rect(-K.coverSeam, -OW, K.coverSeam, OW));
+      if (d.split) cells = cells.subtract(g.rect(-Math.max(K.coverSeam, seamKeyFrameHalfWidth(o)), -OW, Math.max(K.coverSeam, seamKeyFrameHalfWidth(o)), OW));
       const pieces = cells.decompose().filter((piece) => piece.area() > 40);
       cells = pieces.length ? g.cs2d(...pieces) : null;
     }
     if (cells) cuts.push(g.prismZ(cells, t + 2, -1));
+  }
+  if (d.split) {
+    const socket = seamKeySocket(g, o);
+    for (const position of coverSeamPositions(OW)) cuts.push(socket.translate([0, position, t / 2]));
   }
   const m = g.diff(plate, cuts);
   if (d.split) {
@@ -639,18 +678,24 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, 
   const ln = laneOf(o, d, role);
   const wanted = (name: PlateName) => !requested || requested.has(name);
   const plates: Plate[] = [];
+  const mirroredTier = o.cascade && gangs(o) && Array.from({ length: o.tiers }, (_, tier) => tier).some((tier) => tier % 2 === 1 && tierRole(o, tier) === role);
   for (const { name, sides } of deckKinds(o)) {
-    if (!wanted(name)) continue;
-    const deck = buildDeck(g, o, d, ln, sides);
-    if (d.split) {
-      const [front, rear] = splitDeck(g, o, d, ln, deck);
-      plates.push({ name, front, rear });
-    } else plates.push({ name, whole: deck });
+    for (const mirrored of mirroredTier ? [false, true] : [false]) {
+      const variant: PlateName = mirrored ? `${name}-mirrored` as PlateName : name;
+      if (!wanted(variant)) continue;
+      const built = buildDeck(g, o, d, ln, sides);
+      const deck = mirrored ? built.mirror([0, 1, 0]) : built;
+      if (d.split) {
+        const [front, rear] = splitDeck(g, o, d, ln, deck);
+        plates.push({ name: variant, front, rear });
+      } else plates.push({ name: variant, whole: deck });
+    }
   }
-  for (const side of [1, -1]) {
-    const name = side > 0 ? "wall-left" : "wall-right";
-    if (!wanted(name)) continue;
-    const wall = buildWall(g, o, d, ln, side);
+  const wallNames = requested ? [...requested].filter((name) => name.startsWith("wall-"))
+    : [...new Set(partManifest(o, d).filter((part) => part.source.kind === "lane" && part.source.laneRole === role && part.source.plate?.startsWith("wall-")).map((part) => part.source.plate!))];
+  for (const name of wallNames) {
+    const side = name.startsWith("wall-left") ? 1 : -1;
+    const wall = buildWallFeatures(g, o, d, ln, side, { gangNotches: !name.includes("-closed"), topPins: !name.includes("-terminal"), endLap: !name.includes("-open") });
     if (d.split) {
       const [front, rear] = splitWall(g, d, wall);
       plates.push({ name, front: layWall(front, side, d.IW), rear: layWall(rear, side, d.IW) });
@@ -674,6 +719,7 @@ export function buildAll(g: Geo, o: Options, d: Derived): PartSet {
     lip: buildLip(g, o, d),
     riser: o.base === "feet" ? buildRiser(g, o, 24) : undefined,
     cover: o.cover ? buildCover(g, o, d) : [],
+    key: d.split ? buildSeamKey(g, o) : undefined,
     gridDeck: o.base === "gridfinity" ? buildGridDeckPlate(g, o, d, tierRole(o, 0)) : undefined,
   };
 }
@@ -704,6 +750,7 @@ export function partList(set: PartSet, o: Options): Part[] {
       mesh = source.half ? plate?.[source.half] : plate?.whole;
     } else if (source.kind === "grid") mesh = source.half ? set.gridDeck?.[source.half] : set.gridDeck?.whole;
     else if (source.kind === "cover") mesh = set.cover[source.half === "rear" ? 1 : 0];
+    else if (source.kind === "key") mesh = set.key;
     else mesh = source.kind === "lip" ? set.lip : set.riser;
     if (!mesh) throw new Error(`Missing requested part ${name}`);
     return { name, mesh, qty, role };

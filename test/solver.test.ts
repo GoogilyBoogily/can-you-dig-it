@@ -1,8 +1,10 @@
 // A 12 in deep, 10 in tall shelf holds four cans a deck on two tiers. It used to hold
 // three: 40 mm was kept for a hand whether the shelf had room to spare or not.
 import { test, expect } from "bun:test";
-import { DEFAULTS, K, laneLengthFor, solve, baseHeight, buildWall, buildDeck, laneOf } from "../src/geometry";
+import { DEFAULTS, K, laneLengthFor, solve, baseHeight, buildCover, buildDeck, laneOf } from "../src/geometry";
 import { geo } from "./geo";
+import { assemblyPlacements, partManifest } from "../src/assembly";
+import { stand } from "../src/features/pose";
 import { fitSpace, laneNeeds } from "../src/solver";
 
 const SHELF = { w: 160, d: 305, h: 254, front: 0 };
@@ -99,17 +101,20 @@ test("a grid shelf narrower than one cell offers nothing, not NaN", () => {
     expect(Number.isFinite(layout.cans)).toBe(true);
 });
 
-// The top tier's wall stands its pins 2.4 mm proud, and the cover sits flush with them:
-// the solver stacked tier heights alone and put a 192 mm shelf's two tiers 194.4 mm tall.
-// Measured off the built wall, not the solver's own arithmetic.
-test("the stack's top, pins included, fits under the shelf", () => {
+// The finished cover encloses the pins and its supported blind sockets. Measure the
+// actual built cover in its assembly pose, independently of the solver allowance.
+test("the finished assembled cover fits under the shelf", () => {
   for (const space of [{ w: 300, d: 240, h: 192, front: 0 }, { w: 300, d: 520, h: 240, front: 0 }]) {
     for (const cascade of [false, true]) {
       for (const layout of fitSpace(space, DEFAULTS, { cascade })) {
         const o = layout.options, d = layout.derived;
-        const lower = o.cascade ? d.Hb + (o.tiers - 2) * d.H : (o.tiers - 1) * d.H;
-        const wallTop = geo.arena(() => buildWall(geo, o, d, laneOf(o, d, "top"), 1).boundingBox().max[2]);
-        const top = baseHeight(o) + lower + wallTop;
+        const coverTop = geo.arena(() => {
+          const covers = buildCover(geo, o, d);
+          const coverSources = new Map(partManifest(o, d).filter((part) => part.source.kind === "cover").map((part) => [part.name, part.source.half]));
+          return Math.max(...[...assemblyPlacements(o, d)].filter((part) => coverSources.has(part.name))
+            .map((part) => stand(covers[coverSources.get(part.name) === "rear" ? 1 : 0], part.pose).boundingBox().max[2]));
+        });
+        const top = baseHeight(o) + coverTop;
         expect(top, `${JSON.stringify(space)} ${layout.style} ${o.tiers} tiers`).toBeLessThanOrEqual(space.h + 1e-6);
         expect(layout.footprint[2]).toBeCloseTo(top, 6);
       }

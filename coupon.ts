@@ -1,5 +1,5 @@
-// A joint coupon: every joint the default lane uses, cut out of the real parts, on one
-// plate. Print it before the ten hours of full plates; if these bind or rattle, so will
+// A joint coupon: every joint the default lane uses, cut out of the real parts, on print
+// plates. Print it before the full job; if these bind or rattle, so will
 // the lane. Pieces are windows on the top lane's parts in the lane frame, laid flat the
 // way their plates print, so each carries its plate's frame, recess and fit. It prints the
 // way the lane will: translucent PETG (1 wall, solid, 60 °C bed) on the smooth PEI plate.
@@ -12,7 +12,7 @@
 //   splice-front + splice-rear     the deck halves drop together at the T
 //   gang-tongue + gang-socket      the tongue drops into the socket; wall-tongue notches over the tongue
 //   wall-pin-top + wall-pin-bottom the pin on one wall top snaps into the chamber in the wall above
-//   wall-pin-top + cover-corner    the same pin snaps through the cover's hole
+//   wall-pin-top + cover-corner    the same pin snaps into the cover's blind catch
 //   end-wall-corner + wall-corner  the end wall's post drops into the side wall's corner slot
 //   lip + lip-pocket               the lip's tabs snap into the deck's pockets
 //   pitch-deck + pitch-wall        three ears over ~145 mm into three notches: printer scale,
@@ -20,15 +20,25 @@
 //                                  along Y. Same-axis pairs fit and crossed ones do not: the
 //                                  printer's X and Y differ, and pack() must stop turning
 //                                  decks and side walls.
+//   wall-seam-front/rear + key     slide the wall halves along X onto the hidden key
+//   cover-seam-front/rear + key    slide the cover halves along X before lowering them
+//   end-tab + end-slot             the end wall snaps onto the deck without a cover
+//   tight-deck-ear + tight-wall-ear minimal wall snap/root at fit -0.2
+//   mirrored-gang pair             the actual reversed-tier deck's tongue and socket
 import Module from "manifold-3d";
 import type { Manifold as M } from "manifold-3d";
-import { DEFAULTS, Geo, solve, laneOf, buildDeck, buildWall, buildEndWall, buildLip, splitDeck, buildCover } from "./src/geometry";
+import { DEFAULTS, Geo, solve, laneOf, buildDeck, buildWall, buildEndWall, buildLip, splitDeck, splitWall, buildCover, buildLanePlates } from "./src/geometry";
+import { K } from "./src/model";
+import { buildSeamKey, wallSeamHeights, coverSeamPositions, endWallTabPositions } from "./src/features/joints";
 import { lay, platePose } from "./src/features/pose";
-import { pack, threeMf, meshDataOf } from "./src/export";
+import { pack, threeMf, meshDataOf, inspectMesh } from "./src/export";
 import { composeProfile, defaultPicks, filamentsFor, keepOutFromConfig, type ProfileIndex } from "./src/profiles";
 
 const machine = process.argv[2] ?? "Bambu Lab P2S 0.4 nozzle";
-const out = "coupon.3mf";
+// Keep the previous print's evidence intact. A caller can supply a fresh output path
+// as the third argument; otherwise an existing coupon is preserved beside the new run.
+const out = process.argv[3] ?? (await Bun.file("coupon.3mf").exists() ? `.slice/coupon-${Date.now()}/coupon.3mf` : "coupon.3mf");
+if (await Bun.file(out).exists()) throw new Error(`Refusing to overwrite existing coupon ${out}; choose a fresh output path`);
 
 const wasm = await Module(); wasm.setup();
 const g = new Geo(wasm), o = DEFAULTS, d = solve(o), ln = laneOf(o, d, "top");
@@ -46,8 +56,16 @@ const turned = (m: M) => m.rotate([0, 0, 90]);
 const deck = buildDeck(g, o, d, ln);
 const wall = buildWall(g, o, d, ln, 1); // the +Y wall: the one the gang tongue runs out under
 const [deckFront, deckRear] = splitDeck(g, o, d, ln, deck);
-const [coverFront] = buildCover(g, o, d);
+const [coverFront, coverRear] = buildCover(g, o, d);
+const [wallFront, wallRear] = splitWall(g, d, wall);
 const endWall = buildEndWall(g, o, d, ln);
+const mirroredPlate = buildLanePlates(g, o, d, "top").find((plate) => plate.name === "deck-mirrored");
+if (!mirroredPlate?.front || !mirroredPlate.rear) throw new Error("the default reversed tier no longer has split mirrored decks; pick new coupon parts");
+const mirroredDeck = g.union([mirroredPlate.front, mirroredPlate.rear]);
+const tightOptions = { ...o, fit: -0.2, design: "minimal" as const };
+const tightDerived = solve(tightOptions), tightLane = laneOf(tightOptions, tightDerived, "top");
+const tightDeck = buildDeck(g, tightOptions, tightDerived, tightLane);
+const tightWall = buildWall(g, tightOptions, tightDerived, tightLane, 1);
 
 // Windows: an interior ear clear of the seam and the tongues, the rear-most tongue, the
 // seam itself, and the -X pin, which has no ear or end wall near it (the chute end).
@@ -55,6 +73,10 @@ const ear = ln.tabs.filter((t) => t > 0 && t < ln.xe - 40).sort((a, b) => a - b)
 const tongue = ln.tongues[ln.tongues.length - 1];
 const pin = -d.px;
 const wallFoot = 30; // enough wall above the notches to handle and to see the tab root
+const wallSeamHeight = wallSeamHeights(ln.H)[0];
+const coverSeamPosition = coverSeamPositions(d.OW)[1];
+const endTabPosition = endWallTabPositions(d.IW)[1];
+const tightEar = tightLane.tabs.filter((position) => position > 0 && position < tightLane.xe - 40).sort((left, right) => left - right)[0];
 // the rear half's ears, first to last: the pitch a deck half and its wall have to agree on
 const pitchEars = ln.tabs.filter((t) => t > 0).sort((a, b) => a - b);
 const [pitchFrom, pitchTo] = [pitchEars[0] - 12, pitchEars[pitchEars.length - 1] + 8];
@@ -81,11 +103,48 @@ const pieces: { name: string; mesh: M; qty: number }[] = [
   { name: "coupon-pitch-wall-x", mesh: pitchWall, qty: 1 },
   { name: "coupon-pitch-deck-y", mesh: turned(pitchDeck), qty: 1 },
   { name: "coupon-pitch-wall-y", mesh: turned(pitchWall), qty: 1 },
+  { name: "coupon-wall-seam-front", mesh: layLeft(cut(wallFront, -12, 0, wallSeamHeight - 8, wallSeamHeight + 8)), qty: 1 },
+  { name: "coupon-wall-seam-rear", mesh: layLeft(cut(wallRear, 0, 12, wallSeamHeight - 8, wallSeamHeight + 8)), qty: 1 },
+  { name: "coupon-cover-seam-front", mesh: cut(coverFront, -12, 0, undefined, undefined, coverSeamPosition - 6, coverSeamPosition + 6), qty: 1 },
+  { name: "coupon-cover-seam-rear", mesh: cut(coverRear, 0, 12, undefined, undefined, coverSeamPosition - 6, coverSeamPosition + 6), qty: 1 },
+  { name: "coupon-seam-key", mesh: buildSeamKey(g, o), qty: 2 },
+  { name: "coupon-end-tab", mesh: lay(cut(endWall, -BIG / 2, BIG / 2, -1, ln.te + 12, endTabPosition - 14, endTabPosition + 14), platePose("end-wall", 0, ln.xe)), qty: 1 },
+  { name: "coupon-end-slot", mesh: cut(deck, ln.xe - 10, ln.xe + o.wall + 3, undefined, undefined, endTabPosition - 14, endTabPosition + 14), qty: 1 },
+  { name: "coupon-tight-deck-ear", mesh: cut(tightDeck, tightEar - 20, tightEar + 20), qty: 1 },
+  { name: "coupon-tight-wall-ear", mesh: layLeft(cut(tightWall, tightEar - 20, tightEar + 20, -1, wallFoot)), qty: 1 },
+  { name: "coupon-mirrored-gang-tongue", mesh: cut(mirroredDeck, tongue - 22, tongue + 22, undefined, undefined, -BIG, 0), qty: 1 },
+  { name: "coupon-mirrored-gang-socket", mesh: cut(mirroredDeck, tongue - 22, tongue + 22, undefined, undefined, 0, BIG), qty: 1 },
 ];
+// Match the production flat-pack rule on the actual clipped pieces: no downward face
+// flatter than 45 degrees away from the bed. Clipping a real joint can otherwise leave
+// a connected coupon with a new unsupported roof that the production part never had.
+function unsupportedArea(mesh: M): number {
+  const { vertProperties: positions, triVerts: triangles, numProp: properties } = mesh.getMesh();
+  const minimumHeight = mesh.boundingBox().min[2];
+  let area = 0;
+  for (let triangle = 0; triangle < triangles.length; triangle += 3) {
+    const vertices = [0, 1, 2].map((corner) => {
+      const offset = triangles[triangle + corner] * properties;
+      return [positions[offset], positions[offset + 1], positions[offset + 2]];
+    });
+    const [first, second, third] = vertices;
+    const firstEdge = second.map((coordinate, axis) => coordinate - first[axis]);
+    const secondEdge = third.map((coordinate, axis) => coordinate - first[axis]);
+    const normal = [firstEdge[1] * secondEdge[2] - firstEdge[2] * secondEdge[1], firstEdge[2] * secondEdge[0] - firstEdge[0] * secondEdge[2], firstEdge[0] * secondEdge[1] - firstEdge[1] * secondEdge[0]];
+    const magnitude = Math.hypot(...normal);
+    if (magnitude < 2e-3 || normal[2] / magnitude > -Math.cos(Math.PI / 4) - 1e-4) continue;
+    if (vertices.every((vertex) => Math.abs(vertex[2] - minimumHeight) < 1e-3)) continue;
+    area += magnitude / 2;
+  }
+  return area;
+}
 for (const piece of pieces) {
+  if (piece.mesh.status() !== "NoError") throw new Error(`${piece.name} is not a valid solid: ${piece.mesh.status()}`);
   if (piece.mesh.isEmpty()) throw new Error(`${piece.name} came out empty; its window misses the part`);
   const bodies = piece.mesh.decompose().length;
   if (bodies !== 1) throw new Error(`${piece.name} is ${bodies} bodies; its window cuts a piece loose`);
+  const unsupported = unsupportedArea(piece.mesh);
+  if (unsupported > 0.01) throw new Error(`${piece.name} has ${unsupported.toFixed(3)} mm² of unsupported downward faces`);
 }
 
 const index: ProfileIndex = await Bun.file("profiles/index.json").json();
@@ -96,8 +155,31 @@ const picks = { ...defaultPicks(index, machine), filament: filament.name, transl
 // printer's default, textured, and has no plate picker
 const config = JSON.parse(new TextDecoder().decode(composeProfile(index, picks)));
 const profile = new TextEncoder().encode(JSON.stringify({ ...config, curr_bed_type: "High Temp Plate" }, null, 2));
-const parts = pieces.map((piece) => ({ mesh: meshDataOf(piece.name, piece.mesh.getMesh()), qty: piece.qty }));
-const placed = pack(parts, o.bed, o.bedMargin, undefined, keepOutFromConfig(profile));
+const parts = pieces.map((piece) => {
+  const mesh = meshDataOf(piece.name, piece.mesh.getMesh());
+  const degenerateFacets = inspectMesh(mesh, true);
+  if (degenerateFacets) console.warn(`${piece.name}: ${degenerateFacets} zero-area kernel facets retained`);
+  return { mesh, qty: piece.qty };
+});
+const keepOut = keepOutFromConfig(profile);
+const placed = pack(parts, o.bed, o.bedMargin, undefined, keepOut);
+for (const [index, copy] of placed.entries()) {
+  const bounds = copy.bbox, tolerance = 1e-3;
+  if (bounds[0] < o.bedMargin - tolerance || bounds[1] < o.bedMargin - tolerance
+    || bounds[3] > o.bed[0] - o.bedMargin + tolerance || bounds[4] > o.bed[1] - o.bedMargin + tolerance
+    || Math.abs(bounds[2]) > tolerance || bounds[5] > o.bed[2] + tolerance)
+    throw new Error(`${copy.name} crosses the printable bed volume`);
+  for (const rectangle of keepOut) {
+    const clear = bounds[3] <= rectangle[0] - o.bedMargin + tolerance || bounds[0] >= rectangle[2] + o.bedMargin - tolerance
+      || bounds[4] <= rectangle[1] - o.bedMargin + tolerance || bounds[1] >= rectangle[3] + o.bedMargin - tolerance;
+    if (!clear) throw new Error(`${copy.name} crosses the printer keep-out margin`);
+  }
+  for (const other of placed.slice(index + 1)) {
+    if (other.plate !== copy.plate) continue;
+    const clear = bounds[3] <= other.bbox[0] || bounds[0] >= other.bbox[3] || bounds[4] <= other.bbox[1] || bounds[1] >= other.bbox[4];
+    if (!clear) throw new Error(`${copy.name} overlaps ${other.name} on plate ${copy.plate + 1}`);
+  }
+}
 // the pitch pairs mean something only if each prints along its axis: pack() tries a part
 // as given before turning it, so check rather than trust it
 for (const copy of placed.filter((p) => p.part.startsWith("coupon-pitch-"))) {
@@ -107,6 +189,7 @@ for (const copy of placed.filter((p) => p.part.startsWith("coupon-pitch-"))) {
 await Bun.write(out, threeMf(placed, o.bed, { profile }));
 const plates = new Set(placed.map((p) => p.plate)).size;
 console.log(`${out}: ${parts.reduce((n, p) => n + p.qty, 0)} pieces on ${plates} plate${plates === 1 ? "" : "s"}, ${machine}, PETG Translucent on smooth PEI, fit ${o.fit}`);
+console.log(`  Verified ${pieces.length} connected, support-free solids; closed meshes, bed margins, keep-outs, packing and pitch axes. The tight-* pair uses fit ${tightOptions.fit}.`);
 for (const piece of pieces) {
   const b = piece.mesh.boundingBox();
   console.log(`  ${piece.name.padEnd(24)} ×${piece.qty}  ${(b.max[0] - b.min[0]).toFixed(0)} × ${(b.max[1] - b.min[1]).toFixed(0)} × ${(b.max[2] - b.min[2]).toFixed(1)} mm`);

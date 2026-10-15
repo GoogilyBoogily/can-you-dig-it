@@ -15,7 +15,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
 - `bun run dev` — builds, serves `dist/` on :3000, rebuilds on save. `dev.ts` shells out to
   `build.ts` rather than reimplementing it, so dev and Pages serve identical bytes. One
   bundler on purpose: no Vite.
-- Two suites. `bun test test/` is the fast unit one (no browser, ~9 s); it and `bun run
+- Two suites. `bun test test/` is the unit and geometry suite (no browser); it and `bun run
   check` are what the deploy gates on (`.github/workflows/pages.yml`). `bun run test:ui` drives `test-ui/` in Playwright against a real build; it
   needs `bunx playwright install chromium` once, and runs as its own CI job so a flaky
   browser can't block a deploy. Keep the trailing slashes — `bun test test` also matches
@@ -24,7 +24,8 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   `localStorage` at module load, a file name reaching the DOM, and the bytes a slicer
   actually receives. A corrupt stored profile once white-screened the whole app and no
   unit test saw it.
-- `bun run coupon.ts` writes `coupon.3mf` (gitignored): every joint of the default lane cut
+- `bun run coupon.ts` writes `coupon.3mf` (gitignored), or a unique copy under `.slice/`
+  when that file already exists: every joint of the default lane cut
   out of the real parts, plus pitch strips printed along X and along Y, in translucent PETG
   on smooth PEI (how the owner prints the lane), to print before the full lane.
 - Geometry: `manifold-3d` (WASM) in a Web Worker. Viewer: three.js. ZIP: fflate.
@@ -142,15 +143,19 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   carries the deck on the tier below. The first cut stood the wall on an OW-wide rail
   with a sloped bottom edge and lost a row of cells to it (+15 % volume); ears cost +6 %.
   Pins at ±px on the wall tops go into chambers in the wall above (X) and the cover's
-  holes (X and Y). Ears go where the deck is solid, not in ties. The three numbers that
+  blind catches (X and Y). Ears go where the deck is solid, not in ties. The three numbers that
   keep an ear off a pin (`tabIn`, `tabClear`, `pinIn`) derive from `earW`, `tabW` and the
   pin's hooks; do not hand-tune them. Ears were 12 and tabs 8 until 2026-09-20.
-- Snaps (2026-10-11): every tab is a snap, so a stack lifts as one piece. One prong pair
+- Snaps (2026-10-11; assembly target amended 2026-10-15): printed joints retain the
+  assembly, but a loaded dispenser is moved with its bottom supported. No numeric
+  load rating or lifting by the cover is established. One prong pair
   (`snapProfile` in `joints.ts`): `snapT` prongs at the tab's edges, a hook `snapCatch`
   past the mouth, freed by relief slots so the hook sits `snapLen` from the root (2.5 %
   strain in PETG). The wall-top pin catches in a chamber in the wall above (the pin grown
-  by the clearance) or on the cover's top face, and stands `snapTop` (~3.8) where it stood
-  2.4: the solver charges that. The ear tab, the lip tab and the riser boss catch in a 45°
+  by the clearance) or inside the cover's blind chamber. `coverThicknessOf(o)` includes
+  the pin, clearance, a self-supporting 45° tent roof and outer skin; `K.coverT` remains
+  the nominal pin/catch design dimension, not the finished cover thickness. The ear
+  tab, the lip tab and the riser boss catch in a 45°
   `snapFlare` at the bottom of their slot, inside the deck, so nothing hangs below z = 0.
   A prong only flexes in the plane it printed in, so the riser prints on its side and the
   grid deck's bosses stay plain. Lattice cells touching a relief or chamber are dropped
@@ -159,35 +164,45 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   unproven until the coupon prints. Spec in `docs/superpowers/specs/2026-10-11-snap-joins-design.md`.
 - A head (T, dovetail) only locks when the tongue enters in its own plane: deck splice,
   gang tongue. A wall dropping onto a deck gets a straight tab; two standing plates get
-  a cross-lap. Nothing slides sideways to assemble. Spec in
+  a cross-lap. The hidden wall and cover seam keys assemble along X before either
+  joined plate is lowered onto its catches. The original all-drop-in restriction is
+  superseded for these concealed printed keys (owner, 2026-10-15). Earlier spec in
   `docs/superpowers/specs/2026-09-20-drop-in-joints-design.md`.
 - Cascade: tiers alternate 180° about Z. Upper decks lose one can-length to the drop
   chute (`inset = canD + 6 + wall`); the bottom deck runs full length to the end-lip.
+  Reversed tiers use Y-reflected deck variants before rotating. The row's left/right
+  choices are world sides, including when the same mid role appears in both hands;
+  every internal row connection remains tongue into socket.
 - High-end wall is full height only when a tier sits above it (it closes that tier's
   chute). `top=true` lanes get a 20 mm loading lip instead. Flat layouts use `top` lanes.
   It stands `post` (3 mm) in from the lane end on the flattened deck and cross-laps the
   side walls: slotted from its bottom edge up `lap` (12) over the side wall band, OW
   wide above that with posts to full tier height whatever the lip; the side wall is
   slotted from its top edge down to the same line, closed behind by its own post. The
-  end wall drops in last: X from the side wall's slot, the side walls' Y from its body
-  and the deck ears. `laneXe` is the one place its x lives (the viewer uses it too).
+  end wall drops in after the walls: X from the side wall's slot, the side walls' Y
+  from its body and the deck ears, and printed deck catches retain it vertically even
+  without a cover. `laneXe` is the one place its x lives (the viewer uses it too).
   `o.stackable` ("Join on top", 2026-10-11, off by default) gives a cascade's top the full
   wall, so a tier can go on it later, and keeps it even with `rearLoad` (`check()` says
-  so). It does nothing to a flat stack: its tiers are one lane, pins and ears and all.
+  so). A flat stack keeps the same end-wall shape. When that stack is uncovered,
+  the option retains its top pins and reserves `snapTop(o)` headroom for a future tier.
 - Load from the back (`o.rearLoad`, 2026-09-29, off by default): one tier, `rearTier(o)`,
   prints without its end wall - the only tier, or the top of a stack (a cascade's lower
   tiers fill through it; a flat stack's still load from the front). A cascade's top faces the back on an odd tier count only; on an even one
   its back is the chute, nothing opens and `check()` says so. It is a part count, not a
-  shape: the shared assembly manifest omits that instance for both geometry and viewer; the side walls keep
-  their corner slot, since a flat stack's tiers share one set (an empty notch at the
-  door, accepted 2026-09-30 over two more part names). A flat stack opens its top tier
+  shape: the shared assembly manifest omits that instance for both geometry and viewer;
+  the manifest selects closed corner variants where no end wall is installed. This
+  supersedes the empty-notch acceptance of 2026-09-30. A flat stack opens its top tier
   only; every tier from the back would need per-tier parts, and nobody needs it. A can
   fills the tier over the deck there (~3 mm spare), so no stop, strip or bar fits.
 - Long lanes split at x=0. The deck has an in-plane T-slot (`tSlot`: a 30-wide neck 3
   deep, a 40-wide head to 8); the halves drop together in Z and the head locks X. The
-  walls butt: a plane cut, each half on its own ears, the tier above and the cover
-  bridging the seam. The wall T slid together in Y and was the one joint that did not
-  drop in. Deck dovetails until 2026-09-20. Half-laps are gone: a lap printed face-up is
+  wall and cover halves slide along X onto hidden printed seam keys, seating their
+  visible edges before the joined plates snap down. Key channels use self-supporting
+  diamond profiles; the key's central taper/collar seats the halves rather than
+  relying on clearance alone to align the frame. Join the walls before snapping them
+  onto the deck, and join the cover halves before lowering them onto the wall pins.
+  Deck dovetails until 2026-09-20. Half-laps are gone: a lap printed face-up is
   a 10 mm cantilever.
 - Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
   the whole point of the flat-pack. Only whole cells are cut, centred in the panel; a
@@ -238,15 +253,15 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   tab. Until 2026-09-22 the tongue took the +Y ear's place and the −Y ear became the
   socket: every deck's −Y edge hung off the one lip-end ear, and the row's end lane had
   nothing under its −Y wall at four tabs of five. Decks set down onto each other; head
-  locks Y, neck locks X. Walls are one part whatever the lane count (`wall-left` /
-  `wall-right`). A ganged deck is `gangReach` (gap + wall + 8) wider on its +Y side;
-  `plateY` charges the widest deck, and the default gang packs on 18 plates
-  (`test/pack.test.ts`). The row's outer sides are the user's (`o.left`, `o.right`:
+  locks Y, neck locks X. Wall variants omit unused exterior tongue notches; the
+  manifest accounts for final world side and tier rotation. A ganged deck is
+  `gangReach` (gap + wall + 8) wider on its tongue side; `plateY` charges the widest
+  deck. The row's outer sides are the user's (`o.left`, `o.right`:
   tongue, socket or none, 2026-10-11, default tongue and socket), so separately printed
   units join on the left and right; the inner joints stay tongue into socket. A row whose
   ends differ from that prints `deck-left-end` / `deck-right-end` (`deckKinds`; lane 0 is
   the -Y end, as in the viewer), which reverses the 2026-09-30 call against an end deck.
-  Walls keep their tongue notches whatever the sides. The solver charges every outer
+  Expansion features remain only on selected outer edges. The solver charges every outer
   tongue (`rowWidth`, 14 mm each), may use half the 4 mm side gap for it, and refuses a
   shelf a lone lane's stub does not fit; the default 300 mm shelf keeps two lanes. Below
   about 265 mm a lane can have no clear stretch (split halves from 292); `check()` warns
@@ -271,8 +286,10 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   actual slicer time and reports an implied flow for comparison, not a UI prediction.
 - Rounding: manifold has no fillet. `roundTop` in `features/pocket.ts` keeps the lower
   body with a half-space and rounds its top using slabs of the inset outline, preserving
-  arbitrary translation. Walls and end walls round only the outer top edge (`roundOver`),
-  so the next tier's seat stays flat and no bed edge is rounded.
+  arbitrary translation. Side- and end-wall tops stay square so the frame remains
+  straight and stacked interfaces have no rounded groove. Terminal wall variants omit
+  exposed pins when neither a cover nor future top expansion is selected. No bed edge
+  is rounded.
 - Every clearance gets `fit` added. Don't add per-joint tolerance knobs.
 - Bambu plates: `cols = ceil(sqrt(n))`, stride = bed × 1.2, rows toward −Y
   (`compute_colum_count` / `compute_origin` in BambuStudio `PartPlate.cpp`). Objects are

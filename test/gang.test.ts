@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { K, DEFAULTS, SIDES, solve, check, laneOf, buildDeck, buildWall, buildLanePlates, buildAll, partList, gangReach, type Options, type Side } from "../src/geometry";
+import { K, DEFAULTS, SIDES, solve, check, laneOf, buildDeck, buildWall, buildLanePlates, buildAll, partList, gangReach, type Options, type Side, type WallPlateName } from "../src/geometry";
 import { fitSpace } from "../src/solver";
 
 import { geo } from "./geo";
@@ -8,7 +8,7 @@ const single: Options = { ...DEFAULTS, lanesWide: 1, left: "none", right: "none"
 const ganged: Options = { ...DEFAULTS, lanesWide: 2 };
 
 /** Laid flat, a wall's Z extent is its thickness plus whatever stands off the outer face. */
-function wallThickness(o: Options, name: "wall-left" | "wall-right"): number {
+function wallThickness(o: Options, name: WallPlateName): number {
   const plate = buildLanePlates(geo, o, solve(o), "top").find((p) => p.name === name)!;
   const box = (plate.whole ?? plate.rear)!.boundingBox();
   return box.max[2] - box.min[2];
@@ -22,14 +22,14 @@ test("a single lane joining nothing ends at its ears; walls are plain either way
   const deck = buildDeck(geo, single, d, laneOf(single, d, "top")).boundingBox();
   expect(deck.max[1]).toBeCloseTo(d.OW / 2, 3);
   expect(deck.min[1]).toBeCloseTo(-d.OW / 2, 3);
-  expect(wallThickness(single, "wall-left")).toBeCloseTo(DEFAULTS.wall, 3);
+  expect(wallThickness(single, "wall-left-closed")).toBeCloseTo(DEFAULTS.wall, 3);
   expect(wallThickness(ganged, "wall-left")).toBeCloseTo(DEFAULTS.wall, 3);
 });
 
 test("a single lane's right wall is the left wall's mirror", () => {
   const plates = buildLanePlates(geo, single, solve(single), "top");
   const vol = (name: string) => plates.find((p) => p.name === name)!.rear!.volume();
-  expect(vol("wall-right")).toBeCloseTo(vol("wall-left"), 1);
+  expect(vol("wall-right-closed")).toBeCloseTo(vol("wall-left-closed"), 1);
 });
 
 // Two decks gangPitch apart: the tongues sit in the sockets with nothing touching, and
@@ -128,7 +128,13 @@ describe("joins on the left and right", () => {
       for (const lanesWide of [1, 2, 3]) {
         const decks = unique(deckParts({ ...DEFAULTS, lanesWide, left, right }));
         const expected: Record<string, number> = {};
-        const add = (name: string) => (expected[name] = (expected[name] ?? 0) + 1);
+        // The two-tier cascade's top reverses Y. Its printable decks must have the
+        // opposite hand unless this lone lane has no connector on either edge.
+        const mirrored = lanesWide > 1 || left !== "none" || right !== "none";
+        const add = (name: string) => {
+          const physicalName = mirrored ? `${name}-mirrored` : name;
+          expected[physicalName] = (expected[physicalName] ?? 0) + 1;
+        };
         if (lanesWide === 1) add("lane-top-deck");
         else {
           add(left === "tongue" ? "lane-top-deck" : "lane-top-deck-left-end");

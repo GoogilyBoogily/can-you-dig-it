@@ -44,16 +44,17 @@ no supports.
 - **wall-left / wall-right**: patterned side walls (honeycomb, circles, kumiko, slats or
   breeze block). They notch over the deck's ears and drop a tab through each slot into
   the wall below. Pins on the wall tops locate the tier above.
-- **end-wall**: closes the high end. Cross-laps into both side walls and drops in last.
+- **end-wall**: closes the high end. Cross-laps into both side walls and snaps onto the deck.
 
 Names say the tier: `lane-bottom-deck`, `lane-mid-wall-left`, `lane-top-end-wall` and so
 on (a flat stack is just `lane-deck` etc., since every tier is the same). Alternate
-tiers are rotated 180° so cans cascade down when you pull one. The bottom deck runs full
+tiers are rotated 180° so cans cascade down when you pull one. Reversed tiers use
+`deck-mirrored` variants so the selected left and right connectors stay on the same
+outer sides. The bottom deck runs full
 length to the **end-lip**. Upper decks stop a can short to leave the drop chute.
 
 - Plates longer than the bed split into **-front** / **-rear** halves. Decks join with
-  an in-plane T-slot, walls just butt and the tier above bridges the seam. Everything
-  drops together in Z, nothing slides in sideways, no glue.
+  an in-plane T-slot. Hidden printed keys align and retain the wall and cover seams.
 - **Ganging**: lanes side by side lock through the decks. Tongues off one deck drop into
   T sockets in the next.
 - **riser-24**: feet under the wall pins, with Base = Feet.
@@ -62,7 +63,20 @@ length to the **end-lip**. Upper decks stop a can short to leave the drop chute.
   shelf has fewer cells than the lane covers.
 - **cover**: grille top in the same pattern so the stack is a shelf, with a can-sized
   window over the top tier's high end. That's where cans go in: drop one through and it
-  rolls to the chute.
+  rolls to the chute. Blind catches conceal the wall pins beneath its outer surface.
+
+For a split lane, drop the deck T together first. Slide each pair of wall halves onto
+its hidden keys along the lane, then snap the joined wall down onto the deck ears.
+Drop the end wall into the side-wall cross-laps and snap it onto the deck. Assemble
+each tier before adding the next. Slide the cover halves onto their keys along the
+lane before lowering the joined cover onto the wall pins. Use the printed joints and
+keys throughout; no glue or hardware is needed.
+
+Finished exterior frames stay flush and retain their recessed patterns. Unused side
+connectors are closed when Left or Right is Nothing; select a connector only where
+future expansion is wanted. Support the bottom whenever moving a loaded assembly.
+The joints have no validated load rating: qualify the current coupon and a complete
+lane on your printer before loading the full dispenser.
 
 Two designs: Standard, and Minimal (thin webs, open deck, same joints, about 17 %
 less filament). One `fit` value is added to every clearance.
@@ -82,9 +96,11 @@ Large assembly previews show a labelled sample; capacity and exports retain ever
 
 ## Known gaps, in order
 
-1. Print an `end-lip` and one `-rear` half before anything else. The `fit` slider
-   exists because tolerance is the #1 complaint on every comparable model, and nothing
-   here has been checked against a real printer yet (sliced in Bambu Studio, yes. Printed, no).
+1. Print the joint coupon (`bun run coupon.ts`) and then one complete lane before
+   printing the full job. Earlier joints have been printed successfully; the current
+   concealed catches, seam keys and end-wall snaps still need qualification on the P2S
+   with PETG Translucent, a 0.4 mm nozzle and 0.2 mm layers. Remove stringing or clumps
+   before judging fit; a larger clearance also allows more seam movement.
 2. Mixed-width ganging (slim + standard side by side). Bigger than it looks: `gangPitch`
    in `src/geometry.ts` derives from a single `canD`/`canL`, so this wants a second can
    spec threaded through `solve()`, not just a gang-joint change.

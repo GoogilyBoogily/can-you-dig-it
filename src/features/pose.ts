@@ -20,11 +20,14 @@ export const lay = (m: M, p: Pose): M => {
  *  its outer face (+Y) comes up, both drop to y = 0 at their inner face. The end wall
  *  turns about Y and moves to the lane end. */
 export function platePose(plate: PlateName, IW: number, xe: number): Pose {
+  if (plate.startsWith("wall-left")) return { rotate: [90, 0, 180], translate: [0, IW / 2, 0] };
+  if (plate.startsWith("wall-right")) return { rotate: [90, 0, 0], translate: [0, -IW / 2, 0] };
   switch (plate) {
-    case "deck": case "deck-left-end": case "deck-right-end": return { rotate: [0, 0, 0], translate: [0, 0, 0] };
-    case "wall-left": return { rotate: [90, 0, 180], translate: [0, IW / 2, 0] };
-    case "wall-right": return { rotate: [90, 0, 0], translate: [0, -IW / 2, 0] };
+    case "deck": case "deck-left-end": case "deck-right-end":
+    case "deck-mirrored": case "deck-left-end-mirrored": case "deck-right-end-mirrored": return { rotate: [0, 0, 0], translate: [0, 0, 0] };
+
     case "end-wall": return { rotate: [0, 90, 0], translate: [xe, 0, 0] };
+    default: throw new Error(`Unknown plate pose: ${plate}`);
   }
 }
 

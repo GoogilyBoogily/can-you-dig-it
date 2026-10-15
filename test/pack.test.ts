@@ -9,7 +9,7 @@ import ref from "../ref.json";
 
 const BED: [number, number, number] = [256, 256, 256];
 const MARGIN = 3, GAP = 6;
-const PLATES = 18;
+const PLATES = 20;
 
 /** A box the size of a real part's bounds. The packer reads bounds, so a box is the part. */
 const boxOf = (name: string): MeshData => {
@@ -20,11 +20,12 @@ const boxOf = (name: string): MeshData => {
 };
 
 /** What the worker builds at DEFAULTS: two lanes wide, two tiers, cascade, no feet.
- *  Every plate of both lane roles, the long ones as split halves. */
+ *  Every plate of both lane roles, the long ones as split halves, and twenty hidden
+ *  seam keys: sixteen for the four tier/lane wall pairs, four for the covers. */
 const defaultParts = () => {
-  const parts = [{ mesh: boxOf("end-lip"), qty: 2 }, { mesh: boxOf("cover-front"), qty: 2 }, { mesh: boxOf("cover-rear"), qty: 2 }];
+  const parts = [{ mesh: boxOf("end-lip"), qty: 2 }, { mesh: boxOf("cover-front"), qty: 2 }, { mesh: boxOf("cover-rear"), qty: 2 }, { mesh: boxOf("seam-key"), qty: 20 }];
   for (const role of ["top", "bottom"]) {
-    for (const plate of ["deck", "wall-left", "wall-right"])
+    for (const plate of [role === "top" ? "deck-mirrored" : "deck", "wall-left", "wall-right"])
       for (const half of ["front", "rear"]) parts.push({ mesh: boxOf(`lane-${role}-${plate}-${half}`), qty: 2 });
     parts.push({ mesh: boxOf(`lane-${role}-end-wall`), qty: 2 });
   }
@@ -51,6 +52,12 @@ const shelvesOf = (parts: Placement[]) => {
 };
 
 const packed = pack(defaultParts(), BED, MARGIN, GAP);
+
+test("the independent default fixture packs all 54 physical pieces including 20 hidden keys", () => {
+  expect(defaultParts().reduce((quantity, part) => quantity + part.qty, 0)).toBe(54);
+  expect(packed.length).toBe(54);
+  expect(packed.filter((part) => part.part === "seam-key").length).toBe(20);
+});
 
 test("no two parts on a plate overlap", () => {
   for (const parts of byPlate(packed))
@@ -100,14 +107,16 @@ test("the shelves on a plate are centred front to back", () => {
 });
 
 // A ganged deck is 155 deep with its tongues and leaves a 250 × 89 mm strip behind it;
-// an end wall or an end-lip fits there flat, a wall (100) does not. Beside a 162 mm front
-// half an end wall fits turned. PLATES for the default gang; the count is what the packer
+// a lip or key fits there flat; current end walls and side walls do not. PLATES for
+// the default gang; the count is what the packer
 // is judged on. It was 16 when decks were 138 deep and a wall went behind each one, 19
-// while the rear wall halves carried an 8 mm splice tongue.
+// while the rear wall halves carried an 8 mm splice tongue. End-wall retaining stems
+// now make those parts 94/98 mm long instead of about 69 mm, so they no longer fit
+// the 89 mm strips behind decks. The twenty keys fit existing space: no extra plate.
 test("small parts fill the space behind a deck instead of taking their own plate", () => {
   expect(byPlate(packed).length).toBe(PLATES);
   for (const parts of byPlate(packed))
-    expect(parts.every((p) => p.name.startsWith("end-lip") || p.name.endsWith("end-wall"))).toBe(false);
+    expect(parts.every((p) => p.name.startsWith("end-lip") || p.name.endsWith("end-wall") || p.name.startsWith("seam-key"))).toBe(false);
 });
 
 // The worker leaves gap off, so the default is the only spacing a print ever gets.

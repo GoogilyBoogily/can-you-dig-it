@@ -17,7 +17,7 @@ for (const [name, mesh] of Object.entries(parts)) {
 // snapshot ones, passing and proving nothing. fit widens every tab hole, so the deck has
 // to lose material.
 test("the fit 0.3 build is actually a different build", () => {
-  expect(fitParts()["lane-top-deck-front"]!.volume()).toBeLessThan(parts["lane-top-deck-front"]!.volume());
+  expect(fitParts()["lane-top-deck-mirrored-front"]!.volume()).toBeLessThan(parts["lane-top-deck-mirrored-front"]!.volume());
 });
 
 // Same parts at fit 0.3, which no snapshot covers. fit widens every tab hole, both lip

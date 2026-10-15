@@ -249,23 +249,31 @@ test("a can that puts the deck's front ear on the pin below is rejected", () => 
 });
 
 // check() sized the deck and the side walls and never the end wall, which lies flat as
-// OW × (H - te). A big can on a narrow bed passed check() and then pack() refused it:
+// OW × H once its retention tabs reach the deck underside. A big can on a narrow
+// bed passed check() and then pack() refused it:
 // "lane-end-wall-01 is 124 × 138 mm and fits no plate on a 120 × 256 mm bed".
 test("every layout check() passes also packs, end walls included", () => {
-  // Narrow beds where the old check() also offered a short lane whose end wall pack()
-  // refused (127 and 137 mm here) beside longer lanes that fit. Every case must still
-  // offer something, or it tests nothing.
-  const cases: [Options, boolean][] = [
-    [{ ...DEFAULTS, canD: 110, bed: [120, 256, 256], slope: 10 }, false],
-    [{ ...DEFAULTS, canD: 120, bed: [140, 256, 256], slope: 3 }, true],
-    [{ ...DEFAULTS, canD: 120, bed: [140, 256, 256], slope: 3, rearLoad: true }, true],
+  // End-wall tabs increase the laid height. Keep a genuinely accepted 150 mm bed
+  // beside each former narrow-bed fixture, and explicitly reject those old beds.
+  // Every accepted case must still offer something, or the packing invariant is empty.
+  const cases: [Options, boolean, [number, number, number]?][] = [
+    [{ ...DEFAULTS, canD: 110, bed: [150, 256, 256], slope: 10 }, false, [120, 256, 256]],
+    [{ ...DEFAULTS, canD: 120, bed: [150, 256, 256], slope: 3 }, true, [140, 256, 256]],
+    [{ ...DEFAULTS, canD: 120, bed: [150, 256, 256], slope: 3, rearLoad: true }, true, [140, 256, 256]],
     [DEFAULTS, true],
   ];
-  for (const [base, cascade] of cases) {
-    const layouts = fitSpace({ w: 300, d: 700, h: 400, front: 40 }, base, { cascade });
+  const space = { w: 300, d: 700, h: 400, front: 40 };
+  for (const [base, cascade, rejectedBed] of cases) {
+    if (rejectedBed) expect(fitSpace(space, { ...base, bed: rejectedBed }, { cascade })).toEqual([]);
+    const layouts = fitSpace(space, base, { cascade });
     expect(layouts.length, `canD ${base.canD} bed ${base.bed}`).toBeGreaterThan(0);
     for (const layout of layouts) {
       const o = layout.options;
+      expect(check(o, layout.derived).filter((warning) => warning.startsWith("FAIL"))).toEqual([]);
+      if (rejectedBed) {
+        const rejected = { ...o, bed: rejectedBed };
+        expect(check(rejected, solve(rejected)).some((warning) => warning.startsWith("FAIL"))).toBe(true);
+      }
       const parts = geo.arena(() => partList(buildAll(geo, o, layout.derived), o).map((p) => ({ mesh: meshDataOf(p.name, p.mesh.getMesh()), qty: p.qty })));
       expect(() => pack(parts, o.bed, o.bedMargin), `bed ${o.bed} length ${layout.derived.L}`).not.toThrow();
     }

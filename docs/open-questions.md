@@ -13,10 +13,33 @@ code comment. Resolved entries retain the original evidence for comparison.
   the pin's 30°-off-square return and 45° lead-in, the tab's 45° return: sized by the
   cantilever strain formula for PETG at 2.5 %, not printed. The coupon (`bun run
   coupon.ts`) carries every snap; print it on the P2S in translucent PETG and check that
-  each one goes in by hand, holds a loaded lane, and comes apart without breaking.
-- **The top tier's end walls lift out with nothing on top.** They drop in last and only
-  the cover or a tier above holds them down. With no cover, a stack lifted by its top
-  leaves them behind. Options: a snap in the cross-lap, or accept it.
+  each one goes in by hand and remains seated. Permanent assembly is acceptable
+  (owner, 2026-10-15); repeated disassembly is not a requirement. Then qualify a complete
+  lane with its intended load, supporting the bottom whenever it is moved.
+- **Resolved in geometry 2026-10-15: uncovered end-wall retention.** Printed tabs now
+  snap the end wall onto the deck, independently of the cover. Before this change,
+  only the cover or next tier prevented upward removal. The new catches still need
+  the coupon and a complete lane printed; there is no validated load rating.
+- **Resolved design target 2026-10-15: clean shell and supported handling.** Use printed
+  joints and hidden printed seam keys, retain recessed patterns inside flush frames,
+  and expose expansion features only on selected sides/top. Wall halves join along X
+  on their keys before snapping down; the cover halves also key together before they
+  lower onto blind pin catches. The owner moves the loaded dispenser from underneath,
+  not by its cover. Stringing/clumps have interfered with earlier connectors; those
+  prints predate the current snaps. Clean mating surfaces before judging clearance.
+- **Digital qualification 2026-10-15; physical fit remains open.** Both final coupon
+  plates and all 20 default-job plates slice with the faithful P2S 0.4 mm / 0.2 mm
+  Translucent profile, without internal error diagnostics or supports. Exact unchanged
+  plate inputs were reused after selective cover/key reslicing. Key probes at fit
+  −0.2, 0 and +0.3 in both bed axes retain continuous first-layer rails/end bridges and
+  all four collar bearing regions around their midplane. Some upper tips narrower
+  than one line terminate early in the slicer. The approximate bead model cannot
+  establish zero play or preload at +0.3, where elephant-foot compensation reduces
+  the lower bearing area. At fit 0 and every nonzero fit actually chosen, print the
+  wall/key and cover/key pairs, seat them by hand, check flush faces/no visible step,
+  then try normal and vertical wiggle/pull in both directions without release. This
+  does not establish a loaded handling strength rating; bottom support remains the
+  design requirement. Local evidence: `.slice/joint-bambu-qqxgHm/qualification-combined.json`.
 - **Units mate only when printed from the same settings.** The tongue positions come from
   `laneOf`, so two jobs at different lengths or cans do not line up. The UI says so; the
   app cannot compare two print jobs.
@@ -61,10 +84,12 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
   prints at today's translucent values (0.2 mm layers, 270 °C): if the tile test flips D1
   or D2 above, the coupon's fit reading may not carry over.
 
-- **Nothing has been printed yet.** Every joint, clearance and `fit` default is untested
-  on a real printer. The 2026-09-21 reviewers' consensus was to print one default lane
-  before building anything else. That's still the thing that retires the most of this
-  list at once.
+- **Current joints remain unqualified.** The owner has successfully assembled earlier
+  printed connectors, aside from stringing/clumps (2026-10-15). Those prints predate
+  the current snaps, blind cover catches, seam keys and end-wall retention. The target
+  setup is Bambu Lab P2S, Bambu PETG Translucent, 0.4 mm nozzle, 0.2 mm layers; no fit
+  measurements have been taken. Print the updated coupon and then one complete lane
+  before the full assembly. Geometry tests cannot establish the strength of those prints.
 - **The three 2026-09-21 specs are partly built.** Read the "Amended 2026-09-22" block at
   the top of each before anything else; they carry the review verdicts and the second
   interview's decisions, and they win over the body text.
@@ -113,9 +138,10 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
 
 In order. The first one decides most of what comes after it.
 
-1. **Print the coupon.** `bun run coupon.ts`, open `coupon.3mf` in Bambu Studio (P2S 0.4,
+1. **Print the coupon.** `bun run coupon.ts`, open the output path it reports in Bambu Studio (P2S 0.4,
    PETG Translucent, smooth PEI, fit 0; check the plate shows Smooth PEI at 60 °C) and
-   print both plates. Photograph each plate before taking pieces off. Judge in this order,
+   print every generated plate. An existing `coupon.3mf` is preserved; a fresh output
+   goes under `.slice/` instead. Photograph each plate before taking pieces off. Judge in this order,
    destructive check last:
    - **Flat and clean:** every piece lies flat on a table; no strings across cells or notches.
    - **Elephant foot:** run a finger along each bed-face edge; note any flare, and on which
@@ -126,11 +152,18 @@ In order. The first one decides most of what comes after it.
      tool or won't go* (too tight).
    - **Pitch:** both same-axis pitch pairs seat all three ears at once; then the crossed
      pair (`pitch-deck-x` + `pitch-wall-y`).
+   - **Seams and blind catches:** wall/cover halves slide onto their printed keys by
+     hand and seat with flush outer faces and no visible step. The cover catches engage
+     inside the solid outer skin. The end-wall tab remains seated in the deck without
+     relying on a cover. Wiggle/pull the keyed pairs both normal to the face and
+     vertically, in both directions, at fit 0 and any chosen nonzero fit. Check the
+     negative-fit minimal wall sample retains its tab root.
    - **Clarity:** how clear the solid pieces come out at 0.2 mm and 270 °C.
    - **Tab strength, last:** on a spare piece (`wall-pin-bottom`), push a tab sideways
      until it gives: bends back, snaps at the root, or splits along a layer.
 2. **Act on it.**
-   - Every pair right: print the lane (plates 5–8 and 15–18 of the default job) at fit 0.
+   - Every pair right: print every part of one complete lane at fit 0, including its
+     seam keys. Use the current manifest rather than historical plate numbers.
    - Every pair off the same way: a ladder coupon - the joint pieces at three or four fit
      values on one plate - picks the value, then the lane. (Not built; `coupon.ts` builds
      one fit today.)

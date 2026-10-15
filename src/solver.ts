@@ -1,7 +1,7 @@
 // Turns "the space I have" into ranked layouts. Pure arithmetic - runs live
 // in the UI before any geometry is built.
 import { K, solve, check, laneLengthFor, baseHeight, gangReach, outerTongues, type Options, type Derived } from "./geometry";
-import { snapTop } from "./features/joints";
+import { coverThicknessOf, snapTop } from "./features/joints";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -17,6 +17,11 @@ export interface Layout {
 type Style = "cascade" | "flat";
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
+
+/** The finished top is the cover, or the exposed pins reserved for future tiers. */
+const topAllowance = (options: Options): number => options.cover
+  ? Math.max(coverThicknessOf(options), snapTop(options))
+  : options.stackable ? snapTop(options) : 0;
 
 /** The least shelf one lane needs, for the empty state: one flat tier on its base. Both
  *  numbers have to be the rule fitSpace applies, or the message turns away a shelf the
@@ -38,7 +43,7 @@ export function laneNeeds(base: Options, space: Space): { w: number; h: number }
   const w = base.base === "gridfinity" ? Math.max(solve(seed).OW, K.gridPitch) : Math.max(solve(seed).gangPitch + 2 * SIDE_GAP, rowWidth(1, seed, solve(seed)) + SIDE_GAP);
   const lengths = candidateLengths(space.d - space.front, seed);
   const heights = lengths.map((length) => solve({ ...seed, length }).H);
-  return { w, h: baseHeight(base) + (heights.length ? Math.min(...heights) : solve(seed).H) + snapTop(base) };
+  return { w, h: baseHeight(base) + (heights.length ? Math.min(...heights) : solve(seed).H) + topAllowance(base) };
 }
 
 export function fitSpace(space: Space, base: Options, opts: { cascade: boolean }): Layout[] {
@@ -111,9 +116,7 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const d = solve(o);
   const cascade = o.cascade;
   const riser = baseHeight(o);
-  // the top tier's pins stand snapTop above its walls, their hooks over the cover lying
-  // on the wall top, so the stack is that much taller than its tiers, cover or not
-  const tierH = space.h - riser - snapTop(o);
+  const tierH = space.h - riser - topAllowance(o);
   const tiers = cascade
     ? (tierH >= d.Hb ? 1 + Math.floor((tierH - d.Hb) / d.H) : 0)
     : Math.floor(tierH / d.H);
@@ -125,14 +128,16 @@ function layoutFor(o: Options, space: Space, style: Style): Layout | null {
   const grid = o.base === "gridfinity";
   const lanesMax = o.lanesWide;
   const perLane = cascade ? d.nBottom + (tiers - 1) * d.n : d.n * tiers;
-  const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H) + snapTop(o);
+  const height = riser + (cascade ? d.Hb + (tiers - 1) * d.H : tiers * d.H) + topAllowance(o);
   const lanes = lanesMax * tiers;
   // per 480 mm lane (the mean of the default top and bottom lanes) and per cover, from
-  // filamentGrams on the default parts; the lip is ~8 g. Remeasured 2026-10-11, after the
-  // snaps: the cells dropped beside each joint took lanes from 320 / 270; on 2026-09-22 the
-  // sampling fix took the cover from 130 to 84
-  const laneGrams = o.design === "minimal" ? 285 : 340;
-  const coverGrams = o.cover ? (o.design === "minimal" ? 60 : 85) : 0;
+  // filamentGrams on the default parts, remeasured 2026-10-15. Top/bottom means plus
+  // four wall seam keys are 345.76 g standard / 295.42 g minimal; covers plus their
+  // two keys are 131.96 / 112.48 g. The separate lip remains ~8 g (measured 7.46).
+  // These coarse reference values are independent of the selected print profile;
+  // built-part estimates use the real meshes and resolved profile instead.
+  const laneGrams = o.design === "minimal" ? 295 : 346;
+  const coverGrams = o.cover ? (o.design === "minimal" ? 112 : 132) : 0;
   return {
     options: o, derived: d, cans: perLane * lanesMax,
     footprint: [grid ? (lanesMax - 1) * d.gangPitch + d.foot[3] - d.foot[1] : rowWidth(lanesMax, o, d), grid ? d.foot[2] - d.foot[0] : d.L, height],

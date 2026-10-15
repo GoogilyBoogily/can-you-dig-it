@@ -1,10 +1,11 @@
 import { K, type Options, type Derived, type LaneRole, type PlateName, type Vec3 } from "./model";
-import { tierRole, rearTier, laneXe, deckVariant, laneName } from "./layout";
+import { tierRole, rearTier, laneXe, deckVariant, laneName, gangs, wallVariant } from "./layout";
 import { platePose, lipPose, riserPose, type Pose } from "./features/pose";
+import { seamKeyBedOffset, wallSeamHeights, coverSeamPositions, coverThicknessOf } from "./features/joints";
 import { queueGeometry } from "./queue";
 
 export type AssemblyRole = "lane" | "lip" | "riser" | "cover";
-export interface PartSource { kind: "lane" | "grid" | "lip" | "riser" | "cover"; laneRole?: LaneRole; plate?: PlateName; half?: "front" | "rear" }
+export interface PartSource { kind: "lane" | "grid" | "lip" | "riser" | "cover" | "key"; laneRole?: LaneRole; plate?: PlateName; half?: "front" | "rear" }
 export interface PartDescriptor { name: string; role: AssemblyRole; source: PartSource; qty: number }
 interface Component { name: string; role: AssemblyRole; source: PartSource; pose: Pose; push: Vec3 }
 export interface AssemblyPlacement { name: string; pose: Pose; push: Vec3 }
@@ -17,13 +18,26 @@ function* tierComponents(options: Options, derived: Derived, lane: number, tier:
   for (const plate of ["deck", "wall-left", "wall-right", "end-wall"] as PlateName[]) {
     if (plate === "end-wall" && tier === rearTier(options)) continue;
     const grid = plate === "deck" && tier === 0 && options.base === "gridfinity";
-    const variant = plate === "deck" ? deckVariant(options, lane) : plate;
+    const deck = deckVariant(options, lane);
+    // A cascade reverses X and Y on alternate tiers. Reflect their printable decks in Y
+    // first so the selected row ends and every internal tongue/socket stay on the same
+    // world side. X stays unchanged: slope, chute and wall ears still fit this tier.
+    const variant: PlateName = plate === "deck" ? options.cascade && tier % 2 === 1 && gangs(options) ? `${deck}-mirrored` as PlateName : deck : plate === "wall-left" || plate === "wall-right" ? wallVariant(options, lane, tier, plate === "wall-left" ? 1 : -1) : plate;
     const name = grid ? "grid-deck" : laneName(options, role, variant);
     const source: PartSource = grid ? { kind: "grid" } : { kind: "lane", laneRole: role, plate: variant };
     const push: Vec3 = plate === "wall-left" ? [0, STEP, 0] : plate === "wall-right" ? [0, -STEP, 0] : plate === "end-wall" ? [STEP, 0, 0] : [0, 0, 0];
     for (const half of derived.split && plate !== "end-wall" ? ["front", "rear"] as const : [undefined]) {
       yield { name: half ? `${name}-${half}` : name, role: "lane", source: { ...source, half }, pose: platePose(plate, derived.IW, laneXe(options, derived)), push: [push[0] + (half === "front" ? -STEP : half === "rear" ? STEP : 0), push[1], push[2]] };
     }
+  }
+  if (derived.split) {
+    const height = role === "bottom" ? derived.Hb : derived.H;
+    const bedOffset = seamKeyBedOffset(options);
+    for (const side of [1, -1]) for (const keyHeight of wallSeamHeights(height)) yield {
+      name: "seam-key", role: "lane", source: { kind: "key" },
+      pose: { rotate: [90, 0, side > 0 ? 180 : 0], translate: [0, side * (derived.py - bedOffset), keyHeight] },
+      push: [0, side * 2 * STEP, 0],
+    };
   }
   if (!options.cascade || tier === 0) {
     yield { name: "end-lip", role: "lip", source: { kind: "lip" }, pose: lipPose(-derived.L / 2, derived.tan), push: [-2 * STEP, 0, 0] };
@@ -51,6 +65,15 @@ function* components(options: Options, derived: Derived): Generator<Component> {
         pose: { rotate: [0, 0, options.cascade && (options.tiers - 1) % 2 === 1 ? 180 : 0], translate: [0, y, options.cascade ? derived.Hb + (options.tiers - 1) * derived.H : options.tiers * derived.H] }, push: [0, lane * STEP, (options.tiers + 1) * STEP],
       };
     }
+    if (options.cover && derived.split) {
+      const top = options.cascade ? derived.Hb + (options.tiers - 1) * derived.H : options.tiers * derived.H;
+      const reversed = options.cascade && (options.tiers - 1) % 2 === 1;
+      for (const position of coverSeamPositions(derived.OW)) yield {
+        name: "seam-key", role: "lane", source: { kind: "key" },
+        pose: { rotate: [0, 0, reversed ? 180 : 0], translate: [0, y + position, top + coverThicknessOf(options) / 2 - seamKeyBedOffset(options)] },
+        push: [0, lane * STEP, (options.tiers + 2) * STEP],
+      };
+    }
     if (options.base === "feet") for (const along of [-1, 1]) for (const across of [-1, 1]) yield {
       name: "riser-24", role: "riser", source: { kind: "riser" }, pose: { rotate: riserPose.rotate, translate: [along * derived.px, y + across * derived.py, -24] }, push: [0, lane * STEP, -STEP],
     };
@@ -69,8 +92,8 @@ export function partManifest(options: Options, derived: Derived): PartDescriptor
     else descriptors.set(name, { name, role, source, qty: 1 });
   }
   const roles = { bottom: 0, mid: 1, top: 2 };
-  const plates = ["deck", "deck-right-end", "deck-left-end", "wall-left", "wall-right", "end-wall"];
-  const order = (part: PartDescriptor) => part.source.kind === "lane" ? roles[part.source.laneRole!] * 100 + plates.indexOf(part.source.plate!) * 2 + (part.source.half === "rear" ? 1 : 0) : ({ grid: 400, lip: 500, riser: 600, cover: 700 } as const)[part.source.kind] + (part.source.half === "rear" ? 1 : 0);
+  const plates = ["deck", "deck-right-end", "deck-left-end", "deck-mirrored", "deck-right-end-mirrored", "deck-left-end-mirrored", "wall-left", "wall-right", "end-wall"];
+  const order = (part: PartDescriptor) => part.source.kind === "lane" ? roles[part.source.laneRole!] * 100 + (part.source.plate!.startsWith("wall-left") ? 6 : part.source.plate!.startsWith("wall-right") ? 7 : plates.indexOf(part.source.plate!)) * 2 + (part.source.half === "rear" ? 1 : 0) : ({ grid: 400, lip: 500, riser: 600, cover: 700, key: 800 } as const)[part.source.kind] + (part.source.half === "rear" ? 1 : 0);
   return [...descriptors.values()].sort((left, right) => order(left) - order(right));
 }
 

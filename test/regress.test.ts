@@ -62,7 +62,7 @@ test("filament estimate is sane", () => {
 // from the bottom sampled a 2.4 mm cover twice, both skin probes fell off its faces and
 // it counted solid: 43 % over a fine sampling. Every snapshot part holds to 8 %.
 test("filament estimate holds on thin parts: within 8 % of a fine sampling", () => {
-  for (const name of ["cover-front", "minimal-cover-front", "end-lip", "lane-top-wall-left-rear", "lane-top-deck-rear"]) {
+  for (const name of ["cover-front", "minimal-cover-front", "end-lip", "lane-top-wall-left-rear", "lane-top-deck-mirrored-rear"]) {
     const fine = filamentGrams(parts[name], 0.1);
     expect(Math.abs(filamentGrams(parts[name]) / fine - 1)).toBeLessThan(0.08);
   }

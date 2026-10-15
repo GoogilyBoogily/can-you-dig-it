@@ -70,15 +70,34 @@ test.each([...PATTERNS])("%s keeps the bottom edge of the outer face full thickn
 });
 
 // Slats run the width of their field component, so they have to stop at the seam's border
-// or the halves would butt on a slotted edge. Cells drop there as before.
-test.each([...PATTERNS])("%s keeps the splice band of a long wall full thickness", (pattern) => {
+// or the halves would butt on a slotted edge. Only the two hidden spline sockets
+// interrupt the otherwise full-thickness band; cells must not remove anything else.
+test.each([...PATTERNS])("%s keeps the splice band solid outside its exact hidden key sockets", (pattern) => {
   const o: Options = { ...DEFAULTS, pattern }; // 480 mm: split
   const d = solve(o);
   expect(d.split).toBe(true);
   const ln = laneOf(o, d, "top");
   const wall = buildWall(geo, o, d, ln, 1);
   const probe = geo.box(2 * K.border, o.wall, ln.H - 2 * K.border, 0, d.IW / 2 + o.wall / 2, ln.H / 2);
-  expect(geo.isect(wall, probe).volume()).toBeCloseTo(probe.volume(), 3);
+  // Independently construct the specified diamond channels, rather than using the
+  // production socket builder: radius 1.8 mm, 6 mm each side plus fit at the ends.
+  const radius = 1.8, halfLength = 6, clearance = K.cl + o.fit;
+  const profile = geo.poly([[0, -radius], [radius, 0], [0, radius], [-radius, 0]]);
+  const socket = geo.prismX(profile, 2 * (halfLength + clearance), -halfLength - clearance);
+  const channels = geo.union([ln.H / 3, 2 * ln.H / 3].map((height) => socket.translate([0, d.py, height])));
+  const intendedVoids = geo.isect(probe, channels);
+  const outsideSockets = geo.diff(probe, [channels]);
+  const actualVoids = geo.diff(probe, [wall]);
+  expect(intendedVoids.volume()).toBeCloseTo(2 * (2 * radius ** 2) * (2 * K.border), 3);
+  expect(geo.isect(wall, probe).volume()).toBeCloseTo(probe.volume() - intendedVoids.volume(), 3);
+  expect(geo.isect(wall, outsideSockets).volume()).toBeCloseTo(outsideSockets.volume(), 3);
+  expect(geo.isect(wall, intendedVoids).volume()).toBeCloseTo(0, 6);
+  expect(geo.diff(actualVoids, [intendedVoids]).volume()).toBeCloseTo(0, 6);
+  expect(geo.diff(intendedVoids, [actualVoids]).volume()).toBeCloseTo(0, 6);
+  const housing = geo.box(2 * (halfLength + clearance + K.ligMin), o.wall, ln.H - 2 * K.border, 0, d.py, ln.H / 2);
+  const protectedHousing = geo.diff(housing, [channels]);
+  expect(geo.isect(housing, channels).volume()).toBeCloseTo(channels.volume(), 3);
+  expect(geo.isect(wall, protectedHousing).volume()).toBeCloseTo(protectedHousing.volume(), 3);
 });
 
 // Three whole rows of the pattern fill the wall panel, as the hexagons' do.

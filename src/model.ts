@@ -139,4 +139,5 @@ export interface Derived {
 }
 
 export type LaneRole = "top" | "mid" | "bottom";
-export type PlateName = "deck" | "deck-left-end" | "deck-right-end" | "wall-left" | "wall-right" | "end-wall";
+export type WallPlateName = `${"wall-left" | "wall-right"}${"" | "-closed"}${"" | "-terminal"}${"" | "-open"}`;
+export type PlateName = WallPlateName | "deck" | "deck-left-end" | "deck-right-end" | "deck-mirrored" | "deck-left-end-mirrored" | "deck-right-end-mirrored" | "wall-left" | "wall-right" | "end-wall";

@@ -6,7 +6,13 @@ import type { Manifold } from "manifold-3d";
 import { DEFAULTS, PATTERNS, partList, solve, type Options, type PartSet, type Plate, type PlateName } from "../src/geometry";
 
 const m = {} as Manifold;
-const PLATES: PlateName[] = ["deck", "wall-left", "wall-right", "end-wall"];
+// Stand-ins cover every physical hand; expected names and quantities below remain
+// explicit so the production manifest cannot serve as its own oracle.
+const PLATES: PlateName[] = ["deck", "deck-left-end", "deck-right-end", "deck-mirrored", "deck-left-end-mirrored", "deck-right-end-mirrored", "end-wall"];
+for (const side of ["wall-left", "wall-right"] as const)
+  for (const closed of ["", "-closed"] as const)
+    for (const terminal of ["", "-terminal"] as const)
+      for (const open of ["", "-open"] as const) PLATES.push(`${side}${closed}${terminal}${open}`);
 const plates = (split: boolean): Plate[] => PLATES.map((name) => (split && name !== "end-wall" ? { name, front: m, rear: m } : { name, whole: m }));
 
 /** A PartSet shaped like buildAll's for `o`, every mesh the same stand-in. */
@@ -14,7 +20,7 @@ function setFor(o: Options, split = false): PartSet {
   const roles = o.cascade ? (o.tiers >= 3 ? ["bottom", "mid", "top"] as const : ["bottom", "top"] as const) : ["top"] as const;
   return {
     lanes: roles.map((role) => ({ role, plates: plates(split) })),
-    lip: m, riser: m,
+    lip: m, riser: m, key: m,
     cover: o.cover ? (split ? [m, m] : [m]) : [],
     gridDeck: o.base === "gridfinity" ? (split ? { name: "deck", front: m, rear: m } : { name: "deck", whole: m }) : undefined,
   };
@@ -25,7 +31,7 @@ const names = (o: Options, split = false) => partList(setFor(o, split), o).map((
 test("a two-tier cascade gang: every plate of both lanes, one lip, covers", () => {
   expect(names(DEFAULTS)).toEqual([
     ["lane-bottom-deck", 2, "lane"], ["lane-bottom-wall-left", 2, "lane"], ["lane-bottom-wall-right", 2, "lane"], ["lane-bottom-end-wall", 2, "lane"],
-    ["lane-top-deck", 2, "lane"], ["lane-top-wall-left", 2, "lane"], ["lane-top-wall-right", 2, "lane"], ["lane-top-end-wall", 2, "lane"],
+    ["lane-top-deck-mirrored", 2, "lane"], ["lane-top-wall-left", 2, "lane"], ["lane-top-wall-right", 2, "lane"], ["lane-top-end-wall", 2, "lane"],
     ["end-lip", 2, "lip"],
     ["cover", 2, "cover"],
   ]);
@@ -33,9 +39,12 @@ test("a two-tier cascade gang: every plate of both lanes, one lip, covers", () =
 
 test("a third tier adds one mid lane per lane across; a fourth adds another", () => {
   expect(names({ ...DEFAULTS, tiers: 3 }).filter(([n]) => String(n).startsWith("lane-mid"))).toEqual([
-    ["lane-mid-deck", 2, "lane"], ["lane-mid-wall-left", 2, "lane"], ["lane-mid-wall-right", 2, "lane"], ["lane-mid-end-wall", 2, "lane"],
+    ["lane-mid-deck-mirrored", 2, "lane"], ["lane-mid-wall-left", 2, "lane"], ["lane-mid-wall-right", 2, "lane"], ["lane-mid-end-wall", 2, "lane"],
   ]);
-  expect(names({ ...DEFAULTS, tiers: 4 }).find(([n]) => n === "lane-mid-deck")).toEqual(["lane-mid-deck", 4, "lane"]);
+  expect(names({ ...DEFAULTS, tiers: 4 }).filter(([name]) => String(name).startsWith("lane-mid"))).toEqual([
+    ["lane-mid-deck", 2, "lane"], ["lane-mid-deck-mirrored", 2, "lane"],
+    ["lane-mid-wall-left", 4, "lane"], ["lane-mid-wall-right", 4, "lane"], ["lane-mid-end-wall", 4, "lane"],
+  ]);
 });
 
 test("a flat stack prints one lane per tier under one name, and a lip for each", () => {
@@ -52,12 +61,13 @@ test("a long lane's plates and cover come as -front and -rear halves; the end wa
     ["lane-bottom-wall-left-front", 1, "lane"], ["lane-bottom-wall-left-rear", 1, "lane"],
     ["lane-bottom-wall-right-front", 1, "lane"], ["lane-bottom-wall-right-rear", 1, "lane"],
     ["lane-bottom-end-wall", 1, "lane"],
-    ["lane-top-deck-front", 1, "lane"], ["lane-top-deck-rear", 1, "lane"],
+    ["lane-top-deck-mirrored-front", 1, "lane"], ["lane-top-deck-mirrored-rear", 1, "lane"],
     ["lane-top-wall-left-front", 1, "lane"], ["lane-top-wall-left-rear", 1, "lane"],
     ["lane-top-wall-right-front", 1, "lane"], ["lane-top-wall-right-rear", 1, "lane"],
     ["lane-top-end-wall", 1, "lane"],
     ["end-lip", 1, "lip"],
     ["cover-front", 1, "cover"], ["cover-rear", 1, "cover"],
+    ["seam-key", 10, "lane"],
   ]);
 });
 
