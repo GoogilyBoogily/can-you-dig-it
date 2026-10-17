@@ -1,0 +1,272 @@
+[
+  {
+    "name": "desktop-light",
+    "viewport": [
+      1440,
+      900
+    ],
+    "overflow": false,
+    "canvas": {
+      "x": 330,
+      "y": 161.09375,
+      "width": 810,
+      "height": 442.125,
+      "top": 161.09375,
+      "right": 1140,
+      "bottom": 603.21875,
+      "left": 330
+    },
+    "download": {
+      "x": 1161,
+      "y": 316.03125,
+      "width": 259,
+      "height": 43.75,
+      "top": 316.03125,
+      "right": 1420,
+      "bottom": 359.78125,
+      "left": 1161
+    },
+    "navigation": {
+      "x": 0,
+      "y": 64,
+      "width": 1440,
+      "height": 55,
+      "top": 64,
+      "right": 1440,
+      "bottom": 119,
+      "left": 0
+    },
+    "activeElement": "",
+    "labels": [
+      {
+        "label": "Nozzle",
+        "visible": false
+      },
+      {
+        "label": "Process",
+        "visible": false
+      },
+      {
+        "label": "Filament",
+        "visible": false
+      }
+    ],
+    "status": "22 cans · 19 plates · ~1.44 kg · built in 0.4 s"
+  },
+  {
+    "name": "desktop-dark-printer",
+    "viewport": [
+      1440,
+      900
+    ],
+    "overflow": false,
+    "canvas": {
+      "x": 330,
+      "y": 161.09375,
+      "width": 810,
+      "height": 442.125,
+      "top": 161.09375,
+      "right": 1140,
+      "bottom": 603.21875,
+      "left": 330
+    },
+    "download": {
+      "x": 1161,
+      "y": 316.03125,
+      "width": 259,
+      "height": 43.75,
+      "top": 316.03125,
+      "right": 1420,
+      "bottom": 359.78125,
+      "left": 1161
+    },
+    "navigation": {
+      "x": 0,
+      "y": 64,
+      "width": 1440,
+      "height": 55,
+      "top": 64,
+      "right": 1440,
+      "bottom": 119,
+      "left": 0
+    },
+    "activeElement": "",
+    "labels": [
+      {
+        "label": "Nozzle0.2 mm nozzle0.4 mm nozzle0.6",
+        "visible": true
+      },
+      {
+        "label": "Process0.08mm High Quality0.12mm Hi",
+        "visible": true
+      },
+      {
+        "label": "FilamentBambu ABSBambu ABS-GFBambu ",
+        "visible": true
+      }
+    ],
+    "status": "Print settings loaded from Bambu Lab P2S · 0.4 nozzle · Bambu PLA Basic · 0.20mm Standard."
+  },
+  {
+    "name": "phone-light-setup",
+    "viewport": [
+      390,
+      844
+    ],
+    "overflow": false,
+    "canvas": {
+      "x": 0,
+      "y": 1876.578125,
+      "width": 390,
+      "height": 360,
+      "top": 1876.578125,
+      "right": 390,
+      "bottom": 2236.578125,
+      "left": 0
+    },
+    "download": {
+      "x": 20,
+      "y": 2701.4375,
+      "width": 350,
+      "height": 43.75,
+      "top": 2701.4375,
+      "right": 370,
+      "bottom": 2745.1875,
+      "left": 20
+    },
+    "navigation": {
+      "x": 0,
+      "y": 119.5,
+      "width": 390,
+      "height": 61,
+      "top": 119.5,
+      "right": 390,
+      "bottom": 180.5,
+      "left": 0
+    },
+    "activeElement": "",
+    "labels": [
+      {
+        "label": "Nozzle",
+        "visible": false
+      },
+      {
+        "label": "Process",
+        "visible": false
+      },
+      {
+        "label": "Filament",
+        "visible": false
+      }
+    ],
+    "status": "22 cans · 19 plates · ~1.44 kg · built in 0.4 s"
+  },
+  {
+    "name": "phone-light-print",
+    "viewport": [
+      390,
+      844
+    ],
+    "overflow": false,
+    "canvas": {
+      "x": 0,
+      "y": -581.421875,
+      "width": 390,
+      "height": 360,
+      "top": -581.421875,
+      "right": 390,
+      "bottom": -221.421875,
+      "left": 0
+    },
+    "download": {
+      "x": 20,
+      "y": 243.4375,
+      "width": 350,
+      "height": 43.75,
+      "top": 243.4375,
+      "right": 370,
+      "bottom": 287.1875,
+      "left": 20
+    },
+    "navigation": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 61,
+      "top": 0,
+      "right": 390,
+      "bottom": 61,
+      "left": 0
+    },
+    "activeElement": "printHeading",
+    "labels": [
+      {
+        "label": "Nozzle",
+        "visible": false
+      },
+      {
+        "label": "Process",
+        "visible": false
+      },
+      {
+        "label": "Filament",
+        "visible": false
+      }
+    ],
+    "status": "22 cans · 19 plates · ~1.44 kg · built in 0.4 s"
+  },
+  {
+    "name": "phone-dark-preview",
+    "viewport": [
+      390,
+      844
+    ],
+    "overflow": false,
+    "canvas": {
+      "x": 0,
+      "y": 106.578125,
+      "width": 390,
+      "height": 360,
+      "top": 106.578125,
+      "right": 390,
+      "bottom": 466.578125,
+      "left": 0
+    },
+    "download": {
+      "x": 20,
+      "y": 931.4375,
+      "width": 350,
+      "height": 43.75,
+      "top": 931.4375,
+      "right": 370,
+      "bottom": 975.1875,
+      "left": 20
+    },
+    "navigation": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 61,
+      "top": 0,
+      "right": 390,
+      "bottom": 61,
+      "left": 0
+    },
+    "activeElement": "previewHeading",
+    "labels": [
+      {
+        "label": "Nozzle",
+        "visible": false
+      },
+      {
+        "label": "Process",
+        "visible": false
+      },
+      {
+        "label": "Filament",
+        "visible": false
+      }
+    ],
+    "status": "22 cans · 19 plates · ~1.44 kg · built in 0.4 s"
+  }
+]

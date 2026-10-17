@@ -33,7 +33,7 @@ export const SIDES: readonly Side[] = ["tongue", "socket", "none"];
 export interface Options {
   canD: number;
   canL: number;
-  length: number; // target lane length; > usable bed → two keyed halves
+  length: number; // assembled lane length; printable sections fit the selected bed
   tiers: number;
   lanesWide: number;
   cascade: boolean; // true: drop chute at the low end, tiers alternate 180°. false: flat decks
@@ -57,6 +57,7 @@ export interface Options {
   shelfCells: [number, number]; // Gridfinity cells the shelf has room for, along and across the lane
   bed: [number, number, number];
   bedMargin: number;
+  bedKeepOut?: [number, number, number, number][]; // profile exclusion rectangles in bed coordinates
 }
 
 export const DEFAULTS: Options = {
@@ -86,7 +87,7 @@ export const K = {
   lipTabT: 5, lipTabW: 12,
   // the cover's grille: the field stops coverInset in from every edge (the pin holes at
   // IW/2 + 1.5 are 6.5 mm outside it), its bars are coverBar of the cell radius, and a
-  // split cover keeps a coverSeam-wide solid band each side of x = 0
+  // split cover keeps a coverSeam-wide solid band each side of every seam
   coverInset: 14, coverBar: 0.5, coverSeam: 6,
   riserL: 20, // a riser foot along the lane; the boss and the wall notch it goes in set nothing wider
   // the corner is a cross-lap: the end wall stands `post` in from the lane end so the
@@ -101,7 +102,7 @@ export const K = {
   // because the neighbour wall's tab hole crosses it: a tab-wide neck was all hole
   gangGap: 3, gangHead: 30,
   // the T at every splice and gang joint: a neck spliceNeck deep, a head the rest of
-  // spliceDepth; the x = 0 splice is spliceBase / spliceTip wide
+  // spliceDepth; each deck splice is spliceBase / spliceTip wide
   spliceBase: 30, spliceTip: 40, spliceNeck: 3, spliceDepth: 8,
   // Gridfinity: 42 mm cells, a 7 mm unit; a bin is n·42 − 0.5 across. A foot, bottom
   // up: a 35.6 flat, 0.8 chamfer, 1.8 wall, 2.15 chamfer, 41.5 at the top, corners
@@ -128,6 +129,9 @@ export const gridSpan = (cells: number) => cells * K.gridPitch - 2 * K.gridGap;
 
 export interface Derived {
   n: number; nBottom: number; split: boolean;
+  seams: number[]; // ordered X coordinates, symmetric for reversed cascade tiers
+  pinPositions: number[]; // shared wall pins, receiving catches and base supports
+  sectionError?: string; // a protected feature cannot fit in a printable section
   L: number; IW: number; OW: number; H: number; Hb: number;
   dhi: number; dhiB: number; tan: number; inset: number;
   hexR: number; lig: number;
@@ -141,3 +145,48 @@ export interface Derived {
 export type LaneRole = "top" | "mid" | "bottom";
 export type WallPlateName = `${"wall-left" | "wall-right"}${"" | "-closed"}${"" | "-terminal"}${"" | "-open"}`;
 export type PlateName = WallPlateName | "deck" | "deck-left-end" | "deck-right-end" | "deck-mirrored" | "deck-left-end-mirrored" | "deck-right-end-mirrored" | "wall-left" | "wall-right" | "end-wall";
+
+/** One mandatory stack in a connected organizer, ordered from right to left. */
+export interface MixedStackRequest {
+  canDiameter: number;
+  canHeight: number;
+  depth: number;
+  tiers: number | "auto";
+  // Missing controls inherit the shared settings carried by older mixed links.
+  cascade?: boolean;
+  slope?: number;
+  lipGap?: number;
+  cover?: boolean;
+  rearLoad?: boolean;
+  stackable?: boolean;
+}
+
+export type MixedSharedOptions = Omit<Options,
+  "canD" | "canL" | "length" | "tiers" | "lanesWide" | "left" | "right" | "base"
+  | "magnets" | "across" | "along" | "shelfCells"> & { base: "flat" };
+
+export interface MixedBuildRequest {
+  shared: MixedSharedOptions;
+  stacks: MixedStackRequest[];
+}
+
+export interface ResolvedMixedStack {
+  index: number;
+  options: Options;
+  derived: Derived;
+  origin: Vec3;
+  cans: number;
+  height: number;
+}
+
+/** One shared channel and its contiguous, equal-length printed spline segments. */
+export interface MixedBoundaryConnection {
+  firstStackIndex: number;
+  secondStackIndex: number;
+  firstHeight: number;
+  secondHeight: number;
+  endFromFront: number;
+  startFromFront: number;
+  segmentLength: number;
+  segmentCount: number;
+}

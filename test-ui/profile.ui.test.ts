@@ -246,6 +246,7 @@ async function completedSummary(page: Page) {
     && !document.getElementById("summary")?.textContent?.includes("recalculating")
     && !document.getElementById("status")?.classList.contains("busy")
     && !(document.getElementById("dl3mf") as HTMLButtonElement).disabled, null, { timeout: 90000 });
+  if (await page.locator("#estimateDetails").getAttribute("open") === null) await page.locator("#estimateDetails > summary").click();
   return page.locator("#summary").innerText();
 }
 

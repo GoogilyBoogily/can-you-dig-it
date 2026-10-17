@@ -1,0 +1,31 @@
+{
+  "focus": {
+    "element": "<select id=\"theme\">\n      <option value=\"system\">System</option>\n      <option value=\"light\">Light</option>\n      <option value=\"dark\">Dark</option>\n    </select>",
+    "outline": "rgb(74, 111, 146) solid 2px",
+    "outlineOffset": "1px",
+    "focusVisible": true
+  },
+  "ordinary": {
+    "inViewportControlCount": 48,
+    "cssAnimations": 0
+  },
+  "success": "Link copied.",
+  "loading": {
+    "status": "Building parts…",
+    "animation": "0.8s linear infinite spin",
+    "disabled": true
+  },
+  "reducedMotion": "none",
+  "empty": {
+    "status": "Nothing fits. A single lane needs 159 mm of width and 103 mm of height.",
+    "message": "Nothing fits. A single lane needs 159 mm of width and 103 mm of height.",
+    "resultsHidden": true,
+    "downloadDisabled": true
+  },
+  "error": {
+    "status": "Check your numbers: shelf width needs a number",
+    "message": "Check your numbers: shelf width needs a number",
+    "resultsHidden": true,
+    "downloadDisabled": true
+  }
+}

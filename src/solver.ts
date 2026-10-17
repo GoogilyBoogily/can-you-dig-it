@@ -2,6 +2,10 @@
 // in the UI before any geometry is built.
 import { K, solve, check, laneLengthFor, baseHeight, gangReach, outerTongues, type Options, type Derived } from "./geometry";
 import { coverThicknessOf, snapTop } from "./features/joints";
+import { DEFAULTS, type MixedBuildRequest, type ResolvedMixedStack, type MixedBoundaryConnection } from "./model";
+import { mixedConnections, rearTier } from "./layout";
+import { MIXED_CONNECTION } from "./features/mixed-connection";
+import { mixedStacksFrom, readNumbers } from "./validate";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -14,6 +18,15 @@ export interface Layout {
   warnings: string[];
   style: Style;
 }
+export interface MixedLayout {
+  mode: "mixed";
+  request: MixedBuildRequest;
+  stacks: ResolvedMixedStack[];
+  connections: MixedBoundaryConnection[];
+  cans: number;
+  footprint: [number, number, number];
+  warnings: string[];
+}
 type Style = "cascade" | "flat";
 
 const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
@@ -22,6 +35,63 @@ const SIDE_GAP = 4;    // per side, so a lane does not scrape the shelf's sides
 const topAllowance = (options: Options): number => options.cover
   ? Math.max(coverThicknessOf(options), snapTop(options))
   : options.stackable ? snapTop(options) : 0;
+
+/** Resolve the complete requested mix without shortening or dropping any stack. */
+export function resolveMixedBuild(space: Space, request: MixedBuildRequest): MixedLayout {
+  readNumbers({ w: space.w, d: space.d, h: space.h, front: space.front });
+  if (request.shared.base !== "flat") throw new Error("Mixed stacks currently require a flat base");
+  if (request.shared.wall < MIXED_CONNECTION.radius + MIXED_CONNECTION.inset + K.ligMin)
+    throw new Error("Mixed connections require walls at least 5.75 mm thick");
+  const requests = mixedStacksFrom(request.stacks);
+  const warnings: string[] = [];
+  const stacks: ResolvedMixedStack[] = requests.map((stack, index) => {
+    const label = `Stack ${index + 1}`;
+    const options: Options = { ...DEFAULTS, ...request.shared, base: "flat", left: "none", right: "none",
+      cascade: stack.cascade ?? request.shared.cascade, slope: stack.slope ?? request.shared.slope,
+      lipGap: stack.lipGap ?? request.shared.lipGap, cover: stack.cover ?? request.shared.cover,
+      rearLoad: stack.rearLoad ?? request.shared.rearLoad, stackable: stack.stackable ?? request.shared.stackable,
+      canD: stack.canDiameter, canL: stack.canHeight, length: stack.depth, lanesWide: 1, tiers: 1 };
+    try { readNumbers({ slope: options.slope, lipGap: options.lipGap }); }
+    catch (error) { throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
+    const derived = solve(options);
+    if (derived.L > space.d - space.front)
+      throw new Error(`${label}: exact depth ${stack.depth} mm exceeds the shelf depth after the front gap`);
+    const availableHeight = space.h - topAllowance(options);
+    const maximumTiers = options.cascade
+      ? availableHeight >= derived.Hb ? 1 + Math.floor((availableHeight - derived.Hb) / derived.H) : 0
+      : Math.floor(availableHeight / derived.H);
+    let tiers = stack.tiers === "auto" ? maximumTiers : stack.tiers;
+    if (options.rearLoad && options.cascade) {
+      if (options.stackable) throw new Error(`${label}: rear loading cannot be combined with a stackable cascade top`);
+      if (stack.tiers === "auto" && tiers % 2 === 0) tiers--;
+    }
+    if (tiers < (options.cascade ? 2 : 1))
+      throw new Error(`${label}: the shelf has no room for ${options.cascade ? "two cascade tiers" : "one tier"} with these settings`);
+    if (tiers > maximumTiers)
+      throw new Error(`${label}: the requested ${tiers} tiers exceed the shelf height; at most ${maximumTiers} fit`);
+    options.tiers = tiers;
+    if (options.rearLoad && rearTier(options) < 0)
+      throw new Error(`${label}: rear loading requires an odd cascade tier count`);
+    const checks = check(options, derived);
+    const failures = checks.filter((warning) => warning.startsWith("FAIL"));
+    if (failures.length) throw new Error(`${label}: ${failures.join("; ")}`);
+    warnings.push(...checks.map((warning) => `${label}: ${warning}`));
+    const height = (options.cascade ? derived.Hb + (tiers - 1) * derived.H : tiers * derived.H) + topAllowance(options);
+    const cans = options.cascade ? derived.nBottom + (tiers - 1) * derived.n : tiers * derived.n;
+    return { index, options, derived, origin: [derived.L / 2, 0, 0], cans, height };
+  });
+  for (let index = 1; index < stacks.length; index++) {
+    const previous = stacks[index - 1], current = stacks[index];
+    current.origin[1] = previous.origin[1] + (previous.derived.OW + current.derived.OW) / 2 + K.gangGap;
+  }
+  const width = stacks.reduce((total, stack) => total + stack.derived.OW, 0) + (stacks.length - 1) * K.gangGap;
+  if (width + 2 * SIDE_GAP > space.w)
+    throw new Error(`All ${stacks.length} stacks need ${(width + 2 * SIDE_GAP).toFixed(1)} mm of shelf width including side clearance`);
+  const connections = mixedConnections(stacks);
+  return { mode: "mixed", request: { shared: request.shared, stacks: requests }, stacks, connections,
+    cans: stacks.reduce((total, stack) => total + stack.cans, 0),
+    footprint: [width, Math.max(...stacks.map((stack) => stack.derived.L)), Math.max(...stacks.map((stack) => stack.height))], warnings };
+}
 
 /** The least shelf one lane needs, for the empty state: one flat tier on its base. Both
  *  numbers have to be the rule fitSpace applies, or the message turns away a shelf the
@@ -97,7 +167,7 @@ function lanesAcross(space: Space, seed: Options): number {
 function candidateLengths(usableD: number, seed: Options): number[] {
   const lengths = new Set<number>();
   const bedLengths = seed.bed.slice(0, 2).map((length) => length - 2 * seed.bedMargin);
-  const maxLen = Math.min(usableD, 2 * (Math.max(...bedLengths) - 10)); // 10: 2 mm inside solve()'s spliceDepth cap
+  const maxLen = usableD;
   lengths.add(Math.floor(maxLen));
   // The single-plate size is only a candidate while it still fits the shelf.
   for (const length of bedLengths) {

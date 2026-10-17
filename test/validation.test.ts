@@ -31,9 +31,12 @@ test("every offered layout fits the space it was asked about", () => {
 });
 
 test("check() rejects a lane that fits neither bed orientation", () => {
-  const options: Options = { ...DEFAULTS, bed: [300, 200, 300], bedMargin: 3, canL: 250, canD: 66, length: 480 };
+  const options: Options = { ...DEFAULTS, bed: [300, 200, 300], bedMargin: 3, canL: 300, canD: 66, length: 480 };
   const derived = solve(options);
   expect(check(options, derived).some((warning) => warning.startsWith("FAIL"))).toBe(true);
+  const sectioned = { ...options, canL: 250 };
+  expect(solve(sectioned).seams).toHaveLength(2);
+  expect(check(sectioned, solve(sectioned)).filter(warning => warning.startsWith("FAIL"))).toEqual([]);
 });
 
 // Z is a plate's own thickness, not the assembly's height: every plate prints lying down.

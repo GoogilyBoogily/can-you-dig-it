@@ -136,6 +136,14 @@ PETG" 3MF is Bambu's 0.4 demo process plus a cooler filament. What's still open:
 
 ## Next steps
 
+Multi-section lanes (2026-10-17) reuse the current T joints and hidden seam keys,
+with additional ears, interior retaining pins/catches and base supports. Digital
+conservation, fit and manufacturing checks do not establish loaded strength or
+long-term creep. Print one complete lane with at least three sections after the
+coupon passes; check all seams under the actual can load, record dwell and residual
+set after unloading, and keep handling supported from underneath. No numeric load
+rating or cover-lifting capability is established.
+
 In order. The first one decides most of what comes after it.
 
 1. **Print the coupon.** `bun run coupon.ts`, open the output path it reports in Bambu Studio (P2S 0.4,

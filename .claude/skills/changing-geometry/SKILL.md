@@ -1,45 +1,68 @@
 ---
 name: changing-geometry
-description: Use when editing src/geometry.ts or src/features/*, when test/regress.test.ts fails, when ref.json needs regenerating, or when a snapshot diff has to be judged in can-you-dig-it.
+description: Change or diagnose can-you-dig-it solids, reusable joints, lattice patterns, Gridfinity features, Manifold ownership, and geometry snapshot drift. Use for src/geometry.ts, src/kernel.ts, src/features, or deliberate ref.json updates.
 ---
 
-# Changing geometry
+# Change geometry
 
-A red regress suite after a deliberate change is expected. The job is to prove that every moved number was meant to move. The rules (tolerances, commit `ref.json` with the code) are in CLAUDE.md; this is the loop.
+Read the relevant current design rules in `CLAUDE.md`, affected feature builders,
+and their tests before editing. Units are mm, Z up, front −X, left +Y. Features
+are local pieces in `src/features/`; `geometry.ts` composes them. Product types
+belong in `model.ts`, kernel operations in `kernel.ts`.
 
-## Loop
+## Preserve the geometry contracts
 
-1. Edit. Run `bun run check && bun test test/`.
-2. Only the snapshot-match tests in `regress` may go red. Its filament-sanity and minimal-ratio tests, and every other suite, must stay green untouched. Red there is a real bug, not snapshot drift. The suites most likely to catch a geometry bug (`ls test/` for all of them):
+- Derive joint pairs from one specification and use `clearanceOf(options)` for
+  `K.cl + fit`, with `OVER` for boolean overlap. Check fit −0.2, 0 and +0.3 when
+  clearance matters. Avoid separate per-joint fit knobs.
+- Keep print orientation separate from standing orientation. `platePose`, `lay`
+  and `stand` share transforms with assembly/viewer. Every actual printable part
+  must be connected, have `NoError`, and satisfy the flat-pack overhang contract.
+  The existing magnet-ceiling exception is specific to Gridfinity pockets.
+- Build through the manifest's requested sources; adding a feature must not build
+  every unused role or duplicate a mesh per copy. Check actual assembled mating
+  parts, can paths and withdrawal directions, not just isolated solid validity.
+- For patterns, preserve whole cells within the actual panel contour and away
+  from keep-outs; slats deliberately clip by field component. Cover/minimal
+  patterns have their own clipping rules. Reuse `ROWS`, `autoR` and `ligFor`.
+- Before Gridfinity edits, read `docs/gridfinity-spec.md` and the actual split T
+  ownership in `gridUnit`. A magnet pocket and supporting rim must belong to one
+  printed half; a centreline-only test misses pockets crossing a tongue edge.
+- Read [kernel and topology guidance](references/kernel.md) for lifetime,
+  transforms, splits, rounds or mesh-conversion work.
 
-   | Suite | Catches | Failure label |
-   |---|---|---|
-   | features | male not inside female, shell ≠ clearance | test name (names the joint) |
-   | overhang | face flatter than 45° under the part | `<part> has no downward face off the bed` (+ ` at fit 0.3`) |
-   | islands | part in more than one piece (loose ear, cut tab root) | `<part> is one piece` / `is still one piece at fit 0.3` |
-   | splice / gang | tab, tie, tongue arithmetic | test name |
-   | pack / validation | bed fit, plate count, `check()`, `index.html` = `LIMITS` | test name |
-   | front | front can vs ceiling, lip tab flush | test name |
-   | pattern / hex / cover | cell shape, row count, cover window | test name |
-3. `bun run ref`, then `bun ${CLAUDE_SKILL_DIR}/ref-diff.ts`. It compares the working tree to HEAD. Pass `<rev>` to compare against another commit, or `<rev1> <rev2>` for one commit's own change. For each part it prints the volume delta in mm³ and %, and every bound that moved more than 0.001 mm.
-4. Explain each line. Derive the expected delta by hand. For example, `266975a~1 266975a` prints `end-lip: vol -189.689 mm³; max.x 6 -> 4.419`, which is exactly `2·(6−4.4193)·5·12`. Checks:
-   - Mirrored and sibling parts have equal deltas (`wall-left-*` = `wall-right-*`, and the same across every pattern prefix).
-   - Parts you did not touch have zero delta.
-   - An in-plane change (tab, slot or notch width) moves volume, not bounds, unless the feature sits on the part's outer edge. A protruding tab moves a bound.
-   - A jump of whole cells means a cell touching a keep-out that grew was dropped, not clipped. That's legitimate only if the keep-out grew. Slats are split per component instead, and anything under 4R wide stays solid.
-   - `spec.*` moves only when `solve()` inputs change. `spec.manifold` also moves on a kernel bump.
-   - A `+` or `-` part line appears only if `refParts()` changed on purpose.
-5. Commit the code and `ref.json` together.
+## Verify and review the reference
 
-## After the snapshot
+Run `bun run check` and `bun test test/` before regenerating `ref.json`. Snapshot
+drift is evidence to explain, not permission to replace it. Failures in topology,
+manufacturing, mating or material invariants require diagnosis. If an intentional
+change makes an existing contract obsolete, obtain user approval for that test
+update after explaining the concrete change; do not assume all non-snapshot
+failures are necessarily implementation bugs or automatically editable fixtures.
 
-- Default-job volume moved: re-measure `laneGrams`/`coverGrams` (`src/solver.ts`) and `JOB_FLOW`. **REQUIRED SUB-SKILL:** slicing-with-bambu-cli.
-- A dimension that CLAUDE.md quotes changed: update CLAUDE.md in the same commit.
-- A joint changed: run `bun run coupon.ts` so the next test print cuts the new joint.
+After the geometry change is agreed and unexpected failures are resolved:
 
-## Mistakes
+```sh
+bun run ref
+bun .claude/skills/changing-geometry/ref-diff.ts
+```
 
-- Regenerating before reading the diff. Once `ref.json` matches the code, the snapshot can no longer catch the change.
-- Trusting single-part tests to catch mating bugs. An ear landing on the pin below, and a lip tab poking out, both passed regress, overhang and islands. Check against the mating part, or add the check to `check()`.
-- Freeing shapes by hand. `Geo.arena` owns every shape made inside it, and `union([x])` can hand back `x` itself, so freeing `x` kills the result (244b72c). Only plain data (`meshDataOf`, `src/export.ts`) may leave an arena. The one exception is `filamentGrams`, whose per-layer frees are deliberate.
-- Bumping `manifold-3d` without `bun run ref`. The regress test "derived dimensions match the snapshot" fails on the kernel label.
+The helper compares the working reference to HEAD. Supply one revision to change
+the base, or two to compare committed references. Explain volume/bound deltas and
+added/removed identities. Check unchanged parts remain unchanged; compare siblings
+that actually share features, allowing intentional closed/terminal/mirrored variants.
+`spec.*` can change when solving rules change even if defaults do not.
+
+Keep 0.01% volume and 0.01 mm bound tolerances. The reference is generated by the
+same code, so retain independent conservation, containment, mating and boundary
+checks. See [the verification map](../maintaining-can-you-dig-it/references/verification.md).
+
+If default material use changes, remeasure the solver's rough `laneGrams` and
+`coverGrams`; built-part estimates use resolved profiles. `JOB_FLOW` is retired
+from the UI and is only historical output in `slice.ts`. Slice when claiming
+toolpath validity or measured grams/time using
+[slicing-with-bambu-cli](../slicing-with-bambu-cli/SKILL.md).
+
+Joint changes also use [qualifying-printed-joints](../qualifying-printed-joints/SKILL.md)
+and regenerate a fresh coupon. Update quoted design dimensions in the current
+docs. Keep code/reference changes reviewable together; commit only when authorized.

@@ -9,6 +9,7 @@ import { lay, platePose, riserPose } from "./features/pose";
 import { cellsOf, ligFor, autoR, rowsRadius, ROWS } from "./features/lattice";
 import { recessDepth, roundTop } from "./features/pocket";
 import { gridUnit } from "./features/gridfinity";
+import { cutMixedWallConnection, mixedConnectionBand, type MixedWallConnection } from "./features/mixed-connection";
 import { Geo } from "./kernel";
 import { partManifest } from "./assembly";
 import { tierRole, rearTier, stacksOnTop, laneXe, gangs, deckSides, deckVariant, laneName } from "./layout";
@@ -29,6 +30,8 @@ const tabClear = K.earW / 2 + K.tabW / 2 + K.snapCatch + 2 * K.cl + 2;
  *  ear, which stands tabIn in from the end wall. Was a fixed 40, which the 24 mm ear
  *  reached. */
 const pinIn = (o: Options) => o.wall + K.post + tabIn + tabClear;
+const pinKeepOut = (options: Options) => K.tabW / 2
+  + Math.max(K.snapT, K.snapCatch + 2 * clearanceOf(options)) + K.ligMin;
 
 /** Where a wall's lattice field starts. A hexagon only lands a 60° tip over an ear notch;
  *  a square's or a slat's bottom edge, or a circle's chord, would be a 1.25 mm bridge
@@ -55,7 +58,7 @@ export function solve(o: Options): Derived {
   // One margin, not two: a part has an edge at each end of X and Y, but it sits on the
   // bed, so the only thing to keep clear in Z is headroom under the gantry.
   const usableZ = o.bed[2] - o.bedMargin;
-  const L = Math.min(o.length, 2 * (Math.max(usableX, usableY) - K.spliceDepth));
+  const L = o.length;
   // the end wall and the corner post behind it take the last wall + post of every deck
   const n = queueGeometry(o, L).count;
   const nBottom = queueGeometry(o, L, true).count;
@@ -75,8 +78,8 @@ export function solve(o: Options): Derived {
   // on a grid the lane's floor is the whole cells that cover it, or as many as the shelf
   // has (shelfCells) with the lane overhanging on a skirt, placed round the lane where
   // the alignment says. Lanes sit a floor apart: the baseplate joins them, not a
-  // deck tongue. Lane and floor together have to fit the bed, so that is what splits at
-  // x = 0 - through a foot as often as not; a foot cut square by the seam prints as it
+  // deck tongue. The section plan includes the lane and floor together, cutting
+  // through a foot when needed; a foot cut square by the seam prints as it
   // is and the pocket locks it
   const grid = o.base === "gridfinity";
   const floorCells: [number, number] = grid ? [Math.min(gridCells(L), o.shelfCells[0]), Math.min(gridCells(OW), o.shelfCells[1])] : [0, 0];
@@ -94,20 +97,91 @@ export function solve(o: Options): Derived {
   const wallPlateY = Math.max(H, Hb) + snapTop(o);
   const deckPlateY = grid ? foot[3] - foot[1] : OW + (gangs(o) ? widestTongues(o) * gangReach(o) : 0);
   const plateY = Math.max(deckPlateY, wallPlateY);
-  const wholePlateX = foot[2] - foot[0];
-  const split = !((wholePlateX <= usableX && plateY <= usableY) || (wholePlateX <= usableY && plateY <= usableX));
+  const sectionPlan = planSections(o, L, foot, plateY, usableX, usableY);
+  const split = sectionPlan.seams.length > 0;
+  const px = L / 2 - pinIn(o);
+  const pinPositions = [-px, px];
+  if (sectionPlan.seams.length > 1) {
+    for (let index = 1; index < sectionPlan.seams.length; index++)
+      pinPositions.push((sectionPlan.seams[index - 1] + sectionPlan.seams[index]) / 2);
+    pinPositions.sort((left, right) => left - right);
+  }
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall;
   return {
-    n, nBottom, split, L, IW, OW, H, Hb, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
-    xd: -L / 2 + inset, px: L / 2 - pinIn(o), py: IW / 2 + o.wall / 2,
+    n, nBottom, split, ...sectionPlan, pinPositions, L, IW, OW, H, Hb, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
+    xd: -L / 2 + inset, px, py: IW / 2 + o.wall / 2,
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
     gangPitch,
-    plateX: split ? Math.max(-foot[0], foot[2]) + K.spliceDepth : foot[2] - foot[0],
+    plateX: Math.max(...[foot[0], ...sectionPlan.seams].map((start, index) =>
+      (sectionPlan.seams[index] ?? foot[2]) - start + (index ? K.spliceDepth : 0))),
     plateY,
     plateZ: Math.max(deckPlateZ, wallPlateZ, o.cover ? coverThicknessOf(o) : 0), // a riser prints on its side, as thick as a wall
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
+}
+
+/** Longest single rectangle beside the profile's exclusions. Match packing's bed
+ * and keep-out margins, in both print orientations, without changing the bed. */
+function sectionCapacity(options: Options, transverseSpan: number, usableBedX: number, usableBedY: number): number {
+  const exclusions = options.bedKeepOut ?? [];
+  for (const rectangle of exclusions)
+    if (!rectangle.every(Number.isFinite) || rectangle[2] < rectangle[0] || rectangle[3] < rectangle[1])
+      throw new Error("invalid bed keep-out rectangle");
+  const margin = options.bedMargin;
+  function along(width: number, depth: number, rectangles: typeof exclusions): number {
+    if (transverseSpan > depth) return 0;
+    let capacity = 0;
+    for (const bottom of [margin, ...rectangles.map(rectangle => rectangle[3] + margin)]) {
+      if (bottom < margin || bottom + transverseSpan > margin + depth) continue;
+      const blocked = rectangles.filter(rectangle => bottom < rectangle[3] + margin
+        && bottom + transverseSpan > rectangle[1] - margin).sort((left, right) => left[0] - right[0]);
+      let cursor = margin;
+      for (const rectangle of blocked) {
+        capacity = Math.max(capacity, Math.min(margin + width, rectangle[0] - margin) - cursor);
+        cursor = Math.max(cursor, rectangle[2] + margin);
+      }
+      capacity = Math.max(capacity, margin + width - cursor);
+    }
+    return capacity;
+  }
+  return Math.max(along(usableBedX, usableBedY, exclusions),
+    along(usableBedY, usableBedX, exclusions.map(([left, bottom, right, top]) => [bottom, left, top, right])));
+}
+
+/** Both arithmetic and emitted Float32 bounds must fit. In particular, decimal
+ * section coordinates can round outward even when their nominal length fits. */
+function sectionSpan(foot: Derived["foot"], seams: number[]): number {
+  return Math.max(...[foot[0], ...seams].map((start, index) => {
+    const end = seams[index] ?? foot[2], tongueStart = start - (index ? K.spliceDepth : 0);
+    return Math.max(end - tongueStart, Math.fround(end) - Math.fround(tongueStart));
+  }));
+}
+
+/** Preserve the existing center joint when it fits. Longer lanes use symmetric
+ * sections, with enough end room for the chute/window and enough interior room
+ * for two supporting ears and a retaining pin. Never shorten the assembly. */
+function planSections(options: Options, length: number, foot: Derived["foot"], transverseSpan: number,
+  usableBedX: number, usableBedY: number): { seams: number[]; sectionError?: string } {
+  const capacity = sectionCapacity(options, transverseSpan, usableBedX, usableBedY);
+  if (sectionSpan(foot, []) <= capacity) return { seams: [] };
+  if (Math.max(-foot[0], foot[2]) + K.spliceDepth <= capacity && sectionSpan(foot, [0]) <= capacity) return { seams: [0] };
+  const halfSpan = Math.max(-foot[0], foot[2]);
+  const frame = seamKeyFrameHalfWidth(options);
+  const protectedEnd = Math.max(pinIn(options) + pinKeepOut(options) + frame,
+    insetFor(options) + tabIn + tabClear,
+    options.cover && options.cascade ? options.wall + K.post + options.canD + 8 + frame : 0);
+  const minimumEnd = halfSpan - length / 2 + protectedEnd;
+  const minimumInterior = 4 * tabClear;
+  for (let sectionCount = 3; sectionCount <= Math.floor(2 * halfSpan / minimumInterior) + 2; sectionCount++) {
+    const endSectionLength = Math.max(2 * halfSpan / sectionCount, minimumEnd);
+    const interiorSectionLength = (2 * halfSpan - 2 * endSectionLength) / (sectionCount - 2);
+    if (interiorSectionLength < minimumInterior - 1e-8) break;
+    if (Math.max(endSectionLength, interiorSectionLength) + K.spliceDepth > capacity) continue;
+    const seams = Array.from({ length: sectionCount - 1 }, (_, index) => -halfSpan + endSectionLength + index * interiorSectionLength);
+    if (sectionSpan(foot, seams) <= capacity) return { seams };
+  }
+  return { seams: [], sectionError: "Cannot fit printable sections while preserving the chute, loading window and joint supports; use a larger printer or smaller can" };
 }
 
 /** Inverse of the deck count in solve(): the shortest lane whose deck holds `cans` whole
@@ -116,10 +190,16 @@ export function laneLengthFor(o: Options, cans: number, bottom = false): number 
   return minimumQueueLength(o, cans, bottom);
 }
 
+/** Room for at least one can on every deck and for opposing retaining pins. */
+export function minimumLaneLength(options: Options): number {
+  return Math.max(minimumQueueLength(options, 1), 2 * (pinIn(options) + pinKeepOut(options)));
+}
+
 export function check(o: Options, d: Derived): string[] {
   const w: string[] = [];
+  if (d.sectionError) w.push(`FAIL ${d.sectionError}`);
   const big = Math.max(d.usableX, d.usableY);
-  if (d.plateX > big) w.push(`FAIL lane half ${d.plateX.toFixed(0)} mm is longer than the bed - shorten the lane`);
+  if (d.plateX > big) w.push(`FAIL lane section ${d.plateX.toFixed(0)} mm is longer than the bed`);
   if (d.plateY > big) w.push(`FAIL lane width ${d.plateY.toFixed(0)} mm is wider than the bed - can is too long for this printer`);
   // Each side can clear the long bed axis while the pair still fits no orientation.
   const fitsSquare = d.plateX <= d.usableX && d.plateY <= d.usableY;
@@ -146,15 +226,14 @@ export function check(o: Options, d: Derived): string[] {
   // solid, one piece, no overhang, and it will not seat.
   if (d.inset && Math.abs(d.inset + tabIn - pinIn(o)) < tabClear)
     w.push(`FAIL a ${o.canD} mm can puts the deck's front ear on the pin below - the tier will not seat`);
-  const pinKeepOut = K.tabW / 2 + Math.max(K.snapT, K.snapCatch + 2 * clearanceOf(o)) + K.ligMin;
-  if (d.px + 1e-8 < pinKeepOut)
+  if (d.px + 1e-8 < pinKeepOut(o))
     w.push("FAIL opposing tier pins and their snap roots leave no solid ligament - lengthen the lane");
   if (d.n < 1) w.push("FAIL no cans fit on a deck - lengthen the lane");
   // a short lane's ears, pins and lip pockets leave no stretch of rail for a gang tongue.
   // It still stands on every ear; it just is not keyed to its neighbour
   if (gangs(o) && (["bottom", "top"] as const).some((role) => !laneOf(o, d, role).tongues.length))
     w.push("Lanes this short have no room for the joint that keys them together - they stand side by side, loose");
-  if (d.split && d.xd > -K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
+  if (d.split && d.xd > d.seams[0] - K.spliceDepth - 20) w.push("FAIL chute reaches the splice - lengthen the lane");
   if (o.rearLoad && rearTier(o) < 0)
     w.push(stacksOnTop(o)
       ? "Loading from the back is off: a stackable top keeps its end wall to close the chute of the tier that goes on it"
@@ -168,7 +247,7 @@ export function check(o: Options, d: Derived): string[] {
 // notch, slot, T-slot, hex cell), it grows up from the print face (rib, pin, boss), or it
 // is a pocket in the print face (recess, groove). Nothing on the bed face, nothing under
 // an edge. test/overhang.test.ts holds every snapshot part to it.
-export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M }
+export interface Plate { name: PlateName; whole?: M; front?: M; rear?: M; sections?: M[] }
 export interface PartSet {
   lanes: { role: LaneRole; plates: Plate[] }[];
   lip: M; riser?: M; cover: M[]; key?: M;
@@ -204,7 +283,8 @@ function tonguesOf(d: Derived, tabs: number[], lipx: number): number[] {
     [d.px - tabClear, d.px + tabClear], [-d.px - tabClear, -d.px + tabClear],
     [lipx - 20, lipx + 20],
   ];
-  if (d.split) blocked.push([-tabClear, tabClear]);
+  if (d.split) for (const seam of d.seams) blocked.push([seam - tabClear, seam + tabClear]);
+  for (const position of d.pinPositions) blocked.push([position - tabClear, position + tabClear]);
   blocked.sort((a, b) => a[0] - b[0]);
   const tongues: number[] = [];
   let from = Math.min(...tabs);
@@ -237,18 +317,24 @@ export function laneOf(o: Options, d: Derived, role: LaneRole): Lane {
   // the deck's ears, and the wall tabs through them: one near each end and one at every
   // interior tie that is clear of the seam (the deck tongue lives there) and of the pins
   // at ±px
-  const clear = (t: number) => Math.abs(t) >= tabClear && Math.abs(Math.abs(t) - d.px) >= tabClear;
-  const tabs = [xd + tabIn, xe - tabIn, ...interior.filter(clear)];
+  const seams = d.split ? d.seams : [];
+  const clear = (position: number) => (seams.length ? seams : [0]).every(seam => Math.abs(position - seam) >= tabClear - 1e-8)
+    && d.pinPositions.every(pin => Math.abs(position - pin) >= tabClear - 1e-8);
+  const seamTabs = seams.length > 1 ? seams.flatMap(seam => [seam - tabClear, seam + tabClear]) : [];
+  const endTabs = [xd + tabIn, xe - tabIn];
+  const fixedTabs = [...endTabs, ...seamTabs.filter(position => endTabs.every(tab => Math.abs(position - tab) >= K.earW + 2 * K.ligMin))];
+  const tabs = [...fixedTabs, ...interior.filter(position => clear(position)
+    && (seams.length <= 1 || fixedTabs.every(tab => Math.abs(position - tab) >= K.earW + 2 * K.ligMin)))];
   const tongues = gangs(o) ? tonguesOf(d, tabs, lipx) : [];
   const ties = new Set<number>([round1(lipx), ...interior]);
-  if (d.split) ties.add(round1(-K.spliceDepth / 2));
+  for (const seam of seams) ties.add(round1(seam - K.spliceDepth / 2));
   const tw = minimal ? K.minimalT : 8;
   // the lip tie holds the lip pockets, the splice tie the deck tongue: 10 mm each side.
   // An interior tie can land inside one of those bands; merge, or its far edge would
   // start the next opening inside the band and leave the tongue rooted on a sliver.
   const edges: number[] = [x0];
   for (const t of [...ties].sort((a, b) => a - b)) {
-    const special = Math.abs(t - lipx) < 1 || (d.split && Math.abs(t + K.spliceDepth / 2) < 1);
+    const special = Math.abs(t - lipx) < 1 || seams.some(seam => Math.abs(t - seam + K.spliceDepth / 2) < 1);
     const half = special ? 10 : tw / 2;
     const last = edges.length - 1;
     if (last > 0 && t - half <= edges[last]) {
@@ -353,7 +439,7 @@ export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number):
   return buildWallFeatures(g, o, d, ln, sy, { gangNotches: true, topPins: true, endLap: true });
 }
 
-function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, features: { gangNotches: boolean; topPins: boolean; endLap: boolean }): M {
+function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, features: { gangNotches: boolean; topPins: boolean; endLap: boolean }, connection?: MixedWallConnection): M {
   const { L, IW, OW } = d;
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
@@ -363,18 +449,18 @@ function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number,
   const earJ = earJoint(g, { wall: o.wall, through: 0, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   const cuts: M[] = [];
-  if (features.topPins) for (const sx of [1, -1]) {
-    adds.push(placeSide(pinJ.pin, sy, sx * d.px, sy * d.py, H));
-    cuts.push(pinJ.relief.translate([sx * d.px, sy * d.py, H]));
+  if (features.topPins) for (const position of d.pinPositions) {
+    adds.push(placeSide(pinJ.pin, sy, position, sy * d.py, H));
+    cuts.push(pinJ.relief.translate([position, sy * d.py, H]));
   }
   cuts.push(...wallNotches(g, o, d, ln, sy, c, pinJ, earJ, features));
   if (d.split) {
     const socket = seamKeySocket(g, o);
-    for (const height of wallSeamHeights(H)) cuts.push(socket.translate([0, sy * d.py, height]));
+    for (const seam of d.seams) for (const height of wallSeamHeights(H)) cuts.push(socket.translate([seam, sy * d.py, height]));
   }
-  if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH));
+  if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH, connection));
   const m = g.assemble(adds, cuts);
-  return m;
+  return connection ? cutMixedWallConnection(g, o, m, L, d.IW, sy, connection) : m;
 }
 
 /** What keys the wall: a notch over each deck ear with the wall's own tab left standing in
@@ -389,7 +475,7 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
   }
   const lap = crossLap(g, { wall: o.wall, lapZ: ln.lapZ, H: ln.H, clearance: c });
   if (features.endLap) cuts.push(lap.female.translate([ln.xe, sy * d.py, 0]));
-  for (const sx of [1, -1]) cuts.push(pinJ.notch.translate([sx * d.px, sy * d.py, 0]));
+  for (const position of d.pinPositions) cuts.push(pinJ.notch.translate([position, sy * d.py, 0]));
   return cuts;
 }
 
@@ -403,19 +489,21 @@ function snapKeepOuts(g: Geo, o: Options, d: Derived, ln: Lane, c: number): CS[]
   const tabTop = earNotchH(c) + K.snapLen - tab.peak + K.ligMin;
   return [
     ...ln.tabs.map((tx) => g.rect(tx - half, -1, tx + half, tabTop)),
-    ...[1, -1].map((sx) => g.rect(sx * d.px - half, ln.H - (K.snapLen - pin.peak) - K.ligMin, sx * d.px + half, ln.H + 1)),
-    ...[1, -1].map((sx) => g.rect(sx * d.px - chamberHalf, -1, sx * d.px + chamberHalf, pin.tip + c + K.ligMin)),
+    ...d.pinPositions.map(position => g.rect(position - half, ln.H - (K.snapLen - pin.peak) - K.ligMin, position + half, ln.H + 1)),
+    ...d.pinPositions.map(position => g.rect(position - chamberHalf, -1, position + chamberHalf, pin.tip + c + K.ligMin)),
   ];
 }
 
 /** The lattice through the wall and the recess of its outer face down to a web, both
  *  clear of the seam's border and the corner slot's column. */
-function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number): M[] {
+function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, connection?: MixedWallConnection): M[] {
   const { L, IW, OW } = d;
   const H = ln.H, b = K.border;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const keep: CS[] = [];
-  if (d.split) keep.push(g.rect(-seamKeyFrameHalfWidth(o), 0, seamKeyFrameHalfWidth(o), H));
+  const connectionBand = connection ? g.rect(...mixedConnectionBand(connection, L)) : undefined;
+  if (connectionBand) keep.push(connectionBand);
+  if (d.split) for (const seam of d.seams) keep.push(g.rect(seam - seamKeyFrameHalfWidth(o), 0, seam + seamKeyFrameHalfWidth(o), H));
   const endNotch = g.rect(ln.xe - 3 - c, -1, L / 2 + 1, H + 1);
   keep.push(endNotch, ...snapKeepOuts(g, o, d, ln, c));
   const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
@@ -438,7 +526,8 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
       const tab = tabSnap(c, notchH, K.tabW);
       const rootTop = notchH + K.snapLen - tab.peak;
       const frameTop = Math.max(notchH + K.padRise, rootTop + K.ligMin);
-      const face = g.rect(gx0, frameTop, gx1, H - b).subtract(endNotch);
+      let face = g.rect(gx0, frameTop, gx1, H - b).subtract(endNotch);
+      if (connectionBand) face = face.subtract(connectionBand);
       cuts.push(g.prismY(face, rd + 1, sy > 0 ? OW / 2 - rd : -OW / 2 - 1));
     }
   }
@@ -482,35 +571,44 @@ export { platePose, lipPose, riserPose, stand, type Pose } from "./features/pose
 const layWall = (m: M, sy: number, IW: number): M => lay(m, platePose(sy > 0 ? "wall-left" : "wall-right", IW, 0));
 const layEndWall = (m: M, xe: number): M => lay(m, platePose("end-wall", 0, xe));
 
-/** Cut a plate at x=0 into a front and a rear half joined by an in-plane T-slot: the
- *  rear keeps the tongue, the front gets the socket. `tongue` and `socket` are the
- *  T profiles, rear-pointing, already extruded through the plate. */
-function splitPlate(g: Geo, plate: M, tongue: M, socket: M): [M, M] {
-  const bb = plate.boundingBox();
-  const big = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]) * 2 + 20;
-  const rear = g.union([g.isect(plate, g.box(big, big, big, big / 2, 0, 0)), g.isect(plate, tongue)]);
-  const front = g.diff(g.isect(plate, g.box(big, big, big, -big / 2, 0, 0)), [socket]);
-  return [front, rear];
-}
-
 /** Deck: the tongue is the wedge itself inside the T, so it carries the slope.
  *  `zb` is the deck's underside: a grid deck's floor and feet hang below the pan, and
  *  the tongue takes them too, so it stands on the bed instead of over the socket. */
-export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): [M, M] {
+export function splitDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M, zb = 0): M[] {
   const w = d.plateY; // wider than any tongue; the floor of a grid deck is this wide
   const wedge = g.prismY(deckProfile(g, d, ln, zb), w, -w / 2);
   const t = tSlotJoint(g, { neck: K.spliceBase, head: K.spliceTip, clearance: clearanceOf(o), zb, H: ln.H });
-  const tongue = g.isect(wedge, t.male);
-  return splitPlate(g, deck, tongue, t.female);
+  const sections: M[] = [];
+  let remaining = deck;
+  for (const seam of d.seams) {
+    const [rear, front] = remaining.splitByPlane([1, 0, 0], seam);
+    const tongue = g.isect(deck, g.isect(wedge, t.male.translate([seam, 0, 0])));
+    sections.push(g.diff(front, [t.female.translate([seam, 0, 0])]));
+    remaining = g.union([rear, tongue]);
+  }
+  return [...sections, remaining];
 }
 
 
-/** Wall halves butt at x = 0 around their hidden splines before the continuous wall
+/** Wall sections butt at each seam around their hidden splines before the continuous wall
  *  snaps onto the assembled deck. The keyed walls bridge the deck seam in Z; the
- *  cover halves have their own hidden keys. Each wall half keeps its own deck ears. */
-export function splitWall(g: Geo, d: Derived, wall: M): [M, M] {
-  const [rear, front] = wall.splitByPlane([1, 0, 0], 0);
-  return [front, rear];
+ *  cover sections have their own hidden keys. Each wall section keeps its own deck ears. */
+export function splitWall(g: Geo, d: Derived, wall: M): M[] {
+  const sections: M[] = [];
+  let remaining = wall;
+  for (const seam of d.split ? d.seams : []) {
+    const [rear, front] = remaining.splitByPlane([1, 0, 0], seam);
+    sections.push(front);
+    remaining = rear;
+  }
+  return [...sections, remaining];
+}
+
+/** Keep existing whole/front/rear sources; additional sections have explicit indices. */
+function sectionedPlate(name: PlateName, sections: M[]): Plate {
+  if (sections.length === 1) return { name, whole: sections[0] };
+  if (sections.length === 2) return { name, front: sections[0], rear: sections[1] };
+  return { name, sections };
 }
 
 /** How deep the lip's tab drops: the deck's thickness at the lip pocket, so the tab ends
@@ -577,7 +675,7 @@ function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
   // plain bosses, not snaps: the grid deck prints feet down, so a prong here would flex
   // across its layers, and the walls' tabs already snap them to the deck
   const boss = tabBox(g, K.pinH, o.wall, 0);
-  for (const sx of [1, -1]) for (const sy of [1, -1]) adds.push(placeSide(boss, sy, sx * d.px, sy * d.py, 0));
+  for (const position of d.pinPositions) for (const sy of [1, -1]) adds.push(placeSide(boss, sy, position, sy * d.py, 0));
   const cuts = [...unit.pockets];
   for (const sy of [1, -1]) cuts.push(lipPocket(g, clearanceOf(o), 2, 0).translate([ln.lipx, sy * d.lipy, 0]));
   const out = g.assemble(adds, cuts);
@@ -607,7 +705,7 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     [-halfDepth, -1], [halfDepth, -1], [halfDepth, roofStart], [0, roofTop], [-halfDepth, roofStart],
   ]), 2 * (halfWidth + snap.hook + 1), -halfWidth - snap.hook - 1);
   const socket = g.isect(chamber, roof).translate([0, (K.tabT - o.wall) / 2, 0]);
-  for (const sx of [1, -1]) for (const sy of [1, -1]) cuts.push(placeSide(socket, sy, sx * d.px, sy * d.py, 0));
+  for (const position of d.pinPositions) for (const sy of [1, -1]) cuts.push(placeSide(socket, sy, position, sy * d.py, 0));
   // cascade loading window: the top tier loads from above at its high end, so the cover
   // opens there, one can wide and the full inner width (only the wall strips remain).
   // A flat top tier loads from the front over its lip and keeps a whole cover.
@@ -642,7 +740,10 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
     if (cells) {
       // the seam crosses the field; clip cells at its solid band rather than dropping
       // them, so the pattern carries over the joint instead of leaving a blank
-      if (d.split) cells = cells.subtract(g.rect(-Math.max(K.coverSeam, seamKeyFrameHalfWidth(o)), -OW, Math.max(K.coverSeam, seamKeyFrameHalfWidth(o)), OW));
+      if (d.split) for (const seam of d.seams) {
+        const halfWidth = Math.max(K.coverSeam, seamKeyFrameHalfWidth(o));
+        cells = cells.subtract(g.rect(seam - halfWidth, -OW, seam + halfWidth, OW));
+      }
       const pieces = cells.decompose().filter((piece) => piece.area() > 40);
       cells = pieces.length ? g.cs2d(...pieces) : null;
     }
@@ -650,14 +751,10 @@ export function buildCover(g: Geo, o: Options, d: Derived): M[] {
   }
   if (d.split) {
     const socket = seamKeySocket(g, o);
-    for (const position of coverSeamPositions(OW)) cuts.push(socket.translate([0, position, t / 2]));
+    for (const seam of d.seams) for (const position of coverSeamPositions(OW)) cuts.push(socket.translate([seam, position, t / 2]));
   }
   const m = g.diff(plate, cuts);
-  if (d.split) {
-    const [rear, front] = m.splitByPlane([1, 0, 0], 0);
-    return [front, rear];
-  }
-  return [m];
+  return splitWall(g, d, m);
 }
 
 /** Every deck a row prints, once each, with its sides and how many lanes use it. */
@@ -674,7 +771,7 @@ export function deckKinds(o: Options): { name: PlateName; sides: [Side, Side]; c
 
 /** The four plates of one lane, laid flat, split at the seam when the lane is long. A row
  *  whose ends join differently from its inner lanes has a deck for each end too. */
-export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, requested?: ReadonlySet<PlateName>): Plate[] {
+export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, requested?: ReadonlySet<PlateName>, connections?: { left?: MixedWallConnection; right?: MixedWallConnection }): Plate[] {
   const ln = laneOf(o, d, role);
   const wanted = (name: PlateName) => !requested || requested.has(name);
   const plates: Plate[] = [];
@@ -686,8 +783,7 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, 
       const built = buildDeck(g, o, d, ln, sides);
       const deck = mirrored ? built.mirror([0, 1, 0]) : built;
       if (d.split) {
-        const [front, rear] = splitDeck(g, o, d, ln, deck);
-        plates.push({ name: variant, front, rear });
+        plates.push(sectionedPlate(variant, splitDeck(g, o, d, ln, deck)));
       } else plates.push({ name: variant, whole: deck });
     }
   }
@@ -695,10 +791,10 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, 
     : [...new Set(partManifest(o, d).filter((part) => part.source.kind === "lane" && part.source.laneRole === role && part.source.plate?.startsWith("wall-")).map((part) => part.source.plate!))];
   for (const name of wallNames) {
     const side = name.startsWith("wall-left") ? 1 : -1;
-    const wall = buildWallFeatures(g, o, d, ln, side, { gangNotches: !name.includes("-closed"), topPins: !name.includes("-terminal"), endLap: !name.includes("-open") });
+    const connection = role === (o.cascade ? "bottom" : "top") ? side > 0 ? connections?.left : connections?.right : undefined;
+    const wall = buildWallFeatures(g, o, d, ln, side, { gangNotches: !name.includes("-closed"), topPins: !name.includes("-terminal"), endLap: !name.includes("-open") }, connection);
     if (d.split) {
-      const [front, rear] = splitWall(g, d, wall);
-      plates.push({ name, front: layWall(front, side, d.IW), rear: layWall(rear, side, d.IW) });
+      plates.push(sectionedPlate(name, splitWall(g, d, wall).map(section => layWall(section, side, d.IW))));
     } else plates.push({ name, whole: layWall(wall, side, d.IW) });
   }
   if (wanted("end-wall")) plates.push({ name: "end-wall", whole: layEndWall(buildEndWall(g, o, d, ln), ln.xe) });
@@ -729,8 +825,7 @@ function buildGridDeckPlate(g: Geo, o: Options, d: Derived, role: LaneRole): Pla
   const ln = laneOf(o, d, role);
   const deck = buildGridDeck(g, o, d, ln, buildDeck(g, o, d, ln));
   if (!d.split) return { name: "deck", whole: deck };
-  const [front, rear] = splitDeck(g, o, d, ln, deck, -K.unitH);
-  return { name: "deck", front, rear };
+  return sectionedPlate("deck", splitDeck(g, o, d, ln, deck, -K.unitH));
 }
 
 // ---------------------------------------------------------------- the print list
@@ -738,18 +833,20 @@ export type PartRole = "lane" | "lip" | "riser" | "cover";
 interface Part { name: string; mesh: M; qty: number; role: PartRole }
 
 /** Every part to print, named and counted, in the order they are packed. A split plate
- *  is two parts, -front and -rear. On a Gridfinity base the shelf lane's deck is
+ *  has front/rear or numbered section sources. On a Gridfinity base the shelf lane's deck is
  *  grid-deck and its plain deck is not printed; risers only come with feet. */
 export function partList(set: PartSet, o: Options): Part[] {
-  const split = set.lanes.some((lane) => lane.plates.some((plate) => !!plate.front)) || !!set.gridDeck?.front || set.cover.length > 1;
-  const manifest = partManifest(o, { ...solve(o), split });
+  const split = set.lanes.some((lane) => lane.plates.some((plate) => !!plate.front || !!plate.sections)) || !!set.gridDeck?.front || !!set.gridDeck?.sections || set.cover.length > 1;
+  const derived = solve(o);
+  const indexed = set.lanes.some(lane => lane.plates.some(plate => !!plate.sections)) || !!set.gridDeck?.sections || set.cover.length > 2;
+  const manifest = partManifest(o, { ...derived, split, seams: split ? indexed ? derived.seams : [0] : [] });
   return manifest.map(({ name, source, qty, role }) => {
     let mesh: M | undefined;
     if (source.kind === "lane") {
       const plate = set.lanes.find((lane) => lane.role === source.laneRole)?.plates.find((plate) => plate.name === source.plate);
-      mesh = source.half ? plate?.[source.half] : plate?.whole;
-    } else if (source.kind === "grid") mesh = source.half ? set.gridDeck?.[source.half] : set.gridDeck?.whole;
-    else if (source.kind === "cover") mesh = set.cover[source.half === "rear" ? 1 : 0];
+      mesh = source.section !== undefined ? plate?.sections?.[source.section] : source.half ? plate?.[source.half] : plate?.whole;
+    } else if (source.kind === "grid") mesh = source.section !== undefined ? set.gridDeck?.sections?.[source.section] : source.half ? set.gridDeck?.[source.half] : set.gridDeck?.whole;
+    else if (source.kind === "cover") mesh = set.cover[source.section ?? (source.half === "rear" ? 1 : 0)];
     else if (source.kind === "key") mesh = set.key;
     else mesh = source.kind === "lip" ? set.lip : set.riser;
     if (!mesh) throw new Error(`Missing requested part ${name}`);

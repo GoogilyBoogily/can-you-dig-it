@@ -62,6 +62,9 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   positions); `buildDeck`, `buildWall`, `buildEndWall` in the lane frame, `layWall` /
   `layEndWall` to put them flat; `splitDeck`, `splitWall`, `buildLanePlates`, `buildLip`,
   `buildRiser`, `buildCover`, `buildAll`.
+- `src/mixed-geometry.ts` — mixed-build manifest sources, including distinct facing
+  bottom walls and the connection spline segments; upper flat tiers retain their
+  ordinary shared wall sources. The worker packs the entire build atomically.
 - `src/features/` — the pieces `geometry.ts` composes, each built at a local origin (x
   along the lane, y the wall's centreline, z = 0 at the deck underside) and placed with
   `.translate()` / `.mirror([0,1,0])`. `joints.ts`: every joint from one spec — `earJoint`,
@@ -195,13 +198,22 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   supersedes the empty-notch acceptance of 2026-09-30. A flat stack opens its top tier
   only; every tier from the back would need per-tier parts, and nobody needs it. A can
   fills the tier over the deck there (~3 mm spare), so no stop, strip or bar fits.
-- Long lanes split at x=0. The deck has an in-plane T-slot (`tSlot`: a 30-wide neck 3
-  deep, a 40-wide head to 8); the halves drop together in Z and the head locks X. The
-  wall and cover halves slide along X onto hidden printed seam keys, seating their
+- Long lanes use a shared symmetric seam plan (2026-10-17), preserving x=0 when
+  two sections fit and adding sections when needed. The shelf sets assembled depth;
+  the printer constrains each section including its tongue, bed margins and profile
+  exclusions. Section spans must fit in both arithmetic and emitted Float32 bounds;
+  a decimal boundary that rounds outward needs another section, not relaxed packing
+  tolerances. `Options.bedKeepOut` carries profile rectangles to both layout modes,
+  and profile exclusion changes refit the layout. Extra sections retain
+  solid seam frames, supporting ears and interior wall pins/catches; feet and
+  Gridfinity bosses follow all pin positions. Indexed part sources identify additional
+  sections while valid whole/front/rear identities stay unchanged. The deck has an in-plane T-slot (`tSlot`: a 30-wide neck 3
+  deep, a 40-wide head to 8); adjacent sections drop together in Z and the head locks X. The
+  wall and cover sections slide along X onto hidden printed seam keys, seating their
   visible edges before the joined plates snap down. Key channels use self-supporting
   diamond profiles; the key's central taper/collar seats the halves rather than
   relying on clearance alone to align the frame. Join the walls before snapping them
-  onto the deck, and join the cover halves before lowering them onto the wall pins.
+  onto the deck, and join the cover sections before lowering them onto the wall pins.
   Deck dovetails until 2026-09-20. Half-laps are gone: a lap printed face-up is
   a 10 mm cantilever.
 - Honeycomb: regular pointy-top cells; printed flat they are vertical holes, which is
@@ -242,8 +254,8 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   Tie bands merge when they overlap: an interior tie can land inside the splice band,
   and unmerged its far edge started the next opening 1.6 mm behind the seam — the
   tongue's whole root (`test/splice.test.ts`).
-- Gang joint (2026-09-20, was a 56° dovetail rib on the walls): the deck carries it, since
-  nothing on a wall face can lock Y without an undercut. Tongues run out of the +Y rail
+- Legacy gang joint (2026-09-20, was a 56° dovetail rib on the walls): the deck carries it,
+  using a planar T rather than an undercut on a wall face. Tongues run out of the +Y rail
   under both walls into T sockets cut through the neighbour's rail (`gangJoint`: ear-wide
   run and neck, `gangHead` 30 head, the splice depths). They go *between* the ears
   (`laneOf`'s `tongues`, from `tonguesOf`): one in the middle of every stretch of rail
@@ -268,6 +280,25 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   that such lanes stand loose. Only when `gangs(o)`: some edge has a tongue or socket,
   and not on a grid (`test/gang.test.ts`). Spec in
   `docs/superpowers/specs/2026-09-20-sliding-slot-joints-design.md`.
+- Mixed stacks (2026-10-16; stack controls expanded 2026-10-17) use an explicit ordered
+  build, with per-stack presets or custom can dimensions, exact depths and fixed or
+  automatic tiers. Each stack also controls cascade feeding, slope, lip headroom,
+  cover, rear loading and top stacking. Printer, material, fit, design and pattern
+  remain shared. New links use version 3; version-2 mixed links remain readable,
+  with omitted row controls inheriting their carried shared settings. Effective row
+  options determine geometry, height and loading checks; hidden legacy slope or
+  headroom does not constrain a row that overrides it. Fronts align at the existing
+  3 mm side gap. Only flat bases and walls at least 5.75 mm thick are supported.
+  Facing bottom walls
+  intentionally have blind diamond undercuts with 45° printable roofs, reserved
+  whole-cell bands, and wall-plane spring gates. A segmented spline joins those
+  walls without added shelf height; its stepped bridge remains outside both inner
+  wall faces. This is separate from legacy deck ganging. Channels preserve original
+  catch and seam-key material; flat upper tiers do not inherit bottom connectors.
+  Geometry and selected toolpath sections are checked, but angular clearance remains
+  and printed fit, creep and loaded strength are unqualified. Support loaded builds
+  underneath. Assembly, dimensions and fresh evidence:
+  [mixed wall spline notes](prototypes/mixed-wall-spline.md).
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
   `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
   only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
@@ -327,7 +358,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   its floor the lane is flush with, the spare going opposite. Lanes go a floor apart
   (`gangPitch = max(floorCells·42, OW + 0.5)`: a skirted lane on fewer cells than cover
   it falls back to its own width), gang joint off. `d.foot` (lane ∪ floor) is what
-  stands on the shelf, fits the bed and splits at x = 0 - through a foot as often as
+  stands on the shelf and feeds the shared section plan - through a foot as often as
   not; a foot cut square prints as it is and the pocket locks it. `o.magnets` cuts
   6.5 × 2.4 pockets on the 26 mm square in every foot, skipping any the seam would
   divide between printed parts, including the supporting rim at a T boundary: the one bridged ceiling `test/overhang.test.ts` allows. `baseHeight()` is 7,

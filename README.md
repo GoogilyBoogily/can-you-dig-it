@@ -6,6 +6,44 @@ part placed. Runs entirely in the browser: geometry on the
 [manifold-3d](https://github.com/elalish/manifold) WASM kernel in a Web Worker,
 viewer in three.js, no server.
 
+Use **Setup / Preview / Print** to move directly between settings, the model and
+downloads; navigation keeps the current design and shared link intact. Printer,
+print-profile and custom build-volume controls stay in Setup, including when a
+design does not fit. Optional feeding, appearance, base and joint-fit settings
+expand in place. Print shows downloads before plate and stack details; the material
+estimate expands to show its assumptions.
+
+Choose **Different stacks side by side** to make one connected organizer from
+neighboring stacks. Each stack has its own can preset or custom dimensions, exact
+container depth, fixed or automatic tier count, auto-feed, deck slope, lip headroom,
+cover, rear loading and option to add another tier on top. Printer, material, fit,
+design and pattern stay shared. Reorder stacks by dragging their handles, clicking
+the up/down buttons, or focusing a handle and pressing the Up/Down arrow keys.
+Their dispensing fronts align; the whole requested
+mix must fit the shelf and printer. New shared links use version 3; existing version-2
+mixed links inherit their original shared stack settings. Mixed builds currently use
+a flat base and walls at least 5.75 mm thick. Printed spline segments join the facing
+bottom walls; assemble them before adding upper tiers. Fit and loaded strength still
+need printed trials.
+See [assembly and qualification notes](prototypes/mixed-wall-spline.md).
+
+Each stack's depth slider shows millimetres and runs from the space for one can
+(including stops, joint space and an auto-feed chute when enabled) to usable shelf
+depth after the front gap. Bounds follow can and shelf changes, adjusting an
+out-of-range depth. The same bounds apply to loaded links.
+
+Long organizers automatically gain enough printable sections for the selected
+printer. Deck T joints and concealed wall/cover keys repeat at each seam; interior
+sections gain supporting ears and retaining pins, with matching feet or Gridfinity
+supports. Existing valid one-piece and center-split designs keep their part names.
+Section sizing accounts for the printer’s excluded bed areas as well as its build
+volume. Each printed piece must still fit in all three dimensions, and seams
+must leave the chute, loading window and joint supports intact. Width, height or
+protected features that cannot fit produce an explicit error instead of shortening
+the requested organizer. See the [multiple-seam design](docs/superpowers/specs/2026-10-17-multiple-seams-design.md).
+Geometry checks do not establish printed fit or a load rating; qualify one complete
+lane in the intended material/process and support loaded organizers underneath.
+
     bun install
     bun test test/      # unit + geometry regression against ref.json
     bun run test:ui     # Playwright against a real build (bunx playwright install chromium once)
@@ -26,6 +64,7 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
     src/assembly.ts   part identities, quantities and assembly placements
     src/features/    reusable joints, poses, lattice, rounds and Gridfinity units
     src/geometry.ts   composes the required parts from the assembly manifest
+    src/mixed-geometry.ts explicit mixed-stack sources and retained connection parts
     src/solver.ts     shelf W×D×H + can → ranked layouts (pure arithmetic)
     src/export.ts     mesh validation, shared-geometry packing, STL and multi-plate 3MF
     src/estimate.ts   approximate filament use from resolved print settings
@@ -47,16 +86,20 @@ no supports.
 - **end-wall**: closes the high end. Cross-laps into both side walls and snaps onto the deck.
 
 Names say the tier: `lane-bottom-deck`, `lane-mid-wall-left`, `lane-top-end-wall` and so
-on (a flat stack is just `lane-deck` etc., since every tier is the same). Alternate
-tiers are rotated 180° so cans cascade down when you pull one. Reversed tiers use
+on (a uniform flat stack is just `lane-deck` etc., since every tier is the same).
+Mixed builds add a `stack-N-` prefix and separate facing bottom walls from upper walls.
+Alternate tiers are rotated 180° so cans cascade down when you pull one. Reversed tiers use
 `deck-mirrored` variants so the selected left and right connectors stay on the same
 outer sides. The bottom deck runs full
 length to the **end-lip**. Upper decks stop a can short to leave the drop chute.
 
-- Plates longer than the bed split into **-front** / **-rear** halves. Decks join with
+- Plates longer than the bed split into printable sections. Two-section designs keep
+  **-front** / **-rear** names; longer designs use numbered sections. Decks join with
   an in-plane T-slot. Hidden printed keys align and retain the wall and cover seams.
-- **Ganging**: lanes side by side lock through the decks. Tongues off one deck drop into
-  T sockets in the next.
+- **Same-size ganging**: lanes side by side lock through the decks. Tongues off one
+  deck drop into T sockets in the next.
+- **Mixed-stack connections**: printed spline segments join blind channels in the
+  facing bottom walls. These extra parts print on their ends, up to 40 mm high.
 - **riser-24**: feet under the wall pins, with Base = Feet.
 - **grid-deck**: with Base = Gridfinity, the bottom deck on a 7 mm unit of Gridfinity feet
   (optional magnet pockets). Drops into any baseplate, with the lane on a skirt where the
@@ -65,10 +108,10 @@ length to the **end-lip**. Upper decks stop a can short to leave the drop chute.
   window over the top tier's high end. That's where cans go in: drop one through and it
   rolls to the chute. Blind catches conceal the wall pins beneath its outer surface.
 
-For a split lane, drop the deck T together first. Slide each pair of wall halves onto
+For a split lane, join the deck sections at every T first. Slide the wall sections onto
 its hidden keys along the lane, then snap the joined wall down onto the deck ears.
 Drop the end wall into the side-wall cross-laps and snap it onto the deck. Assemble
-each tier before adding the next. Slide the cover halves onto their keys along the
+each tier before adding the next. Slide the cover sections onto their keys along the
 lane before lowering the joined cover onto the wall pins. Use the printed joints and
 keys throughout; no glue or hardware is needed.
 
@@ -101,9 +144,12 @@ Large assembly previews show a labelled sample; capacity and exports retain ever
    concealed catches, seam keys and end-wall snaps still need qualification on the P2S
    with PETG Translucent, a 0.4 mm nozzle and 0.2 mm layers. Remove stringing or clumps
    before judging fit; a larger clearance also allows more seam movement.
-2. Mixed-width ganging (slim + standard side by side). Bigger than it looks: `gangPitch`
-   in `src/geometry.ts` derives from a single `canD`/`canL`, so this wants a second can
-   spec threaded through `solve()`, not just a gang-joint change.
+   For mixed builds, also generate the wall-connection samples with
+   `bun prototypes/export-mixed-wall-spline.ts`; qualify their fit and a complete
+   connected organizer before loading it.
+2. Mixed builds support flat bases only. Can size and container depth can differ
+   between neighboring stacks; each vertical stack keeps one size and depth.
+   Mixed builds with feet or Gridfinity bases remain unsupported.
 3. Odd cascade tier counts put the cover window at the back. Warn harder, or let the
    shelf depth pick an even count.
 4. Packing is a shelf sort (first fit across every plate, each part tried turned 90°).

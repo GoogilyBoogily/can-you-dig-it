@@ -1,8 +1,7 @@
-// One gate for every value the user types or arrives with in a shared link.
-// Nothing downstream re-checks, so a value that gets past here reaches the
-// solver, the WASM kernel and the exported file unexamined.
+// Validate form and shared-link inputs. Mixed slope and lip headroom are checked
+// after per-stack overrides are applied, before any geometry is solved.
 
-import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, SIDES, type Design, type Pattern, type Base, type Across, type Along, type Side, type Options } from "./geometry";
+import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, SIDES, type Design, type Pattern, type Base, type Across, type Along, type Side, type Options, type MixedBuildRequest, type MixedStackRequest } from "./model";
 import type { Space } from "./solver";
 
 interface Limit { min: number; max: number; label: string }
@@ -38,7 +37,7 @@ export function readNumbers(values: Record<string, number>): Record<string, numb
     const limit = LIMITS[key]!;
     if (!Number.isFinite(value)) throw new Error(`${limit.label} needs a number`);
     if (value < limit.min || value > limit.max)
-      throw new Error(`${limit.label} must be between ${limit.min} and ${limit.max} mm`);
+      throw new Error(`${limit.label} must be between ${limit.min} and ${limit.max} ${key === "slope" ? "degrees" : "mm"}`);
   }
   return values;
 }
@@ -50,9 +49,59 @@ export interface FormValues { space: Space; base: Options; cascade: boolean }
  *  a shared hash with an unknown design leaves the select blank, and that is said the
  *  same way as a number out of range. */
 export function optionsFrom(field: (name: string) => string | null): FormValues {
+  const { space, base, cascade, numbers } = sharedFormFrom(field, false);
+  return { space, base: { ...base, canD: numbers.canD, canL: numbers.canL }, cascade };
+}
+
+/** Mixed rows are validated directly; hidden legacy can inputs do not participate. */
+export function mixedOptionsFrom(field: (name: string) => string | null, stacks: unknown): { space: Space; request: MixedBuildRequest } {
+  const { space, base, cascade } = sharedFormFrom(field, true);
+  if (base.base !== "flat") throw new Error("Mixed stacks currently require a flat base");
+  const { length, tiers, lanesWide, left, right, base: standsOn, magnets, across, along, shelfCells, ...shared } = base;
+  return { space, request: { shared: { ...shared, base: "flat", cascade }, stacks: mixedStacksFrom(stacks) } };
+}
+
+/** A shared gate for form rows and typed callers of the mixed shelf resolver. */
+export function mixedStacksFrom(stacks: unknown): MixedStackRequest[] {
+  if (!Array.isArray(stacks) || stacks.length < 2 || stacks.length > 8)
+    throw new Error("A connected organizer needs two to eight stacks");
+  return stacks.map((value, index) => {
+    const label = `Stack ${index + 1}`;
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label}: enter the can size, depth and tiers`);
+    const row = value as Record<string, unknown>;
+    const dimension = (key: string, limitKey: string, dimensionLabel: string): number => {
+      const number = row[key];
+      const limit = LIMITS[limitKey];
+      if (typeof number !== "number" || !Number.isFinite(number)) throw new Error(`${label}: ${dimensionLabel} needs a number`);
+      if (number < limit.min || number > limit.max)
+        throw new Error(`${label}: ${dimensionLabel} must be between ${limit.min} and ${limit.max} ${key === "slope" ? "degrees" : "mm"}`);
+      return number;
+    };
+    const tiers = row.tiers;
+    if (tiers !== "auto" && (typeof tiers !== "number" || !Number.isSafeInteger(tiers) || tiers < 1))
+      throw new Error(`${label}: tiers must be Auto or a positive whole number`);
+    const request: MixedStackRequest = { canDiameter: dimension("canDiameter", "canD", "can diameter"), canHeight: dimension("canHeight", "canL", "can height"), depth: dimension("depth", "d", "container depth"), tiers };
+    for (const key of ["slope", "lipGap"] as const) if (Object.hasOwn(row, key))
+      request[key] = dimension(key, key, LIMITS[key].label);
+    const labels = { cascade: "auto-feed", cover: "cover", rearLoad: "rear loading", stackable: "stackable top" } as const;
+    for (const key of ["cascade", "cover", "rearLoad", "stackable"] as const) if (Object.hasOwn(row, key)) {
+      if (typeof row[key] !== "boolean") throw new Error(`${label}: ${labels[key]} must be true or false`);
+      request[key] = row[key];
+    }
+    return request;
+  });
+}
+
+function sharedFormFrom(field: (name: string) => string | null, mixed: boolean) {
   const raw: Record<string, number> = {};
-  for (const k of Object.keys(LIMITS)) raw[k] = parseFloat(String(field(k)));
-  readNumbers(raw);
+  for (const k of Object.keys(LIMITS)) {
+    if (mixed && (k === "canD" || k === "canL")) continue;
+    raw[k] = parseFloat(String(field(k)));
+  }
+  if (mixed) {
+    const { slope, lipGap, ...sharedNumbers } = raw;
+    readNumbers(sharedNumbers);
+  } else readNumbers(raw);
   const num = (k: string) => raw[k];
   const on = (k: string) => field(k) === "on";
   const design = field("design") as Design;
@@ -70,12 +119,12 @@ export function optionsFrom(field: (name: string) => string | null): FormValues 
     if (!SIDES.includes(value as Side)) throw new Error(`${k} side: pick Tongue, Socket or Nothing`);
     return value as Side;
   };
-  const base: Options = {
-    ...DEFAULTS,
-    canD: num("canD"), canL: num("canL"),
+  const { canD, canL, ...sharedDefaults } = DEFAULTS;
+  const base: Omit<Options, "canD" | "canL"> = {
+    ...sharedDefaults,
     bed: [num("bedX"), num("bedY"), num("bedZ")],
     cover: on("cover"), rearLoad: on("rearLoad"), stackable: on("stackable"), left: side("left"), right: side("right"), solid: on("solid"), design, pattern, base: standsOn, magnets: on("magnets"), across, along, fit: num("fit"),
     hexR: num("hexR"), hexAuto: on("hexAuto"), slope: num("slope"), lipGap: num("lipGap"),
   };
-  return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: on("cascade") };
+  return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: on("cascade"), numbers: raw };
 }

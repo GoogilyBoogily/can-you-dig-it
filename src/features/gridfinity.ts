@@ -26,7 +26,7 @@ function buildFoot(g: Geo, over: number): M {
 /** The floor of feet clipped to the bin outline, the skirt beside it, and the magnet
  *  pockets, all in the lane frame with the unit from -unitH to 0. A pocket the seam
  *  would halve is skipped. */
-export function gridUnit(g: Geo, d: Pick<Derived, "floorCells" | "floor" | "L" | "OW" | "split">, magnets: boolean, clearance = K.cl): { floor: M; skirt: M | null; pockets: M[] } {
+export function gridUnit(g: Geo, d: Pick<Derived, "floorCells" | "floor" | "L" | "OW" | "split" | "seams">, magnets: boolean, clearance = K.cl): { floor: M; skirt: M | null; pockets: M[] } {
   const { floorCells: [nx, ny], floor: [fx0, fy0, fx1, fy1] } = d;
   const footH = K.footChamferLo + K.footWall + K.footChamferHi;
   const z0 = -K.unitH;
@@ -49,12 +49,13 @@ export function gridUnit(g: Geo, d: Pick<Derived, "floorCells" | "floor" | "L" |
   // Ownership follows the same T profiles as splitDeck: rear owns the male,
   // front excludes the female (including fit). Keep a full 1 mm supporting rim
   // on one part; a pocket shared across a tongue edge cannot retain a magnet.
-  const owners = magnets && d.split ? [
-    g.rect(Math.min(fx0, -d.L / 2) - 1, Math.min(fy0, -d.OW / 2) - 1, 0, Math.max(fy1, d.OW / 2) + 1)
-      .subtract(tProfile(g, K.spliceBase, K.spliceTip, clearance)),
-    g.rect(0, Math.min(fy0, -d.OW / 2) - 1, Math.max(fx1, d.L / 2) + 1, Math.max(fy1, d.OW / 2) + 1)
-      .add(tProfile(g, K.spliceBase, K.spliceTip)),
-  ] : null;
+  const boundaries = [Math.min(fx0, -d.L / 2) - 1, ...d.seams, Math.max(fx1, d.L / 2) + 1];
+  const owners = magnets && d.split ? boundaries.slice(0, -1).map((start, index) => {
+    let owner = g.rect(start, Math.min(fy0, -d.OW / 2) - 1, boundaries[index + 1], Math.max(fy1, d.OW / 2) + 1);
+    if (index) owner = owner.add(tProfile(g, K.spliceBase, K.spliceTip).translate([d.seams[index - 1], 0]));
+    if (index < d.seams.length) owner = owner.subtract(tProfile(g, K.spliceBase, K.spliceTip, clearance).translate([d.seams[index], 0]));
+    return owner;
+  }) : null;
   for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
     feet.push(foot.translate([cx(i), cy(j), z0]));
     // No fit on the magnet pockets: 6.5 x 2.4 is the Gridfinity figure for a 6 x 2 magnet,

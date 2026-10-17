@@ -170,6 +170,7 @@ async function delayedWorkerPage(mode: "success" | "error" | "fatal") {
 for (const mode of ["success", "error", "fatal"] as const) {
   test(`a delayed ${mode} sends only the first and latest build`, async () => {
     const page = await delayedWorkerPage(mode);
+    await page.locator("#feedingOptions > summary").click();
     for (const slope of [4, 5, 6]) {
       await page.fill("#form [name=slope]", String(slope));
       await page.waitForTimeout(350); // each edit passes the real 250 ms debounce
@@ -186,6 +187,7 @@ for (const mode of ["success", "error", "fatal"] as const) {
 
 test("invalid input discards the pending request and cannot revive a stale build", async () => {
   const page = await delayedWorkerPage("success");
+  await page.locator("#feedingOptions > summary").click();
   await page.fill("#form [name=slope]", "5");
   await page.waitForTimeout(350);
   await page.fill("#form [name=w]", "10");

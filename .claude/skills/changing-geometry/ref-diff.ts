@@ -2,9 +2,9 @@
 // bound. `git diff ref.json` shows the same lines, but not the delta, and a 0.3 % move
 // hides in a six-digit volume.
 //
-//   bun ${CLAUDE_SKILL_DIR}/ref-diff.ts                # working tree against HEAD
-//   bun ${CLAUDE_SKILL_DIR}/ref-diff.ts HEAD~3         # working tree against a commit
-//   bun ${CLAUDE_SKILL_DIR}/ref-diff.ts 266975a~1 266975a   # one commit's own change
+//   bun .claude/skills/changing-geometry/ref-diff.ts              # working tree vs HEAD
+//   bun .claude/skills/changing-geometry/ref-diff.ts HEAD~3       # vs a chosen commit
+//   bun .claude/skills/changing-geometry/ref-diff.ts HEAD~1 HEAD  # committed change
 import { $ } from "bun";
 
 type Part = { vol: number; min: number[]; max: number[] };

@@ -25,6 +25,7 @@ afterAll(async () => {
 test("the joins survive the hash, and a grid greys out the sides", async () => {
   const page = await browser.newPage();
   await page.goto(URL_);
+  await page.locator("#baseOptions > summary").click();
   await page.selectOption("#form [name=stackable]", "on");
   await page.selectOption("#form [name=left]", "socket");
   await page.selectOption("#form [name=right]", "none");
@@ -39,6 +40,7 @@ test("the joins survive the hash, and a grid greys out the sides", async () => {
   expect(await again.inputValue("#form [name=left]")).toBe("socket");
   expect(await again.inputValue("#form [name=right]")).toBe("none");
   expect(await again.isDisabled("#form [name=left]")).toBe(false);
+  await again.locator("#baseOptions > summary").click();
   await again.selectOption("#form [name=base]", "gridfinity");
   expect(await again.isDisabled("#form [name=left]")).toBe(true);
   expect(await again.isDisabled("#form [name=right]")).toBe(true);
@@ -48,6 +50,9 @@ test("the joins survive the hash, and a grid greys out the sides", async () => {
 test("every option survives the hash, including boxes turned off and the layout picked", async () => {
   const page = await browser.newPage();
   await page.goto(URL_);
+  await page.locator("#feedingOptions > summary").click();
+  await page.locator("#appearanceOptions > summary").click();
+  await page.locator("#baseOptions > summary").click();
   await page.uncheck("#form [name=cascade]");
   await page.uncheck("#form [name=cover]");
   await page.check("#form [name=rearLoad]");

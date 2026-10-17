@@ -149,10 +149,12 @@ test("a lane longer than the cells its shelf has keeps its length on a shorter f
 });
 
 test("lane and floor together fit the bed, or the layout is dropped", () => {
-  // a 480 lane on a 12-cell shelf wants 12 cells, 503.5: over 250 a half; on a 10-cell shelf
-  // its floor stops at 420 and the lane's own 480 splits to 248 - it fits, ends on skirts
+  // A 503.5 mm floor needs three sections on a 250 mm printable bed. A shorter
+  // floor leaves the 480 mm lane on skirts and still fits the original two halves.
   const twelve: Options = { ...grid, length: 480, shelfCells: [12, 9] };
-  expect(check(twelve, solve(twelve)).some((w) => w.startsWith("FAIL"))).toBe(true);
+  expect(check(twelve, solve(twelve)).some((w) => w.startsWith("FAIL"))).toBe(false);
+  expect(solve(twelve).seams).toHaveLength(2);
+  expect(solve(twelve).plateX).toBeLessThanOrEqual(250);
   expect(check({ ...grid, length: 480 }, solve({ ...grid, length: 480 }))).toEqual([]);
   const short = solve({ ...grid, length: 240, shelfCells: [7, 9] });
   expect(short.floorCells[0]).toBe(6); // six cells cover 240, and 251.5 is over one plate

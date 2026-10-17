@@ -2,7 +2,8 @@ import * as THREE from "three";
 import type { MeshData, PackedPlan } from "./export";
 import type { Derived, Options } from "./model";
 import type { Pose } from "./features/pose";
-import { assemblyPlacements, assemblyCans, partManifest, previewCounts } from "./assembly";
+import { assemblyPlacements, assemblyCans, partManifest, previewCounts, mixedPartManifest, mixedAssemblyPlacements, mixedAssemblyCans, mixedPreviewCounts, type AssemblyPlacement } from "./assembly";
+import type { MixedLayout } from "./solver";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -29,7 +30,35 @@ export class Viewer {
     this.cam = new THREE.PerspectiveCamera(38, 1, 1, 8000);
     this.ren = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.ren.setPixelRatio(Math.min(devicePixelRatio, 2));
-    el.appendChild(this.ren.domElement);
+    const canvas = this.ren.domElement;
+    canvas.tabIndex = 0;
+    canvas.setAttribute("aria-label", "3D organizer preview");
+    const help = document.createElement("p");
+    help.className = "camera-help";
+    help.id = `${el.id}-camera-help`;
+    help.textContent = "Drag to orbit; Shift-drag or right-drag to pan; scroll to zoom. With the preview focused, use arrow keys to orbit, Shift + arrows to pan, + / − to zoom, and Home to reset.";
+    canvas.setAttribute("aria-describedby", help.id);
+    const controls = document.createElement("div");
+    controls.className = "camera-controls";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", "Camera controls");
+    for (const [view, label] of [["reset", "Reset view"], ["front", "Front view"], ["side", "Side view"]] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.cameraView = view;
+      button.textContent = label;
+      button.addEventListener("click", () => this.setCameraView(view));
+      controls.appendChild(button);
+    }
+    for (const [direction, label, factor] of [["in", "Zoom in", 0.85], ["out", "Zoom out", 1 / 0.85]] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.cameraZoom = direction;
+      button.textContent = label;
+      button.addEventListener("click", () => { this.dist *= factor; this.place(); });
+      controls.appendChild(button);
+    }
+    el.append(canvas, controls, help);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x5a6470, 0.95));
     const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(-1, 1.2, 2); this.scene.add(dl);
     const dl2 = new THREE.DirectionalLight(0xffffff, 0.25); dl2.position.set(1, -1, 0.5); this.scene.add(dl2);
@@ -53,6 +82,20 @@ export class Viewer {
     this.cam.up.set(0, 0, 1); this.cam.lookAt(target);
   }
 
+  private setCameraView(view: "reset" | "front" | "side") {
+    // The dispensing front faces -X, and Z stays up in every standard view.
+    this.theta = view === "front" ? Math.PI : view === "side" ? Math.PI / 2 : 2.45;
+    this.phi = view === "reset" ? 1.05 : Math.PI / 2;
+    this.frame();
+  }
+
+  private pan(horizontal: number, vertical: number) {
+    const direction = new THREE.Vector3().subVectors(this.cam.position, this.target).normalize();
+    const right = new THREE.Vector3().crossVectors(this.cam.up, direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right);
+    this.target.addScaledVector(right, horizontal * this.dist * 0.0012).addScaledVector(up, vertical * this.dist * 0.0012);
+  }
+
   private bindInput() {
     const c = this.ren.domElement;
     let drag = false, lx = 0, ly = 0, btn = 0;
@@ -65,16 +108,28 @@ export class Viewer {
       if (!drag) return;
       const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (btn === 0 && !e.shiftKey) { this.theta -= dx * 0.008; this.phi = Math.min(Math.PI - 0.05, Math.max(0.05, this.phi - dy * 0.008)); }
-      else {
-        const r = new THREE.Vector3().subVectors(this.cam.position, this.target).normalize();
-        const rt = new THREE.Vector3().crossVectors(this.cam.up, r).normalize();
-        const up = new THREE.Vector3().crossVectors(r, rt);
-        this.target.addScaledVector(rt, dx * this.dist * 0.0012).addScaledVector(up, dy * this.dist * 0.0012);
-      }
+      else this.pan(dx, dy);
       this.place();
     });
     c.addEventListener("wheel", (e) => { this.dist *= Math.exp(e.deltaY * 0.001); this.place(); e.preventDefault(); }, { passive: false });
     c.addEventListener("contextmenu", (e) => e.preventDefault());
+    c.addEventListener("keydown", (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const horizontal = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+      const vertical = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (horizontal || vertical) {
+        if (event.shiftKey) this.pan(horizontal * 20, vertical * 20);
+        else {
+          this.theta -= horizontal * 0.12;
+          this.phi = Math.min(Math.PI - 0.05, Math.max(0.05, this.phi - vertical * 0.12));
+        }
+      } else if (event.key === "+" || event.key === "=") this.dist *= 0.85;
+      else if (event.key === "-" || event.key === "_") this.dist /= 0.85;
+      else if (event.key === "Home") this.setCameraView("reset");
+      else return;
+      this.place();
+      event.preventDefault();
+    });
   }
 
   private geom(m: MeshData): THREE.BufferGeometry {
@@ -175,11 +230,27 @@ export class Viewer {
    *  flat, the way it prints; here each one is stood back up inside a group per lane that
    *  carries the tier's position and the cascade's 180° turn. */
   showAssembly(parts: PartOut[], o: Options, d: Derived) {
+    const preview = previewCounts(o, d);
+    function* cans() { for (const placement of assemblyCans(o, d)) yield { ...placement, stackIndex: 0 }; }
+    return this.showAssemblyInstances(parts, partManifest(o, d), assemblyPlacements(o, d),
+      [{ diameter: o.canD, height: o.canL, count: preview.cans }], cans(), preview, o.bed);
+  }
+
+  showMixedAssembly(parts: PartOut[], layout: MixedLayout) {
+    return this.showAssemblyInstances(parts, mixedPartManifest(layout), mixedAssemblyPlacements(layout),
+      layout.stacks.map((stack) => ({ diameter: stack.options.canD, height: stack.options.canL, count: stack.cans })),
+      mixedAssemblyCans(layout), mixedPreviewCounts(layout), layout.request.shared.bed);
+  }
+
+  private showAssemblyInstances(parts: PartOut[], descriptors: { name: string; qty: number }[],
+    placements: Iterable<AssemblyPlacement>, canSpecifications: { diameter: number; height: number; count: number }[],
+    canPlacements: Iterable<{ stackIndex: number; pose: Pose; push: [number, number, number] }>,
+    preview: { stride: number; sampled: boolean; cans: number }, bed: [number, number, number]) {
     this.clear();
     const byName = new Map(parts.map((part) => [part.name, part]));
-    const { stride, sampled, cans: canCount } = previewCounts(o, d);
+    const { stride, sampled, cans: canCount } = preview;
     const batches = new Map<string, typeof this.instanceBatches[number]>();
-    for (const descriptor of partManifest(o, d)) {
+    for (const descriptor of descriptors) {
       const part = byName.get(descriptor.name);
       if (!part) throw new Error(`Assembly is missing ${descriptor.name}`);
       const material = new THREE.MeshStandardMaterial({ color: COL[part.role], metalness: 0.05, roughness: 0.62, flatShading: true });
@@ -193,25 +264,28 @@ export class Viewer {
       return new THREE.Matrix4().compose(new THREE.Vector3(...pose.translate), new THREE.Quaternion().setFromEuler(rotation), new THREE.Vector3(1, 1, 1));
     };
     const seen = new Map<string, number>();
-    for (const placement of assemblyPlacements(o, d)) {
+    for (const placement of placements) {
       const index = seen.get(placement.name) ?? 0; seen.set(placement.name, index + 1);
       if (index % stride !== 0) continue;
       batches.get(placement.name)!.entries.push({ rest: matrixOf(placement.pose), push: new THREE.Vector3(...placement.push) });
     }
     const cans = new THREE.Group(); cans.visible = this.cans.visible; this.cans = cans; this.group.add(cans);
-    const cylinder = new THREE.CylinderGeometry(o.canD / 2, o.canD / 2, o.canL, sampled ? 16 : 36);
-    const canMesh = new THREE.InstancedMesh(cylinder, new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 }), Math.ceil(canCount / stride));
-    const canBatch = { mesh: canMesh, entries: [] as { rest: THREE.Matrix4; push: THREE.Vector3 }[] };
-    let index = 0;
-    for (const placement of assemblyCans(o, d)) {
-      if (index++ % stride !== 0) continue;
-      canBatch.entries.push({ rest: matrixOf(placement.pose), push: new THREE.Vector3(...placement.push) });
+    const canBatches = canSpecifications.map((specification) => {
+      const cylinder = new THREE.CylinderGeometry(specification.diameter / 2, specification.diameter / 2, specification.height, sampled ? 16 : 36);
+      const mesh = new THREE.InstancedMesh(cylinder, new THREE.MeshStandardMaterial({ color: COL.can, roughness: 0.45 }), Math.ceil(specification.count / stride));
+      const batch = { mesh, entries: [] as { rest: THREE.Matrix4; push: THREE.Vector3 }[] };
+      this.instanceBatches.push(batch); cans.add(mesh);
+      return batch;
+    });
+    const seenCans = canSpecifications.map(() => 0);
+    for (const placement of canPlacements) {
+      if (seenCans[placement.stackIndex]++ % stride !== 0) continue;
+      canBatches[placement.stackIndex].entries.push({ rest: matrixOf(placement.pose), push: new THREE.Vector3(...placement.push) });
     }
-    this.instanceBatches.push(canBatch); cans.add(canMesh);
     this.explode(this.explodeT);
-    this.addFloor(o.bed);
+    this.addFloor(bed);
     this.theta = 2.45; this.phi = 1.0; this.frame(0.8);
-    return { sampled, shownCans: canBatch.entries.length, totalCans: canCount };
+    return { sampled, shownCans: canBatches.reduce((count, batch) => count + batch.entries.length, 0), totalCans: canCount };
   }
 
   /** A print plate as the slicer will see it. */

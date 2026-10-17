@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script>
+// Apply an explicit choice before the stylesheet paints; System follows CSS color-scheme.
+try {
+  const savedTheme = localStorage.getItem("can-you-dig-it.theme");
+  if (savedTheme === "light" || savedTheme === "dark") document.documentElement.dataset.theme = savedTheme;
+  else if (savedTheme !== null && savedTheme !== "system") console.warn("Ignoring an unknown saved theme:", savedTheme);
+} catch (error) {
+  console.warn("Could not read the saved theme; following system appearance.", error);
+}
+</script>
 <title>can you dig it — printable can storage, sized to your shelf</title>
 <!-- A can, inline: a file would be one more request to 404 on, and every page load was. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='9' y='3' width='14' height='26' rx='4' fill='%23c8372d'/%3E%3Crect x='9' y='3' width='14' height='5' rx='2.5' fill='%23a32b23'/%3E%3C/svg%3E">
@@ -14,10 +25,34 @@
 <header class="masthead">
   <h1>can you dig it</h1>
   <p>Measure the shelf, pick the can, download the plates. Everything runs in your browser.</p>
+  <label class="theme-picker">Theme
+    <select id="theme">
+      <option value="system">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </label>
 </header>
 
+<nav class="task-navigation" aria-label="Organizer workflow">
+  <button type="button" data-navigate="setup">1 · Setup</button>
+  <button type="button" data-navigate="preview">2 · Preview</button>
+  <button type="button" data-navigate="print">3 · Print</button>
+  <button type="button" class="skip-preview" data-navigate="preview">Skip to preview</button>
+</nav>
 <main class="app">
-  <form class="controls" id="form" autocomplete="off">
+  <form class="controls" id="form" autocomplete="off" aria-labelledby="setupHeading">
+    <h2 id="setupHeading" tabindex="-1">Setup</h2>
+    <fieldset>
+      <legend>Organizer</legend>
+      <label class="mode-picker">Can sizes
+        <select id="buildMode" name="buildMode">
+          <option value="uniform">One size, automatically arranged</option>
+          <option value="mixed">Different stacks side by side</option>
+        </select>
+      </label>
+    </fieldset>
+
     <fieldset>
       <legend>Shelf space</legend>
       <div class="dims">
@@ -29,7 +64,7 @@
       <p class="hint">Inside clearances. Depth is front to back and the lane may use all of it; the front gap is what stays free for your hand.</p>
     </fieldset>
 
-    <fieldset>
+    <fieldset id="uniformCan">
       <legend>Can</legend>
       <div class="row">
         <label class="grow">Preset
@@ -45,24 +80,61 @@
       </div>
       <div class="dims">
         <label>Diameter <input name="canD" type="number" min="20" max="200" step="0.1" value="66"><span>mm</span></label>
-        <label>Length <input name="canL" type="number" min="40" max="400" step="0.1" value="122.5"><span>mm</span></label>
+        <label>Can height <input name="canL" type="number" min="40" max="400" step="0.1" value="122.5"><span>mm</span></label>
       </div>
     </fieldset>
 
+    <fieldset id="mixedEditor" hidden>
+      <legend>Your stacks</legend>
+      <p class="hint">In order from right to left when viewed from the front. Each stack keeps one can size and depth. All dispensing fronts line up.</p>
+      <div id="mixedOrder" class="mixed-order" aria-label="Stack order viewed from the front"></div>
+      <p class="hint" id="stackReorderHint">Drag a Reorder handle, use the ↑ / ↓ buttons, or focus a handle and press the Up / Down arrow keys.</p>
+      <p id="stackOrderStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+      <div id="mixedStacks" class="mixed-stacks"></div>
+      <button type="button" id="addStack" class="stack-action">Add a stack</button>
+      <p class="hint">Choose 2–8 connected stacks. Depth stays exactly as entered. Automatic tiers use the shelf height; fixed tiers stay exact. Mixed stacks currently need flat bases.</p>
+    </fieldset>
+
     <fieldset>
-      <legend>Printer</legend>
+      <legend>Printer and print settings</legend>
+      <div class="profile">
+        <div class="profilePick">Print settings
+          <select id="pickPrinter" aria-label="Printer"><option value="">Pick a printer…</option></select>
+          <label class="profilePick profile-setting" hidden>Nozzle<select id="pickNozzle" aria-label="Nozzle" disabled></select></label>
+          <label class="profilePick profile-setting" hidden>Process<select id="pickProcess" aria-label="Process" disabled></select></label>
+          <label class="profilePick profile-setting" hidden>Filament<select id="pickFilament" aria-label="Filament" disabled></select></label>
+          <label class="check"><input type="checkbox" id="pickTranslucent" disabled> Translucent PETG settings</label>
+          <details class="translucent-help"><summary>What translucent settings change</summary><p>1 wall, no shells, solid, fan off, 20 mm/s. Slow; a 0.8 mm nozzle is fastest.</p></details>
+        </div>
+        <label class="profilePick">Or load them from a 3MF<input type="file" id="profileIn" accept=".3mf"></label>
+        <span id="profileNow"></span>
+        <button type="button" id="profileClear" hidden>Clear</button>
+      </div>
+      <p class="hint">Choose a printer above, or enter a custom build volume below.</p>
       <div class="dims">
-        <label>Bed X <input name="bedX" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
-        <label>Bed Y <input name="bedY" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
-        <label>Z <input name="bedZ" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
+        <label>Bed width <input name="bedX" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
+        <label>Bed depth <input name="bedY" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
+        <label>Build height <input name="bedZ" type="number" min="50" max="1000" step="1" value="256"><span>mm</span></label>
       </div>
     </fieldset>
 
-    <fieldset>
-      <legend>Options</legend>
-      <label class="check"><input name="cascade" type="checkbox" checked> Auto-feed between tiers (cascade)</label>
-      <label class="check"><input name="cover" type="checkbox" checked> Cover plate on the top tier</label>
-      <label class="check"><input name="rearLoad" type="checkbox"> Load from the back</label>
+    <section class="layouts" id="layouts" aria-live="polite"></section>
+    <h2 id="optionsLegend">Customize</h2>
+    <details class="option-group" id="feedingOptions"><summary>Feeding and loading<span class="option-state" id="feedingSummary"></span></summary>
+      <label class="check" id="sharedCascade"><input name="cascade" type="checkbox" checked> Include auto-feed layouts</label>
+      <label class="check" id="sharedCover"><input name="cover" type="checkbox" checked> Cover plate on the top tier</label>
+      <label class="check" id="sharedRearLoad"><input name="rearLoad" type="checkbox"> Load from the back</label>
+      <div class="pair" id="sharedSlope">
+        <label>Deck slope <input name="slope" type="number" min="0" max="10" step="0.5" value="3"><span>°</span></label>
+        <span class="hint">3° is intended to help cans roll forward. Lower slopes make shorter tiers; printed friction still needs testing.</span>
+      </div>
+      <label class="fit" id="sharedLipGap">Lip headroom
+        <input name="lipGap" type="range" min="0" max="20" step="1" value="5">
+        <output name="lipGapOut">5</output>
+        <span class="hint">mm over a can as it comes out over the lip. The tier grows when the slope alone does not give it.</span>
+      </label>
+    </details>
+    <details class="option-group" id="appearanceOptions"><summary>Appearance<span class="option-state" id="appearanceSummary"></span></summary>
       <div class="row">
         <label class="grow">Design
           <select name="design">
@@ -80,20 +152,15 @@
           </select>
         </label>
       </div>
+      <p class="pattern-sample" id="patternSample" aria-hidden="true"></p>
       <label class="check"><input name="solid" type="checkbox"> Solid walls, no pattern</label>
       <div class="pair">
-        <label>Cell size <input name="hexR" type="number" min="6" max="20" step="0.5" value="13"><span>mm</span></label>
-        <label class="check"><input name="hexAuto" type="checkbox" checked> Auto, three rows per wall</label>
+        <label>Manual cell size <input name="hexR" type="number" min="6" max="20" step="0.5" value="13"><span>mm</span></label>
+        <label class="check"><input name="hexAuto" type="checkbox" checked> Automatic: three rows per wall</label>
       </div>
-      <div class="pair">
-        <label>Deck slope <input name="slope" type="number" min="0" max="10" step="0.5" value="3"><span>°</span></label>
-        <span class="hint">3° rolls a can to the front on its own. Lower is a shorter tier, so more of them stack.</span>
-      </div>
-      <label class="fit">Lip headroom
-        <input name="lipGap" type="range" min="0" max="20" step="1" value="5">
-        <output name="lipGapOut">5</output>
-        <span class="hint">mm over a can as it comes out over the lip. The tier grows when the slope alone does not give it.</span>
-      </label>
+      <p class="hint">The manual value is used only when Automatic is off.</p>
+    </details>
+    <details class="option-group" id="baseOptions"><summary>Base and connections<span class="option-state" id="baseSummary"></span></summary>
       <div class="pair">
         <label class="grow">Base <select name="base">
           <option value="flat">Flat on the shelf</option>
@@ -102,7 +169,7 @@
         </select></label>
         <label class="check"><input name="magnets" type="checkbox"> Magnet pockets (6 × 2 mm) in the feet</label>
       </div>
-      <div class="row">
+      <div class="row" id="gridAlignment">
         <label class="grow">Lane on its cells, across <select name="across">
           <option value="left">Left</option>
           <option value="centre" selected>Centred</option>
@@ -114,11 +181,13 @@
           <option value="back">Back</option>
         </select></label>
       </div>
-      <div class="row">
+      <div class="row" id="sharedStackable">
         <label class="grow">Join on top <select name="stackable">
           <option value="on">Another tier</option>
           <option value="off" selected>Nothing</option>
         </select></label>
+      </div>
+      <div class="row" id="outerJoins">
         <label class="grow">Left <select name="left">
           <option value="tongue" selected>Tongue</option>
           <option value="socket">Socket</option>
@@ -130,8 +199,10 @@
           <option value="none">Nothing</option>
         </select></label>
       </div>
-      <span class="hint">Printed snaps and hidden keys hold the assembly together. Choose side connectors for future expansion; units join only when printed from the same settings. A Gridfinity baseplate joins those units instead.</span>
-      <label class="fit">Fit
+      <span class="hint" id="outerJoinsHint">Printed snaps and hidden keys hold the assembly together. Choose side connectors for future expansion; units join only when printed from the same settings. A Gridfinity baseplate joins those units instead.</span>
+    </details>
+    <details class="option-group" id="fitOptions"><summary>Advanced fit<span class="option-state" id="fitSummary"></span></summary>
+      <label class="fit">Joint clearance
         <!-- The two sliders span the useful range, not the LIMITS the gate allows: a value
              past a slider's end is clamped on load and the next edit writes the clamped
              one back to the hash. The number inputs above carry LIMITS exactly. -->
@@ -139,50 +210,55 @@
         <output name="fitOut">0.00</output>
         <span class="hint">Added to every clearance. Nudge + if joints bind, − if they rattle.</span>
       </label>
-    </fieldset>
-
-    <section class="layouts" id="layouts" aria-live="polite"></section>
+    </details>
   </form>
 
-  <section class="stage">
-    <div class="viewer" id="viewer"></div>
+  <section class="stage" aria-labelledby="previewHeading">
+    <h2 id="previewHeading" tabindex="-1">Preview</h2>
+    <div class="viewer" id="viewer" role="tabpanel" aria-label="Organizer preview"><p class="viewer-message" id="viewerMessage" role="status" hidden></p></div>
     <div class="stagebar">
-      <div class="tabs" id="tabs" role="tablist"></div>
+      <label class="part-search">Find a part <input type="search" id="partSearch" placeholder="Name or part ID"></label>
+      <div class="tabs" id="tabs" role="tablist" aria-label="Assembly and parts"></div>
+      <details class="part-identifiers"><summary>Selected part ID</summary><p id="partIdentifier">Assembly</p></details>
       <label class="check" id="showCans" hidden><input type="checkbox" checked> Show cans</label>
       <label class="check" id="showGrid" hidden><input type="checkbox" checked> Show grid</label>
       <label class="check" id="showBed" hidden><input type="checkbox"> Show printer bed</label>
       <label class="check" id="explode" hidden>Pull apart <input type="range" min="0" max="1" step="0.01" value="0"></label>
-      <div class="status" id="status">Enter your shelf size to begin.</div>
+      <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true">Enter your shelf size to begin.</div>
       <button type="button" id="share" title="Copy a link to this design">Share</button>
     </div>
   </section>
 
-  <aside class="results" id="results" hidden>
+  <aside class="print-section" id="printSection" aria-labelledby="printHeading">
+    <h2 id="printHeading" tabindex="-1">Print</h2>
+    <div id="printRecovery"><p>Finish setup to create printable plates. Your printer and all settings stay in Setup.</p><button type="button" data-navigate="setup">Review setup</button></div>
+    <div class="results" id="results" hidden>
     <div class="summary" id="summary"></div>
-    <div class="plates" id="plates"></div>
-    <div class="actions">
+    <div class="actions" id="printActions">
       <button type="button" class="primary" id="dl3mf">Download 3MF project</button>
       <button type="button" id="dlstl">Download STL zip</button>
-      <div class="profile">
-        <div class="profilePick">Print settings
-          <select id="pickPrinter" aria-label="Printer"><option value="">Pick a printer…</option></select>
-          <select id="pickNozzle" aria-label="Nozzle" disabled></select>
-          <select id="pickProcess" aria-label="Process" disabled></select>
-          <select id="pickFilament" aria-label="Filament" disabled></select>
-          <label class="check"><input type="checkbox" id="pickTranslucent" disabled> Translucent: 1 wall, no shells, solid, fan off, 20 mm/s. Slow; a 0.8 nozzle is fastest.</label>
-        </div>
-        <label class="profilePick">Or load them from a 3MF<input type="file" id="profileIn" accept=".3mf"></label>
-        <span id="profileNow"></span>
-        <button type="button" id="profileClear" hidden>Clear</button>
-      </div>
-      <p class="hint">The 3MF opens in Bambu Studio or Orca with every part already on a plate. Suggested settings: 0.20 mm Standard as it comes (2 walls, 15 % grid), PETG. Pins, tabs and ears are whole layers at 0.20 and not at 0.28.</p>
+      <p class="hint">3MF opens arranged plates in Bambu Studio or Orca and includes selected or imported print settings when loaded. STL ZIP provides individual part models for other slicers; arrange plates and choose settings there. PETG with 0.20 mm layers is recommended: pins, tabs and ears use whole layers at 0.20 mm, not 0.28 mm.</p>
+    </div>
+    <div class="plates" id="plates"></div>
     </div>
   </aside>
 </main>
 
 <footer class="foot">
-  <p>Every piece prints flat, face up, without supports. For split lanes, drop the deck T together, slide each pair of wall halves onto its hidden keys along the lane, then snap the joined walls onto the deck ears. Drop the end wall into the side-wall slots and snap it onto the deck. Build each tier before adding the next. Slide the cover halves onto their keys along the lane before lowering the joined cover onto the wall pins. Printed joints and keys need no glue or hardware. Support the bottom when moving a loaded dispenser; print the joint coupon and qualify a complete lane before loading the full assembly.
-     Source: <a href="https://github.com/GoogilyBoogily/can-you-dig-it">can-you-dig-it</a>.</p>
+  <details><summary>Assembly and printed-fit guidance</summary>
+  <section id="uniformAssembly"><h2>Assembly steps</h2>
+    <p>Decks, walls and covers print flat, face up, without supports. Printed joints and keys need no glue or hardware.</p>
+    <ol><li>For split lanes, join the deck sections in order at each T joint. Slide the wall sections onto their hidden keys along the lane, working from one end.</li><li>Snap the joined walls onto the deck ears. Drop the end wall into the side-wall slots and snap it onto the deck.</li><li>Build each tier before adding the next. Join all cover sections on their keys before lowering the joined cover onto the wall pins. Support the loaded organizer underneath.</li></ol>
+    <p>Support the bottom when moving a loaded dispenser; print the joint test pieces and qualify a complete lane before loading the full assembly.</p>
+  </section>
+  <section id="mixedAssembly" hidden><h2>Assembly steps for connected stacks</h2>
+    <p>Decks, walls and covers print flat, face up, without supports. The joining keys between stacks print standing on their ends, up to 40 mm high.</p>
+    <ol><li>Assemble outside the shelf, without cans. For split parts, join the deck sections at every T joint and slide the wall sections onto their hidden keys before snapping the walls onto the decks.</li><li>Join the bottom decks and walls. Feed each boundary’s key segments in from the dispensing front toward the closed rear stop.</li><li>Check both retaining gates have returned behind the last segment, then add the upper tiers and joined covers. Support the loaded organizer underneath.</li></ol>
+    <p>Support the bottom when moving a loaded organizer. Printed fit and loaded strength still need qualification; test the printed joints and a complete stack before loading the full organizer.</p>
+  </section>
+  <div id="assemblyParts" class="assembly-parts"></div>
+  </details>
+  <p>Source: <a href="https://github.com/GoogilyBoogily/can-you-dig-it">can-you-dig-it</a>.</p>
 </footer>
 <script type="module" src="main.js"></script>
 </body>

@@ -1,4 +1,6 @@
-import { K, type Options, type Derived, type LaneRole, type PlateName, type Side, type WallPlateName } from "./model";
+import { K, type Options, type Derived, type LaneRole, type PlateName, type Side, type WallPlateName, type ResolvedMixedStack, type MixedBoundaryConnection } from "./model";
+import { clearanceOf } from "./features/joints";
+import { MIXED_CONNECTION, mixedConnectionHeight } from "./features/mixed-connection";
 
 /** The role tier `t` (0 on the shelf) prints as. A flat stack's tiers are all one lane. */
 export const tierRole = (o: Options, t: number): LaneRole =>
@@ -59,4 +61,31 @@ export function wallVariant(o: Options, lane: number, tier: number, side: number
   const connected = deckSides(o, lane)[worldSide > 0 ? 0 : 1] !== "none";
   const terminal = tier === o.tiers - 1 && !o.cover && !o.stackable;
   return `${side > 0 ? "wall-left" : "wall-right"}${connected ? "" : "-closed"}${terminal ? "-terminal" : ""}${tier === rearTier(o) ? "-open" : ""}`;
+}
+
+/** Pure connection arithmetic; the manifest and geometry consume this same plan. */
+export function mixedConnections(stacks: readonly ResolvedMixedStack[]): MixedBoundaryConnection[] {
+  return stacks.slice(1).map((second, firstStackIndex) => {
+    const first = stacks[firstStackIndex];
+    const label = `Connection between stacks ${firstStackIndex + 1} and ${firstStackIndex + 2}`;
+    try {
+      const wallHeight = (stack: ResolvedMixedStack) => stack.options.cascade ? stack.derived.Hb : stack.derived.H;
+      const firstHeight = mixedConnectionHeight(wallHeight(first), first.derived.split);
+      const secondHeight = mixedConnectionHeight(wallHeight(second), second.derived.split);
+      const endFromFront = Math.min(first.derived.L, second.derived.L) - MIXED_CONNECTION.endMargin;
+      if (endFromFront <= MIXED_CONNECTION.gateRoot + 2 * K.ligMin)
+        throw new Error("the shared depth leaves no channel behind the retaining gate");
+      const clearance = clearanceOf(first.options);
+      const startFromFront = MIXED_CONNECTION.gateBack + clearance;
+      const length = endFromFront - clearance - startFromFront;
+      const segmentCount = Math.ceil(length / 40);
+      const segmentLength = length / segmentCount;
+      if (segmentLength > Math.min(first.derived.usableZ, second.derived.usableZ))
+        throw new Error("the spline segments exceed the printer's available Z height");
+      return { firstStackIndex, secondStackIndex: firstStackIndex + 1, firstHeight, secondHeight,
+        endFromFront, startFromFront, segmentLength, segmentCount };
+    } catch (error) {
+      throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
 }
