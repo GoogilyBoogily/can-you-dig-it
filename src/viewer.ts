@@ -2,8 +2,9 @@ import * as THREE from "three";
 import type { MeshData, PackedPlan } from "./export";
 import type { Derived, Options } from "./model";
 import type { Pose } from "./features/pose";
-import { assemblyPlacements, assemblyCans, partManifest, previewCounts, mixedPartManifest, mixedAssemblyPlacements, mixedAssemblyCans, mixedPreviewCounts, type AssemblyPlacement } from "./assembly";
+import { assemblyPlacements, assemblyCans, partManifest, previewCounts, mixedPartManifest, mixedAssemblyPlacements, mixedAssemblyCans, mixedPreviewCounts, independentRowsPartManifest, independentRowsAssemblyPlacements, independentRowsAssemblyCans, independentRowsPreviewCounts, type AssemblyPlacement } from "./assembly";
 import type { MixedLayout } from "./solver";
+import type { IndependentRowsLayout } from "./rows";
 import type { PartOut } from "./worker";
 
 const COL = { lane: 0x4a6f92, lip: 0x2b2f36, riser: 0x9b7a3c, cover: 0x7f9dbd, can: 0xc8372d, bed: 0x2a2e35 };
@@ -240,6 +241,12 @@ export class Viewer {
     return this.showAssemblyInstances(parts, mixedPartManifest(layout), mixedAssemblyPlacements(layout),
       layout.stacks.map((stack) => ({ diameter: stack.options.canD, height: stack.options.canL, count: stack.cans })),
       mixedAssemblyCans(layout), mixedPreviewCounts(layout), layout.request.shared.bed);
+  }
+
+  showIndependentRowsAssembly(parts: PartOut[], layout: IndependentRowsLayout) {
+    return this.showAssemblyInstances(parts, independentRowsPartManifest(layout), independentRowsAssemblyPlacements(layout),
+      layout.rows.flatMap(row => row.lanes.map(lane => ({ diameter: lane.options.canD, height: lane.options.canL, count: lane.cans }))),
+      independentRowsAssemblyCans(layout), independentRowsPreviewCounts(layout), layout.request.shared.bed);
   }
 
   private showAssemblyInstances(parts: PartOut[], descriptors: { name: string; qty: number }[],

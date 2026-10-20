@@ -1,7 +1,7 @@
 // Validate form and shared-link inputs. Mixed slope and lip headroom are checked
 // after per-stack overrides are applied, before any geometry is solved.
 
-import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, SIDES, type Design, type Pattern, type Base, type Across, type Along, type Side, type Options, type MixedBuildRequest, type MixedStackRequest } from "./model";
+import { DEFAULTS, DESIGNS, PATTERNS, BASES, ACROSS, ALONG, SIDES, type Design, type Pattern, type Base, type Across, type Along, type Side, type Options, type MixedBuildRequest, type MixedStackRequest, INDEPENDENT_ROWS_LIMITS, type IndependentLaneRequest, type IndependentRowRequest, type IndependentRowsBuildRequest } from "./model";
 import type { Space } from "./solver";
 
 interface Limit { min: number; max: number; label: string }
@@ -57,8 +57,11 @@ export function optionsFrom(field: (name: string) => string | null): FormValues 
 export function mixedOptionsFrom(field: (name: string) => string | null, stacks: unknown): { space: Space; request: MixedBuildRequest } {
   const { space, base, cascade } = sharedFormFrom(field, true);
   if (base.base !== "flat") throw new Error("Mixed stacks currently require a flat base");
+  const shareWalls = field("shareWalls");
+  if (shareWalls !== null && shareWalls !== "on" && shareWalls !== "off")
+    throw new Error("Wall sharing must be on or off");
   const { length, tiers, lanesWide, left, right, base: standsOn, magnets, across, along, shelfCells, ...shared } = base;
-  return { space, request: { shared: { ...shared, base: "flat", cascade }, stacks: mixedStacksFrom(stacks) } };
+  return { space, request: { shared: { ...shared, base: "flat", cascade }, stacks: mixedStacksFrom(stacks), ...(shareWalls === "on" ? { shareCompatibleWalls: true } : {}) } };
 }
 
 /** A shared gate for form rows and typed callers of the mixed shelf resolver. */
@@ -127,4 +130,77 @@ function sharedFormFrom(field: (name: string) => string | null, mixed: boolean) 
     hexR: num("hexR"), hexAuto: on("hexAuto"), slope: num("slope"), lipGap: num("lipGap"),
   };
   return { space: { w: num("w"), d: num("d"), h: num("h"), front: num("front") }, base, cascade: on("cascade"), numbers: raw };
+}
+
+/** Independent rows have their own schema; legacy tiers and cascade never participate. */
+export function independentRowsFrom(rows: unknown): IndependentRowRequest[] {
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > INDEPENDENT_ROWS_LIMITS.requestedRows)
+    throw new Error(`Custom rows need one to ${INDEPENDENT_ROWS_LIMITS.requestedRows} rows`);
+  let expandedRows = 0, expandedLanes = 0;
+  const requests = rows.map((value, rowIndex): IndependentRowRequest => {
+    const label = `Row ${rowIndex + 1}`;
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label}: enter the row settings and lanes`);
+    const row = value as Record<string, unknown>;
+    for (const key of Object.keys(row)) if (!["lanes", "repeat", "rowHeight", "rowSpan", "alignment", "rearLoad"].includes(key))
+      throw new Error(`${label}: unsupported setting ${key}`);
+    const repeat = row.repeat;
+    if (typeof repeat !== "number" || !Number.isSafeInteger(repeat) || repeat < 1 || repeat > INDEPENDENT_ROWS_LIMITS.repetitions)
+      throw new Error(`${label}: repeat must be a whole number from 1 to ${INDEPENDENT_ROWS_LIMITS.repetitions}`);
+    const dimension = (key: "rowHeight" | "rowSpan", dimensionLabel: string, maximum: number): number | "auto" => {
+      const number = row[key];
+      if (number === "auto") return number;
+      if (typeof number !== "number" || !Number.isFinite(number) || number <= 0 || number > maximum)
+        throw new Error(`${label}: ${dimensionLabel} must be Auto or a positive number up to ${maximum} mm`);
+      return number;
+    };
+    const alignment = row.alignment;
+    if (alignment !== "left" && alignment !== "centre" && alignment !== "right") throw new Error(`${label}: alignment must be left, centre or right`);
+    if (typeof row.rearLoad !== "boolean") throw new Error(`${label}: rear loading must be true or false`);
+    if (!Array.isArray(row.lanes) || row.lanes.length < 1 || row.lanes.length > INDEPENDENT_ROWS_LIMITS.lanesPerRow)
+      throw new Error(`${label}: enter one to ${INDEPENDENT_ROWS_LIMITS.lanesPerRow} lanes`);
+    const lanes: IndependentLaneRequest[] = row.lanes.map((value, laneIndex) => {
+      const laneLabel = `${label}, Lane ${laneIndex + 1}`;
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${laneLabel}: enter the can size and lane settings`);
+      const lane = value as Record<string, unknown>;
+      for (const key of Object.keys(lane)) if (!["canDiameter", "canHeight", "depth", "slope", "lipGap"].includes(key))
+        throw new Error(`${laneLabel}: unsupported setting ${key}`);
+      const number = (key: string, limitKey: string): number => {
+        const number = lane[key], limit = LIMITS[limitKey];
+        if (typeof number !== "number" || !Number.isFinite(number)) throw new Error(`${laneLabel}: ${limit.label} needs a number`);
+        if (number < limit.min || number > limit.max)
+          throw new Error(`${laneLabel}: ${limit.label} must be between ${limit.min} and ${limit.max} ${key === "slope" ? "degrees" : "mm"}`);
+        return number;
+      };
+      return { canDiameter: number("canDiameter", "canD"), canHeight: number("canHeight", "canL"),
+        depth: number("depth", "d"), slope: number("slope", "slope"), lipGap: number("lipGap", "lipGap") };
+    });
+    expandedRows += repeat; expandedLanes += repeat * lanes.length;
+    return { lanes, repeat, rowHeight: dimension("rowHeight", "row height", LIMITS.h.max),
+      rowSpan: dimension("rowSpan", "row span", LIMITS.w.max), alignment, rearLoad: row.rearLoad };
+  });
+  if (expandedRows > INDEPENDENT_ROWS_LIMITS.expandedRows) throw new Error(`Custom rows expand to more than ${INDEPENDENT_ROWS_LIMITS.expandedRows} rows; reduce repetition`);
+  if (expandedLanes > INDEPENDENT_ROWS_LIMITS.expandedLanes) throw new Error(`Custom rows expand to more than ${INDEPENDENT_ROWS_LIMITS.expandedLanes} lanes; reduce rows, lanes or repetition`);
+  return requests;
+}
+
+/** Read only the controls belonging to the independent-row contract. */
+export function independentRowsOptionsFrom(field: (name: string) => string | null, rows: unknown): { space: Space; request: IndependentRowsBuildRequest } {
+  const numbers: Record<string, number> = {};
+  for (const key of ["w", "d", "h", "front", "bedX", "bedY", "bedZ", "hexR", "fit"])
+    numbers[key] = parseFloat(String(field(key)));
+  readNumbers(numbers);
+  const design = field("design") as Design, pattern = field("pattern") as Pattern;
+  if (!DESIGNS.includes(design)) throw new Error("design: pick Standard or Minimal");
+  if (!PATTERNS.includes(pattern)) throw new Error("pattern: pick Hex, Circles, Kumiko, Slats or Breeze block");
+  const checkbox = (key: string): boolean => {
+    const value = field(key);
+    if (value !== null && value !== "on" && value !== "off") throw new Error(`${key}: choose on or off`);
+    return value === "on";
+  };
+  return { space: { w: numbers.w, d: numbers.d, h: numbers.h, front: numbers.front }, request: {
+    shared: { base: "flat", wall: DEFAULTS.wall, clearance: DEFAULTS.clearance, fit: numbers.fit,
+      hexR: numbers.hexR, hexAuto: checkbox("hexAuto"), solid: checkbox("solid"), design, pattern,
+      bed: [numbers.bedX, numbers.bedY, numbers.bedZ], bedMargin: DEFAULTS.bedMargin },
+    rows: independentRowsFrom(rows), shareCompatibleWalls: checkbox("rowsShareWalls"), topCover: checkbox("rowsTopCover"),
+  } };
 }

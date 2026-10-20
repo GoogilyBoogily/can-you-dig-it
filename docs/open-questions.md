@@ -44,6 +44,65 @@ code comment. Resolved entries retain the original evidence for comparison.
   `laneOf`, so two jobs at different lengths or cans do not line up. The UI says so; the
   app cannot compare two print jobs.
 
+## Shared stack walls (added 2026-10-17)
+
+- **Compatible whole boundaries are implemented as an opt-in.** Matching stacks can
+  share one neutral divider with independent deck ears, end-wall half-posts and
+  caught cover fingers; different lane widths remain supported. Incompatible or
+  unplannable boundaries retain both original walls and their spline with a visible
+  reason. Version-4 links carry the request; older mixed links keep sharing off.
+  Arbitrary unequal-depth/height or partial-boundary sharing still needs a separate
+  mechanism; do not force common tier spacing or resize a stack to obtain savings.
+- **Review defects corrected (2026-10-18).** Shared covers and primary-ear/follower-
+  rail interfaces now have the selected fit clearance. The follower rail is relieved
+  without shortening the primary bearing or slot frame. Thick split covered
+  boundaries retain both walls if the original cover-key socket would lose its
+  minimum support ligament; unsplit/uncovered variants remain eligible. Primary
+  print envelopes no longer include a follower collar. Regression cases cover
+  fit endpoints, reversed cascade hands, actual key/cover collisions, and the
+  389.5 mm shelf requirement for a printable 234/122.5 mm unequal-width pair.
+- **Digital evidence is separate from physical qualification.** The 0.6 mm shared
+  pin crest preserves the qualified return/root geometry and requires additional
+  top headroom. The mechanical prototype passed its recorded geometry/toolpath
+  gate; production generation and final evidence are tracked in the
+  [shared-wall qualification record](superpowers/specs/2026-10-17-shared-stack-walls-qualification.md).
+  No shared-joint hand fit, creep, load rating or cover-lifting claim is established.
+  After printing the fresh coupon, qualify a complete paired/triple assembly with
+  both-full and one-sided loading, including a multi-section example. Keep loaded
+  handling supported underneath and agree the actual load/dwell before testing.
+- **Joint/cut planning expanded (2026-10-20).** Flat two-section sharing failures
+  now search cut and support/clip positions together, preserving original outer
+  bearings and frozen support-span limits. The reported 292.1 mm, 5° two-tier
+  triple passes actual assembly, stored-can extremes, retention and packing at
+  fits −0.2, 0 and +0.3. Fresh toolpath qualification is recorded separately from
+  physical fit/load testing. The bounded fallback does not yet expand failing
+  cascade/multiple-cut plans or reconcile different section counts. Report an
+  exhausted search accurately; do not present it as proof of physical impossibility.
+- **Inherited cascade loading-window corner play remains open.** Centered vertical
+  can loading clears. At the full axial can displacement, rounded window corners
+  can clip the cylinder; the same limitation exists without shared walls. Stored
+  can extremes clear and shared collars must add no new loading contact. Do not
+  treat matching legacy collision volume as a physical loading qualification.
+
+## Independent can rows (added 2026-10-19)
+
+- **Custom rows now have real support parts.** Independent lane counts, can sizes,
+  row height/span/alignment and explicit repeats use a carrier and retained shoes,
+  adding 14.1 mm per transition. The editor, v5 links, preview and printable export
+  share the same physical manifest. Common-depth whole/two-section transitions
+  have a bounded support envelope; unqualified seams, overhangs and key/slot host
+  conflicts fail explicitly. Multiple rows currently retain separate walls with
+  a visible reason; a single physical row can share compatible dividers.
+- **Digital coverage is distinct from physical trials.** Fresh three-fit, both-axis
+  shoe and carrier/receiver probes pass, and the complete 112-piece example slices
+  on 24 P2S plates. Hand fit, loaded dwell/creep and one-sided loading remain open.
+  The compact-repeat key allocator now reserves the final slot/flare envelope;
+  depths 180/200/240/250 mm pass all three fits and 1,296 new both-axis toolpath
+  probes. A corrected 240 mm complete export also slices on 11 plates.
+  See the [qualification and assembly protocol](superpowers/specs/2026-10-19-independent-can-rows-qualification.md)
+  for exact evidence, process settings and trial order. Agree actual loads/dwell
+  before trials and support loaded handling underneath.
+
 ## Load from the back (`o.rearLoad`, added 2026-09-29)
 
 - **Nothing braces the side walls at the open end.** The end wall's body is what stops the
@@ -200,3 +259,18 @@ Internal slicer errors fail validation even when Bambu returns exit code 0.
 The file's header says why the presets are flattened by hand. See
 [the ZFiller investigation](zfiller-diagnostics.md) for the reduced convex-wedge
 reproducer and the remaining upstream floating-infill defect.
+
+
+## Exact shared-wall stock-profile slicing (2026-10-20)
+
+The 292.1 mm, two-tier reported link now generates and exports 24 cans with both
+shared boundaries. The exact browser download uses manual pattern radius 13 mm
+and stock P2S Standard/PETG Translucent/Textured PEI settings. A fresh 23-plate
+Bambu 02.08.02.61 run emitted 20 ZFiller internal errors despite exit/result zero;
+strict qualification fails. All 736 nominal functional centerline screens pass,
+but this does not establish clean toolpaths or physical assembly. The earlier
+all-fit/both-axis tuned-profile radius-16 qualification covers its own recorded
+configuration. Preserve both scopes; do not present it as exact-link qualification.
+See the updated [shared-wall qualification](superpowers/specs/2026-10-17-shared-stack-walls-qualification.md)
+and [existing slicer investigation](zfiller-diagnostics.md). No profile disabling,
+geometry distortion or installed-app patch has been adopted.

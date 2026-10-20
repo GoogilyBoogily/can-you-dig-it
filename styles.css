@@ -79,6 +79,11 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .stack-summary { padding-top: 10px; border-top: 1px solid var(--rule); }
 .stack-summary h3 { margin: 0 0 6px; font-size: 14px; }
 .check { display: flex; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; }
+.wall-sharing { min-height: 44px; cursor: pointer; }
+.wall-sharing input { flex-shrink: 0; }
+.wall-sharing-result { padding: 10px 0; border-top: 1px solid var(--rule); }
+.wall-sharing-result p { margin: 0; }
+.wall-sharing-result ul { padding-left: 18px; font-size: 13px; }
 /* a display of our own beats the browser's [hidden]; the viewer toggles rely on it */
 [hidden] { display: none !important; }
 /* one number with its note beside it: hex cell + auto, deck slope + hint */
@@ -223,8 +228,33 @@ button:disabled { opacity: 0.5; cursor: default; }
 #mixedOrder small { font-size: 9px; text-align: center; overflow-wrap: anywhere; }
 
 #uniformCan .dims { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1101px) {
+  /* Expanded guidance needs document space below the preview's minimum height. */
+  body:has(.foot > details[open]) { display: block; height: auto; }
+  body:has(.foot > details[open]) .app { grid-template-rows: minmax(560px, calc(100vh - 180px)); }
+}
 @media (min-width: 761px) and (max-width: 1100px) {
   body { display: block; height: auto; }
   .app { grid-template-rows: minmax(560px, calc(100vh - 180px)) auto; }
   .print-section { max-height: none; overflow: visible; }
 }
+
+.custom-rows { display: grid; gap: 16px; margin: 12px 0; }
+.custom-row-card { min-width: 0; padding: 10px; border: 1px solid var(--lattice); border-radius: 8px; background: var(--paper-2); }
+.custom-row-card h3 { margin: 0 0 8px; font-size: 15px; }
+.custom-row-card h4 { margin: 0 0 8px; font-size: 14px; }
+.custom-row-card .dims { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.custom-row-card input, .custom-row-card select { min-width: 0; }
+.custom-row-card > .dims { margin-top: 10px; }
+.custom-row-actions, .custom-lane-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.custom-row-actions button, .custom-lane-actions button, #addIndependentRow, [data-row-action="add-lane"] { min-height: 44px; }
+.custom-row-lanes { display: grid; gap: 10px; margin: 10px 0; }
+.custom-lane-card { min-width: 0; padding: 9px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); }
+.custom-lane-card > label { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+.custom-row-map { display: grid; gap: 5px; margin-top: 12px; }
+.custom-row-band { display: flex; gap: 4px; align-items: stretch; font-size: 11px; }
+.custom-row-band > strong { display: grid; place-items: center; width: 44px; flex-shrink: 0; }
+.custom-row-band > span { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: center; padding: 5px 2px; border: 1px solid var(--lattice); border-radius: 4px; background: var(--paper-2); }
+.custom-row-result { padding-top: 10px; border-top: 1px solid var(--rule); }
+.custom-row-result h3, .custom-row-result h4 { margin: 6px 0; }
+.custom-row-result ul { padding-left: 18px; }

@@ -1,4 +1,4 @@
-import { K, type Options, type Derived, type LaneRole, type PlateName, type Side, type WallPlateName, type ResolvedMixedStack, type MixedBoundaryConnection } from "./model";
+import { K, type Options, type Derived, type LaneRole, type PlateName, type Side, type WallPlateName, type ResolvedMixedStack, type MixedBoundaryConnection, type MixedBoundaryPlan } from "./model";
 import { clearanceOf } from "./features/joints";
 import { MIXED_CONNECTION, mixedConnectionHeight } from "./features/mixed-connection";
 
@@ -64,8 +64,9 @@ export function wallVariant(o: Options, lane: number, tier: number, side: number
 }
 
 /** Pure connection arithmetic; the manifest and geometry consume this same plan. */
-export function mixedConnections(stacks: readonly ResolvedMixedStack[]): MixedBoundaryConnection[] {
-  return stacks.slice(1).map((second, firstStackIndex) => {
+export function mixedConnections(stacks: readonly ResolvedMixedStack[], boundaries?: readonly MixedBoundaryPlan[]): MixedBoundaryConnection[] {
+  return stacks.slice(1).flatMap((second, firstStackIndex) => {
+    if (boundaries?.[firstStackIndex].kind === "shared") return [];
     const first = stacks[firstStackIndex];
     const label = `Connection between stacks ${firstStackIndex + 1} and ${firstStackIndex + 2}`;
     try {
@@ -82,8 +83,8 @@ export function mixedConnections(stacks: readonly ResolvedMixedStack[]): MixedBo
       const segmentLength = length / segmentCount;
       if (segmentLength > Math.min(first.derived.usableZ, second.derived.usableZ))
         throw new Error("the spline segments exceed the printer's available Z height");
-      return { firstStackIndex, secondStackIndex: firstStackIndex + 1, firstHeight, secondHeight,
-        endFromFront, startFromFront, segmentLength, segmentCount };
+      return [{ firstStackIndex, secondStackIndex: firstStackIndex + 1, firstHeight, secondHeight,
+        endFromFront, startFromFront, segmentLength, segmentCount }];
     } catch (error) {
       throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
     }

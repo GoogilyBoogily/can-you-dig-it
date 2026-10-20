@@ -168,6 +168,7 @@ export type MixedSharedOptions = Omit<Options,
 export interface MixedBuildRequest {
   shared: MixedSharedOptions;
   stacks: MixedStackRequest[];
+  shareCompatibleWalls?: boolean;
 }
 
 export interface ResolvedMixedStack {
@@ -190,3 +191,55 @@ export interface MixedBoundaryConnection {
   segmentLength: number;
   segmentCount: number;
 }
+
+/** Joint sites use the common centred world-X frame, including reversed tiers. */
+export interface SharedWallTierSchedule {
+  laneRole: LaneRole;
+  reversed: boolean;
+  terminal: boolean;
+  open: boolean;
+  primaryEars: number[];
+  followerEars: number[];
+  pinPositions: number[];
+  primaryCoverPins: number[];
+  followerCoverPins: number[];
+}
+
+/** Every adjacency keeps its original first-stack identity after sharing decisions. */
+export type MixedBoundaryPlan =
+  | { kind: "retained"; firstStackIndex: number; secondStackIndex: number; reason: string }
+  | { kind: "shared"; firstStackIndex: number; secondStackIndex: number; tiers: SharedWallTierSchedule[] };
+
+/** Independent physical rows serialize bottom to top; lanes serialize right to left. */
+export interface IndependentLaneRequest {
+  canDiameter: number;
+  canHeight: number;
+  depth: number;
+  slope: number;
+  lipGap: number;
+}
+
+export interface IndependentRowRequest {
+  lanes: IndependentLaneRequest[];
+  repeat: number;
+  rowHeight: number | "auto";
+  rowSpan: number | "auto";
+  alignment: "left" | "centre" | "right";
+  rearLoad: boolean;
+}
+
+export type IndependentRowsSharedOptions = Pick<Options,
+  "wall" | "clearance" | "fit" | "hexR" | "hexAuto" | "solid" |
+  "design" | "pattern" | "bed" | "bedMargin" | "bedKeepOut"
+> & { base: "flat" };
+
+export interface IndependentRowsBuildRequest {
+  shared: IndependentRowsSharedOptions;
+  rows: IndependentRowRequest[];
+  shareCompatibleWalls: boolean;
+  topCover: boolean;
+}
+
+export const INDEPENDENT_ROWS_LIMITS = {
+  requestedRows: 8, lanesPerRow: 8, repetitions: 16, expandedRows: 32, expandedLanes: 128,
+} as const;

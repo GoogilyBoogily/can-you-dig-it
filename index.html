@@ -49,6 +49,7 @@ try {
         <select id="buildMode" name="buildMode">
           <option value="uniform">One size, automatically arranged</option>
           <option value="mixed">Different stacks side by side</option>
+          <option value="rows">Custom rows</option>
         </select>
       </label>
     </fieldset>
@@ -87,12 +88,28 @@ try {
     <fieldset id="mixedEditor" hidden>
       <legend>Your stacks</legend>
       <p class="hint">In order from right to left when viewed from the front. Each stack keeps one can size and depth. All dispensing fronts line up.</p>
+      <label class="check wall-sharing"><input type="checkbox" name="shareWalls" aria-describedby="shareWallsHint"> Share compatible walls</label>
+      <p class="hint" id="shareWallsHint">Adjacent stacks share a divider only when their supports, tiers and closures match. Different can heights can share; incompatible neighbors keep both walls and their joining keys.</p>
       <div id="mixedOrder" class="mixed-order" aria-label="Stack order viewed from the front"></div>
       <p class="hint" id="stackReorderHint">Drag a Reorder handle, use the ↑ / ↓ buttons, or focus a handle and press the Up / Down arrow keys.</p>
       <p id="stackOrderStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
       <div id="mixedStacks" class="mixed-stacks"></div>
       <button type="button" id="addStack" class="stack-action">Add a stack</button>
       <p class="hint">Choose 2–8 connected stacks. Depth stays exactly as entered. Automatic tiers use the shelf height; fixed tiers stay exact. Mixed stacks currently need flat bases.</p>
+    </fieldset>
+
+    <fieldset id="rowsEditor" hidden>
+      <legend>Your rows</legend>
+      <p class="hint">Rows appear top to bottom, with Row 1 at the bottom. Lane 1 is on the right. Each lane keeps its own can size, depth and dispensing slope; every row feeds separately.</p>
+      <label class="check wall-sharing"><input type="checkbox" name="rowsShareWalls" aria-describedby="rowsShareWallsHint"> Share compatible walls within each row</label>
+      <p class="hint" id="rowsShareWallsHint">Compatible neighboring lanes can share a divider. Spread lanes keep separate walls; supported carrier parts connect the rows.</p>
+      <label class="check wall-sharing"><input type="checkbox" name="rowsTopCover" checked> Cover the top row</label>
+      <div id="independentRowOrder" class="custom-row-map" aria-label="Row and lane order viewed from the front"></div>
+      <p class="hint">Use Higher / Lower for rows and Left / Right for lanes. Arrow keys also reorder when an action button has focus. Numeric-input arrow keys edit their values.</p>
+      <p id="independentRowOrderStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+      <div id="customRows" class="custom-rows"></div>
+      <button type="button" id="addIndependentRow" class="stack-action">Add a row above</button>
+      <p class="hint">Repetition is explicit; extra shelf height never adds another row. Custom rows use flat bases. Unsupported settings stay editable and need correction before downloading.</p>
     </fieldset>
 
     <fieldset>
@@ -255,6 +272,16 @@ try {
     <p>Decks, walls and covers print flat, face up, without supports. The joining keys between stacks print standing on their ends, up to 40 mm high.</p>
     <ol><li>Assemble outside the shelf, without cans. For split parts, join the deck sections at every T joint and slide the wall sections onto their hidden keys before snapping the walls onto the decks.</li><li>Join the bottom decks and walls. Feed each boundary’s key segments in from the dispensing front toward the closed rear stop.</li><li>Check both retaining gates have returned behind the last segment, then add the upper tiers and joined covers. Support the loaded organizer underneath.</li></ol>
     <p>Support the bottom when moving a loaded organizer. Printed fit and loaded strength still need qualification; test the printed joints and a complete stack before loading the full organizer.</p>
+  </section>
+  <section id="sharedWallAssembly" hidden><h2>Assembly steps for shared walls</h2>
+    <p>Assemble outside the shelf, without cans, with room above to lower each part. Each shared divider supports both neighboring stacks; keep the parts in their labelled stack and boundary order.</p>
+    <ol><li>For long parts, join every deck section at its T joint. Slide the wall sections onto all their hidden keys, and join the cover sections on their keys, before lowering the joined parts.</li><li>Lower and interleave the neighboring decks so their staggered ears line up with the common divider. Lower the neutral shared dividers and outer walls onto the ears, then lower the end walls into the shared slots and snap each onto its deck.</li><li>At boundaries that retain both walls, feed the joining-key segments from the dispensing front toward the closed rear stop. Check both retaining gates have returned behind the last segment.</li><li>Repeat for each tier. Lower each joined cover onto its own catches; adjacent cover fingers interleave over the common wall. Support the loaded organizer underneath.</li></ol>
+    <p>Printed fit and loaded strength still need qualification. Test the printed joints and a complete connected assembly before loading the full organizer.</p>
+  </section>
+  <section id="rowsAssembly" hidden><h2>Assembly steps for custom rows</h2>
+    <p>Assemble outside the shelf, without cans, starting with Level 1 at the bottom. Keep the labelled level, lane, carrier and docking-shoe parts in their generated order.</p>
+    <ol><li>Join each split lane before seating its walls.</li><li data-row-assembly="shared" hidden>Lower and interleave neighboring decks so their staggered ears line up with the common shared divider. Lower shared dividers and outer walls onto the ears, then lower the end walls into the shared slots and snap each onto its deck. When adding top covers, lower each joined cover onto its own catches; adjacent cover fingers interleave over the common wall.</li><li data-row-assembly="connections" hidden>At boundaries that retain both walls and have joining keys, feed the key segments from the dispensing front toward the closed rear stop. Check both retaining gates have returned behind the last segment.</li><li data-row-assembly="transitions" hidden>Join each front/rear carrier assembly sideways using its concealed keys before lowering it onto the lower walls. Side insertion is blocked once the carrier is caught.</li><li data-row-assembly="transitions" hidden>Fit every indicated docking shoe, then lower the next row’s decks and walls onto their supports. Leave room above for insertion. Every upper row needs all of its carrier and shoe parts.</li><li>When top covers are requested, join split covers on their hidden keys before lowering them last. Support the organizer underneath whenever moving it.</li></ol>
+    <p>Printed fit and loaded behavior still need qualification. Test the printed joints and a complete connected assembly before filling the organizer.</p>
   </section>
   <div id="assemblyParts" class="assembly-parts"></div>
   </details>

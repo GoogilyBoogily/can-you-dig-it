@@ -3,11 +3,14 @@ import { estimateSettings, estimateVolume, type EstimateSettings } from "./estim
 import { DENSITY, Geo, solve, buildAll, partList, type Options, type PartRole } from "./geometry";
 import { inspectMesh, packPlan, threeMf, stlZip, meshDataOf, type MeshData, type PackedPlan, type Rect } from "./export";
 import { buildMixedGeometry } from "./mixed-geometry";
+import { buildIndependentRowsGeometry } from "./rows-geometry";
+import type { IndependentRowsLayout } from "./rows";
 import type { MixedLayout } from "./solver";
 
 export type Req =
   | { type: "build"; id: number; options: Options; keepOut: Rect[]; estimateSettings?: EstimateSettings } // keepOut: the printer's bed_exclude_area
   | { type: "build-mixed"; id: number; layout: MixedLayout; keepOut: Rect[]; estimateSettings?: EstimateSettings }
+  | { type: "build-rows"; id: number; layout: IndependentRowsLayout; keepOut: Rect[]; estimateSettings?: EstimateSettings }
   | { type: "estimate"; id: number; buildId: number; settings: EstimateSettings }
   | { type: "export"; id: number; buildId: number; format: "3mf" | "stl"; profile?: Uint8Array };
 
@@ -31,16 +34,17 @@ let buildGeneration = 0;
 
 self.onmessage = async (e: MessageEvent<Req>) => {
   const req = e.data;
-  const building = req.type === "build" || req.type === "build-mixed";
+  const building = req.type === "build" || req.type === "build-mixed" || req.type === "build-rows";
   const generation = building ? ++buildGeneration : buildGeneration;
   if (building) last = null;
   try {
     const wasm = await wasmP.catch((err) => { throw new Error(`the geometry engine failed to load - reload the page (${err instanceof Error ? err.message : err})`); });
-    if (req.type === "build" || req.type === "build-mixed") {
+    if (req.type === "build" || req.type === "build-mixed" || req.type === "build-rows") {
       if (generation !== buildGeneration) return;
       const t0 = performance.now();
-      const o = req.type === "build" ? req.options : req.layout.stacks[0]?.options;
-      if (!o) throw new Error("Mixed build has no stacks");
+      const o = req.type === "build" ? req.options : req.type === "build-mixed"
+        ? req.layout.stacks[0]?.options : req.layout.rows[0]?.lanes[0]?.options;
+      if (!o) throw new Error(req.type === "build-rows" ? "Custom rows build has no lanes" : "Mixed build has no stacks");
       const bed = req.type === "build" ? o.bed : req.layout.request.shared.bed;
       const bedMargin = req.type === "build" ? o.bedMargin : req.layout.request.shared.bedMargin;
       const settings = req.estimateSettings ?? estimateSettings();
@@ -49,7 +53,8 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       // debounce from the form, and the WASM heap does not come back on its own. Only plain
       // data leaves it - meshDataOf copies every vertex, and `last` holds those copies.
       const parts: PartOut[] = g.arena(() => (req.type === "build"
-        ? partList(buildAll(g, o, solve(o)), o) : buildMixedGeometry(g, req.layout)).map((p) => {
+        ? partList(buildAll(g, o, solve(o)), o) : req.type === "build-mixed"
+        ? buildMixedGeometry(g, req.layout) : buildIndependentRowsGeometry(g, req.layout)).map((p) => {
         const status = p.mesh.status();
         if (status !== "NoError") throw new Error(`${p.name}: kernel status ${status}`);
         if (p.mesh.decompose().length !== 1) throw new Error(`${p.name}: expected one connected printable part`);

@@ -2,10 +2,12 @@
 // in the UI before any geometry is built.
 import { K, solve, check, laneLengthFor, baseHeight, gangReach, outerTongues, type Options, type Derived } from "./geometry";
 import { coverThicknessOf, snapTop } from "./features/joints";
-import { DEFAULTS, type MixedBuildRequest, type ResolvedMixedStack, type MixedBoundaryConnection } from "./model";
+import { DEFAULTS, type MixedBuildRequest, type ResolvedMixedStack, type MixedBoundaryConnection, type MixedBoundaryPlan } from "./model";
 import { mixedConnections, rearTier } from "./layout";
 import { MIXED_CONNECTION } from "./features/mixed-connection";
 import { mixedStacksFrom, readNumbers } from "./validate";
+import { planSharedAssembly, SHARED_JOINT_SEARCH_FAILURE } from "./shared-walls";
+import { SHARED_WALL_PIN_CREST } from "./features/shared-wall";
 
 export interface Space { w: number; d: number; h: number; front: number } // front: mm kept free for a hand
 
@@ -23,6 +25,7 @@ export interface MixedLayout {
   request: MixedBuildRequest;
   stacks: ResolvedMixedStack[];
   connections: MixedBoundaryConnection[];
+  boundaries?: MixedBoundaryPlan[];
   cans: number;
   footprint: [number, number, number];
   warnings: string[];
@@ -39,12 +42,14 @@ const topAllowance = (options: Options): number => options.cover
 /** Resolve the complete requested mix without shortening or dropping any stack. */
 export function resolveMixedBuild(space: Space, request: MixedBuildRequest): MixedLayout {
   readNumbers({ w: space.w, d: space.d, h: space.h, front: space.front });
+  if (request.shareCompatibleWalls !== undefined && typeof request.shareCompatibleWalls !== "boolean")
+    throw new Error("Share compatible walls must be true or false");
   if (request.shared.base !== "flat") throw new Error("Mixed stacks currently require a flat base");
   if (request.shared.wall < MIXED_CONNECTION.radius + MIXED_CONNECTION.inset + K.ligMin)
     throw new Error("Mixed connections require walls at least 5.75 mm thick");
   const requests = mixedStacksFrom(request.stacks);
   const warnings: string[] = [];
-  const stacks: ResolvedMixedStack[] = requests.map((stack, index) => {
+  let stacks: ResolvedMixedStack[] = requests.map((stack, index) => {
     const label = `Stack ${index + 1}`;
     const options: Options = { ...DEFAULTS, ...request.shared, base: "flat", left: "none", right: "none",
       cascade: stack.cascade ?? request.shared.cascade, slope: stack.slope ?? request.shared.slope,
@@ -65,6 +70,8 @@ export function resolveMixedBuild(space: Space, request: MixedBuildRequest): Mix
       if (options.stackable) throw new Error(`${label}: rear loading cannot be combined with a stackable cascade top`);
       if (stack.tiers === "auto" && tiers % 2 === 0) tiers--;
     }
+    if (options.cascade && stack.tiers === 1)
+      throw new Error(`${label}: auto-feed between tiers requires at least two cascade tiers; choose separate tiers for a single-tier stack`);
     if (tiers < (options.cascade ? 2 : 1))
       throw new Error(`${label}: the shelf has no room for ${options.cascade ? "two cascade tiers" : "one tier"} with these settings`);
     if (tiers > maximumTiers)
@@ -80,15 +87,31 @@ export function resolveMixedBuild(space: Space, request: MixedBuildRequest): Mix
     const cans = options.cascade ? derived.nBottom + (tiers - 1) * derived.n : tiers * derived.n;
     return { index, options, derived, origin: [derived.L / 2, 0, 0], cans, height };
   });
+  const manufacturing = request.shareCompatibleWalls ? planSharedAssembly(stacks, space.h) : undefined;
+  if (manufacturing) stacks = manufacturing.stacks;
+  const boundaries = manufacturing?.boundaries;
+  for (const stack of stacks) if (boundaries?.some(boundary => boundary.kind === "shared"
+    && (boundary.firstStackIndex === stack.index || boundary.secondStackIndex === stack.index))
+    && (stack.options.cover || stack.options.stackable)) stack.height += SHARED_WALL_PIN_CREST;
   for (let index = 1; index < stacks.length; index++) {
     const previous = stacks[index - 1], current = stacks[index];
-    current.origin[1] = previous.origin[1] + (previous.derived.OW + current.derived.OW) / 2 + K.gangGap;
+    current.origin[1] = previous.origin[1] + (previous.derived.OW + current.derived.OW) / 2
+      + (boundaries?.[index - 1].kind === "shared" ? -current.options.wall : K.gangGap);
   }
-  const width = stacks.reduce((total, stack) => total + stack.derived.OW, 0) + (stacks.length - 1) * K.gangGap;
-  if (width + 2 * SIDE_GAP > space.w)
-    throw new Error(`All ${stacks.length} stacks need ${(width + 2 * SIDE_GAP).toFixed(1)} mm of shelf width including side clearance`);
-  const connections = mixedConnections(stacks);
-  return { mode: "mixed", request: { shared: request.shared, stacks: requests }, stacks, connections,
+  const sharedCount = boundaries?.filter(boundary => boundary.kind === "shared").length ?? 0;
+  const width = stacks.reduce((total, stack) => total + stack.derived.OW, 0) + (stacks.length - 1) * K.gangGap
+    - sharedCount * (request.shared.wall + K.gangGap);
+  if (width + 2 * SIDE_GAP > space.w) {
+    const searchFailures = boundaries?.filter(boundary => boundary.kind === "retained" && boundary.reason === SHARED_JOINT_SEARCH_FAILURE).length ?? 0;
+    const couldFitWithSharing = searchFailures > 0 && width + 2 * SIDE_GAP - searchFailures * (request.shared.wall + K.gangGap) <= space.w;
+    const planningExplanation = couldFitWithSharing
+      ? "These stacks fit your shelf with shared walls, but the planner could not find a printable arrangement of supports, cover clips and part splits for the selected printer. With the retained walls: " : "";
+    const retainedReasons = boundaries?.filter(boundary => boundary.kind === "retained")
+      .map(boundary => `Stacks ${boundary.firstStackIndex + 1} and ${boundary.secondStackIndex + 1} retain both walls: ${boundary.reason}`) ?? [];
+    throw new Error(`${planningExplanation}All ${stacks.length} stacks need ${(width + 2 * SIDE_GAP).toFixed(1)} mm of shelf width including side clearance${retainedReasons.length ? `. Wall sharing: ${retainedReasons.join("; ")}` : ""}`);
+  }
+  const connections = mixedConnections(stacks, boundaries);
+  return { mode: "mixed", request: { shared: request.shared, stacks: requests, ...(request.shareCompatibleWalls !== undefined ? { shareCompatibleWalls: request.shareCompatibleWalls } : {}) }, stacks, connections, ...(boundaries ? { boundaries } : {}),
     cans: stacks.reduce((total, stack) => total + stack.cans, 0),
     footprint: [width, Math.max(...stacks.map((stack) => stack.derived.L)), Math.max(...stacks.map((stack) => stack.height))], warnings };
 }

@@ -16,16 +16,67 @@ estimate expands to show its assumptions.
 Choose **Different stacks side by side** to make one connected organizer from
 neighboring stacks. Each stack has its own can preset or custom dimensions, exact
 container depth, fixed or automatic tier count, auto-feed, deck slope, lip headroom,
-cover, rear loading and option to add another tier on top. Printer, material, fit,
+cover, rear loading and option to add another tier on top. Fixed 1 tier disables
+the inapplicable auto-feed control. Printer, material, fit,
 design and pattern stay shared. Reorder stacks by dragging their handles, clicking
 the up/down buttons, or focusing a handle and pressing the Up/Down arrow keys.
 Their dispensing fronts align; the whole requested
-mix must fit the shelf and printer. New shared links use version 3; existing version-2
-mixed links inherit their original shared stack settings. Mixed builds currently use
-a flat base and walls at least 5.75 mm thick. Printed spline segments join the facing
-bottom walls; assemble them before adding upper tiers. Fit and loaded strength still
-need printed trials.
-See [assembly and qualification notes](prototypes/mixed-wall-spline.md).
+mix must fit the shelf and printer. Mixed builds currently use a flat base and walls
+at least 5.75 mm thick. Printed spline segments join retained facing bottom walls;
+assemble those connections before adding upper tiers.
+See [spline assembly notes](prototypes/mixed-wall-spline.md).
+
+Choose **Custom rows** for independent horizontal rows with different lane counts
+and can sizes. Each lane keeps its exact can dimensions, depth, slope and lip
+headroom. Set each row’s repeat count explicitly, choose automatic or exact height
+and compact or exact span, and align it left, centre or right. Extra height never
+adds rows automatically; shorter lanes gain visible headroom rather than larger
+cans. Rows feed separately, use flat bases and have one optional top cover.
+
+Every transition adds a real 8.1 mm carrier and 6 mm docking shoes (14.1 mm total),
+included in shelf fit, estimates, preview and downloads. Current carriers require
+common depths and supported, printable bearing arrangements; unsupported settings
+remain editable and block downloads with a reason. Multi-row designs currently
+retain separate walls, with the reason shown; a single physical row can share
+compatible walls. Custom-row links use strict version 5 (`mode=rows`) with explicit
+sharing and top-cover flags; older links keep their existing modes. See the
+[approved row and carrier design](docs/superpowers/specs/2026-10-19-independent-can-rows.md)
+for assembly and mechanical limits.
+
+Repeated rows are labelled by physical **Level**, with their editor row and copy
+shown in results and errors. A malformed sharing or cover flag preserves valid
+lane settings and blocks downloads until that checkbox is explicitly changed.
+Switching modes manually preserves the mixed-stack sharing choice.
+
+Enable **Share compatible walls** to replace compatible neighboring walls with one
+common divider. Different can heights/lane widths can share when their resolved
+attachments match. Each complete boundary either shares every tier or retains its
+original walls and spline; different depths, feeding geometry, tier schedules or
+closures can prevent sharing. The result reports each retained reason and the actual
+width saved: 9 mm per shared boundary with 6 mm walls and the 3 mm gap. Independent
+can dimensions, capacities and tier counts stay exact. The shared pin and cover add
+0.6 mm of top headroom where present; boundaries retain their original walls if that
+headroom or the adapted printable parts do not fit.
+Thick split covers also retain both walls when sharing would remove a cover key's
+support ligament. Adjacent decks and covers use the selected fit clearance.
+For separate tiers needing two print sections, a joint-aware planner can choose
+the print cut and support/clip positions together when the original plan fails.
+It selects feasible contiguous groups, so a tight neighbor can keep both walls
+while a valid pair shares. It preserves existing successful plans, outer-wall
+bearings and the original support-span limits. The cut is a manufacturing choice; exact can sizes, depth
+and tier counts stay unchanged. The search is bounded, so a failure reports that
+the planner could not find an arrangement rather than proving one impossible.
+
+Mixed-stack sharing links use version 4. Version-2 and version-3 mixed links keep sharing off;
+ordinary new mixed links still use version 3. Staggered deck ears, closed follower
+collars, separate end-wall half-posts and independently caught cover fingers give
+both stacks their own support and retention. Join longitudinal keys before lowering
+the coordinated decks, divider, end walls and covers. See the
+[shared-wall qualification record](docs/superpowers/specs/2026-10-17-shared-stack-walls-qualification.md).
+Digital geometry and toolpath checks do not establish printed fit, creep or loaded
+strength. The inherited rounded cascade loading-window corners also remain
+unqualified at the full sideways can play. Print and qualify the joints and a complete
+assembly in the intended process; support a loaded organizer underneath.
 
 Each stack's depth slider shows millimetres and runs from the space for one can
 (including stops, joint space and an auto-feed chute when enabled) to usable shelf
@@ -65,6 +116,13 @@ Deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`
     src/features/    reusable joints, poses, lattice, rounds and Gridfinity units
     src/geometry.ts   composes the required parts from the assembly manifest
     src/mixed-geometry.ts explicit mixed-stack sources and retained connection parts
+    src/shared-walls.ts pure boundary compatibility, joint allocation and print fit
+    src/shared-joint-planner.ts bounded joint/cut constraint search for flat split lanes
+    src/shared-wall-geometry.ts shared dividers and coordinated two-sided stack parts
+    src/rows.ts       independent row height/span/alignment and exact shelf fit
+    src/row-transitions.ts explicit carrier, docking-shoe and concealed-key plans
+    src/row-transition-geometry.ts physical transition parts from those plans
+    src/rows-geometry.ts row manifest sources, including matching upper-wall receivers
     src/solver.ts     shelf W×D×H + can → ranked layouts (pure arithmetic)
     src/export.ts     mesh validation, shared-geometry packing, STL and multi-plate 3MF
     src/estimate.ts   approximate filament use from resolved print settings

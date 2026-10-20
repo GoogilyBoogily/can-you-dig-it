@@ -50,7 +50,9 @@ function alignSpan(size: number, cells: number, at: "lo" | "centre" | "hi"): [nu
   return [lo, lo + span];
 }
 
-export function solve(o: Options): Derived {
+export function solve(o: Options, minimumWallHeight = 0, requestedSeams?: readonly number[]): Derived {
+  if (!Number.isFinite(minimumWallHeight) || minimumWallHeight < 0)
+    throw new Error("Minimum wall height must be finite and nonnegative");
   const tan = Math.tan((o.slope * Math.PI) / 180);
   const inset = insetFor(o);
   const usableX = o.bed[0] - 2 * o.bedMargin;
@@ -71,9 +73,9 @@ export function solve(o: Options): Derived {
   // cans it could not give up. Upper cascade decks have no lip (their front is the
   // chute); the bottom deck always does
   const front = K.deckLo + K.lipInset * tan + K.lipH + o.canD + o.lipGap;
-  const H = Math.ceil(Math.max(dhi + o.canD + K.topgap, o.cascade ? 0 : front));
+  const H = Math.max(minimumWallHeight, Math.ceil(Math.max(dhi + o.canD + K.topgap, o.cascade ? 0 : front)));
   const dhiB = K.deckLo + L * tan;
-  const Hb = Math.ceil(Math.max(dhiB + o.canD + K.topgap, front));
+  const Hb = Math.max(minimumWallHeight, Math.ceil(Math.max(dhiB + o.canD + K.topgap, front)));
   const hexR = o.hexAuto ? autoR(H - K.border - fieldBottom(o), ROWS[o.pattern]) : o.hexR;
   // on a grid the lane's floor is the whole cells that cover it, or as many as the shelf
   // has (shelfCells) with the lane overhanging on a skirt, placed round the lane where
@@ -97,7 +99,7 @@ export function solve(o: Options): Derived {
   const wallPlateY = Math.max(H, Hb) + snapTop(o);
   const deckPlateY = grid ? foot[3] - foot[1] : OW + (gangs(o) ? widestTongues(o) * gangReach(o) : 0);
   const plateY = Math.max(deckPlateY, wallPlateY);
-  const sectionPlan = planSections(o, L, foot, plateY, usableX, usableY);
+  const sectionPlan = planSections(o, L, foot, plateY, usableX, usableY, requestedSeams);
   const split = sectionPlan.seams.length > 0;
   const px = L / 2 - pinIn(o);
   const pinPositions = [-px, px];
@@ -108,7 +110,7 @@ export function solve(o: Options): Derived {
   }
   const deckPlateZ = K.deckLo + (L - o.wall) * tan + (grid ? K.unitH : 0);
   const wallPlateZ = o.wall;
-  return {
+  const derived: Derived = {
     n, nBottom, split, ...sectionPlan, pinPositions, L, IW, OW, H, Hb, dhi, dhiB, tan, inset, hexR, lig: ligFor(hexR),
     xd: -L / 2 + inset, px, py: IW / 2 + o.wall / 2,
     lipy: IW / 2 - 14, railHy: IW / 2 - 20,
@@ -119,6 +121,16 @@ export function solve(o: Options): Derived {
     plateZ: Math.max(deckPlateZ, wallPlateZ, o.cover ? coverThicknessOf(o) : 0), // a riser prints on its side, as thick as a wall
     usableX, usableY, usableZ, floorCells, floor: [fx0, fy0, fx1, fy1], foot,
   };
+  if (requestedSeams !== undefined) {
+    const original = solve(o, minimumWallHeight);
+    const seam = requestedSeams[0];
+    if (original.seams.length !== 1)
+      throw new Error("Explicit print seams require an original two-section lane");
+    if (!derived.sectionError && !sharedPrintSeamRanges(o, original, original.plateY)
+      .some(([minimum, maximum]) => seam >= minimum - 1e-8 && seam <= maximum + 1e-8))
+      throw new Error("Requested print seam must preserve the original outer-wall bearings and pin roots of a two-section lane");
+  }
+  return derived;
 }
 
 /** Longest single rectangle beside the profile's exclusions. Match packing's bed
@@ -162,8 +174,20 @@ function sectionSpan(foot: Derived["foot"], seams: number[]): number {
  * sections, with enough end room for the chute/window and enough interior room
  * for two supporting ears and a retaining pin. Never shorten the assembly. */
 function planSections(options: Options, length: number, foot: Derived["foot"], transverseSpan: number,
-  usableBedX: number, usableBedY: number): { seams: number[]; sectionError?: string } {
+  usableBedX: number, usableBedY: number, requestedSeams?: readonly number[]): { seams: number[]; sectionError?: string } {
   const capacity = sectionCapacity(options, transverseSpan, usableBedX, usableBedY);
+  if (requestedSeams !== undefined) {
+    if (requestedSeams.some((position, index) => !Number.isFinite(position) || position <= -length / 2
+      || position >= length / 2 || index > 0 && position <= requestedSeams[index - 1]))
+      throw new Error("Requested print seams must be finite, ordered and inside the lane");
+    if (options.cascade && requestedSeams.some((position, index) => Math.abs(position + requestedSeams[requestedSeams.length - 1 - index]) > 1e-8))
+      throw new Error("Cascade print seams must be symmetric for reversed tiers");
+    if (options.cascade || options.base !== "flat" || requestedSeams.length !== 1)
+      throw new Error("Explicit print seams support only flat, non-cascading lanes with one cut");
+    const seams = [...requestedSeams];
+    return sectionSpan(foot, seams) <= capacity ? { seams }
+      : { seams, sectionError: "Requested print sections do not fit the selected printer" };
+  }
   if (sectionSpan(foot, []) <= capacity) return { seams: [] };
   if (Math.max(-foot[0], foot[2]) + K.spliceDepth <= capacity && sectionSpan(foot, [0]) <= capacity) return { seams: [0] };
   const halfSpan = Math.max(-foot[0], foot[2]);
@@ -182,6 +206,30 @@ function planSections(options: Options, length: number, foot: Derived["foot"], t
     if (sectionSpan(foot, seams) <= capacity) return { seams };
   }
   return { seams: [], sectionError: "Cannot fit printable sections while preserving the chute, loading window and joint supports; use a larger printer or smaller can" };
+}
+
+/** Alternate cuts for a flat, two-section lane. Preserve all original outer-wall
+ * bearings and pin roots; joint planning must not buy space by removing support. */
+export function sharedPrintSeamRanges(options: Options, derived: Derived, transverseSpan: number): [number, number][] {
+  if (options.cascade || options.base !== "flat" || derived.seams.length !== 1) return [];
+  const capacity = sectionCapacity(options, transverseSpan, derived.usableX, derived.usableY);
+  let ranges: [number, number][] = [[Math.max(-derived.L / 2, derived.foot[2] + K.spliceDepth - capacity),
+    Math.min(derived.L / 2, derived.foot[0] + capacity)]];
+  const frame = seamKeyFrameHalfWidth(options);
+  const protectedSites = [
+    ...derived.pinPositions.map(position => ({ position, radius: frame + pinKeepOut(options) })),
+    ...laneOf(options, derived, "top").tabs.map(position => ({ position,
+      radius: Math.max(tabClear, frame + K.earW / 2 + clearanceOf(options)) })),
+  ];
+  for (const { position, radius } of protectedSites) ranges = ranges.flatMap(([minimum, maximum]): [number, number][] => {
+    if (maximum < minimum) return [];
+    if (position + radius <= minimum || position - radius >= maximum) return [[minimum, maximum]];
+    const remaining: [number, number][] = [];
+    if (position - radius >= minimum) remaining.push([minimum, position - radius]);
+    if (position + radius <= maximum) remaining.push([position + radius, maximum]);
+    return remaining;
+  });
+  return ranges.filter(([minimum, maximum]) => minimum <= maximum);
 }
 
 /** Inverse of the deck count in solve(): the shortest lane whose deck holds `cans` whole
@@ -435,17 +483,25 @@ export function buildDeck(g: Geo, o: Options, d: Derived, ln: Lane, sides: [Side
 /** A side wall in the lane frame, before it is laid flat: sy = +1 is the left wall, -1
  *  the right. Stands on the shelf or on the wall top of the tier below, full height, and
  *  notches over the deck's ears with a tab down through each. */
-export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number): M {
-  return buildWallFeatures(g, o, d, ln, sy, { gangNotches: true, topPins: true, endLap: true });
+/** Explicit wall-top pins and bottom receivers. Default walls retain their original joint. */
+export interface WallPinFeatures {
+  joint: Pick<ReturnType<typeof pinJoint>, "pin" | "notch" | "relief">;
+  receivingTip: number;
+  hook: number;
+  rootDepth: number;
 }
 
-function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, features: { gangNotches: boolean; topPins: boolean; endLap: boolean }, connection?: MixedWallConnection): M {
+export function buildWall(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, pins?: WallPinFeatures): M {
+  return buildWallFeatures(g, o, d, ln, sy, { gangNotches: true, topPins: true, endLap: true }, undefined, pins);
+}
+
+export function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, features: { gangNotches: boolean; topPins: boolean; endLap: boolean }, connection?: MixedWallConnection, pins?: WallPinFeatures): M {
   const { L, IW, OW } = d;
   const H = ln.H;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
   const c = clearanceOf(o);
   const notchH = earNotchH(c);
-  const pinJ = pinJoint(g, { wall: o.wall, clearance: c });
+  const pinJ = pins?.joint ?? pinJoint(g, { wall: o.wall, clearance: c });
   const earJ = earJoint(g, { wall: o.wall, through: 0, clearance: c });
   const adds = [g.box(L, o.wall, H, 0, y0 + o.wall / 2, H / 2)];
   const cuts: M[] = [];
@@ -458,7 +514,7 @@ function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number,
     const socket = seamKeySocket(g, o);
     for (const seam of d.seams) for (const height of wallSeamHeights(H)) cuts.push(socket.translate([seam, sy * d.py, height]));
   }
-  if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH, connection));
+  if (!o.solid) cuts.push(...wallPerforation(g, o, d, ln, sy, c, notchH, connection, pins));
   const m = g.assemble(adds, cuts);
   return connection ? cutMixedWallConnection(g, o, m, L, d.IW, sy, connection) : m;
 }
@@ -467,7 +523,7 @@ function buildWallFeatures(g: Geo, o: Options, d: Derived, ln: Lane, sy: number,
  *  it (so the ear's slot stays), the corner slot the end wall drops into from the top
  *  edge down to the lap line, and the notches for the tier below's pins or the risers'
  *  bosses. */
-function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, pinJ: ReturnType<typeof pinJoint>, earJ: ReturnType<typeof earJoint>, features: { gangNotches: boolean; endLap: boolean }): M[] {
+function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, pinJ: Pick<ReturnType<typeof pinJoint>, "notch">, earJ: ReturnType<typeof earJoint>, features: { gangNotches: boolean; endLap: boolean }): M[] {
   const cuts = ln.tabs.map((tx) => placeSide(earJ.notch, sy, tx, sy * d.py, 0));
   if (features.gangNotches && ln.tongues.length) {
     const gang = gangJoint(g, { run: 1, clearance: c, through: 1, wall: o.wall });
@@ -483,20 +539,20 @@ function wallNotches(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: nu
  *  so no cell runs into them: the relief over each ear tab, the relief under each
  *  wall-top pin, and the chamber over each pin of the tier below. A cell touching one is
  *  dropped, like any keep-out. */
-function snapKeepOuts(g: Geo, o: Options, d: Derived, ln: Lane, c: number): CS[] {
+function snapKeepOuts(g: Geo, o: Options, d: Derived, ln: Lane, c: number, pins?: WallPinFeatures): CS[] {
   const pin = pinSnap(c), tab = tabSnap(c, earNotchH(c), K.tabW);
-  const half = K.tabW / 2 + K.snapT + K.ligMin, chamberHalf = K.tabW / 2 + pin.hook + c + K.ligMin;
+  const half = K.tabW / 2 + K.snapT + K.ligMin, chamberHalf = K.tabW / 2 + (pins?.hook ?? pin.hook) + c + K.ligMin;
   const tabTop = earNotchH(c) + K.snapLen - tab.peak + K.ligMin;
   return [
     ...ln.tabs.map((tx) => g.rect(tx - half, -1, tx + half, tabTop)),
-    ...d.pinPositions.map(position => g.rect(position - half, ln.H - (K.snapLen - pin.peak) - K.ligMin, position + half, ln.H + 1)),
-    ...d.pinPositions.map(position => g.rect(position - chamberHalf, -1, position + chamberHalf, pin.tip + c + K.ligMin)),
+    ...d.pinPositions.map(position => g.rect(position - half, ln.H - (pins?.rootDepth ?? K.snapLen - pin.peak) - K.ligMin, position + half, ln.H + 1)),
+    ...d.pinPositions.map(position => g.rect(position - chamberHalf, -1, position + chamberHalf, (pins?.receivingTip ?? pin.tip) + c + K.ligMin)),
   ];
 }
 
 /** The lattice through the wall and the recess of its outer face down to a web, both
  *  clear of the seam's border and the corner slot's column. */
-function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, connection?: MixedWallConnection): M[] {
+function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c: number, notchH: number, connection?: MixedWallConnection, pins?: WallPinFeatures): M[] {
   const { L, IW, OW } = d;
   const H = ln.H, b = K.border;
   const y0 = sy > 0 ? IW / 2 : -OW / 2;
@@ -505,7 +561,7 @@ function wallPerforation(g: Geo, o: Options, d: Derived, ln: Lane, sy: number, c
   if (connectionBand) keep.push(connectionBand);
   if (d.split) for (const seam of d.seams) keep.push(g.rect(seam - seamKeyFrameHalfWidth(o), 0, seam + seamKeyFrameHalfWidth(o), H));
   const endNotch = g.rect(ln.xe - 3 - c, -1, L / 2 + 1, H + 1);
-  keep.push(endNotch, ...snapKeepOuts(g, o, d, ln, c));
+  keep.push(endNotch, ...snapKeepOuts(g, o, d, ln, c, pins));
   const panel = g.rect(-L / 2 + b, fieldBottom(o), L / 2 - b, H - b);
   const cuts: M[] = [];
   const wcells = cellsOf(g, o.pattern, d.hexR, d.lig, panel, keep);
@@ -682,8 +738,10 @@ function buildGridDeck(g: Geo, o: Options, d: Derived, ln: Lane, deck: M): M {
   return out;
 }
 
-export function buildCover(g: Geo, o: Options, d: Derived): M[] {
-  const { L, OW } = d, t = coverThicknessOf(o);
+/** A shared pin can require extra tent-roof headroom; ordinary covers use the
+ * original finished thickness. Socket ownership remains explicit in the caller. */
+export function buildCover(g: Geo, o: Options, d: Derived, finishedThickness = coverThicknessOf(o)): M[] {
+  const { L, OW } = d, t = finishedThickness;
   const outline = g.rect(-L / 2, -OW / 2, L / 2, OW / 2);
   const plate = roundTop(g, g.prismZ(outline, t), outline, t, K.coverT / 2);
   const cuts: M[] = [];
@@ -771,7 +829,7 @@ export function deckKinds(o: Options): { name: PlateName; sides: [Side, Side]; c
 
 /** The four plates of one lane, laid flat, split at the seam when the lane is long. A row
  *  whose ends join differently from its inner lanes has a deck for each end too. */
-export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, requested?: ReadonlySet<PlateName>, connections?: { left?: MixedWallConnection; right?: MixedWallConnection }): Plate[] {
+export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, requested?: ReadonlySet<PlateName>, connections?: { left?: MixedWallConnection; right?: MixedWallConnection }, wallPins?: WallPinFeatures): Plate[] {
   const ln = laneOf(o, d, role);
   const wanted = (name: PlateName) => !requested || requested.has(name);
   const plates: Plate[] = [];
@@ -792,7 +850,7 @@ export function buildLanePlates(g: Geo, o: Options, d: Derived, role: LaneRole, 
   for (const name of wallNames) {
     const side = name.startsWith("wall-left") ? 1 : -1;
     const connection = role === (o.cascade ? "bottom" : "top") ? side > 0 ? connections?.left : connections?.right : undefined;
-    const wall = buildWallFeatures(g, o, d, ln, side, { gangNotches: !name.includes("-closed"), topPins: !name.includes("-terminal"), endLap: !name.includes("-open") }, connection);
+    const wall = buildWallFeatures(g, o, d, ln, side, { gangNotches: !name.includes("-closed"), topPins: !name.includes("-terminal"), endLap: !name.includes("-open") }, connection, wallPins);
     if (d.split) {
       plates.push(sectionedPlate(name, splitWall(g, d, wall).map(section => layWall(section, side, d.IW))));
     } else plates.push({ name, whole: layWall(wall, side, d.IW) });

@@ -124,6 +124,7 @@ test("preset and auto-feed changes update the minimum without resetting another 
   const page = await browser.newPage();
   try {
     await page.goto(link()); await ready(page);
+    await stack(page, 0).locator('[data-stack-field="tiers"]').fill("2");
     await stack(page, 0).locator('[data-stack-field="preset"]').selectOption("66.3,115.2");
     expect(await depth(page, 0).getAttribute("min")).toBe("112.6");
     await stack(page, 0).locator(".stack-options > summary").click();

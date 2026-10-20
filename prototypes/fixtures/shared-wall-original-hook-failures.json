@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "sourceReportPath": ".slice/shared-wall-mechanicalgate-20261017/shared-wall-coupons-toolpaths.json",
+  "sourceReportSha256": "f2f461949bd5752976c4ec6a6f8f08baba43d1eeea68003074fdc48b39ab12bd",
+  "sourceProjectSha256": "feb6a1110e7c2057157dc39eec1d4cfcd499076a8fbbf2fe731435d396b0611e",
+  "slicerVersion": "02.08.02.61",
+  "method": "Positive extrusion, actual deposited layer interval, linear/IJ arc centrelines <=0.27mm for nominal0.5mm bead; offsets restored; no physical/strength claim",
+  "purpose": "Exact originally measured16 failed prototype half-hook points; unchanged source measurements, preserved for production feature-frame regression mapping",
+  "failures": [
+    {
+      "part": "fit-0-boundary-0-tier-0-3:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -99.08301270189222,
+        56.625,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        237.99592864332263,
+        56.749995708465576,
+        0.1
+      ],
+      "nearestCenterline": 0.2890710997119725
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0--3:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -99.08301270189222,
+        -56.625,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        6.865390656567257,
+        87.06249952316284,
+        0.1
+      ],
+      "nearestCenterline": 0.28938477938251234
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0-4:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -99.08301270189222,
+        73.375,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        26.098407624340695,
+        87.06249761581421,
+        0.1
+      ],
+      "nearestCenterline": 0.2893879642391198
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0--4:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -99.08301270189222,
+        -73.375,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        45.33142459211413,
+        85.88749837875366,
+        0.1
+      ],
+      "nearestCenterline": 0.2893967993771175
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0-3:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -98.76754264805429,
+        56.725,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        64.36443920161612,
+        85.93749723434448,
+        0.1
+      ],
+      "nearestCenterline": 0.3702819831691843
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0--3:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -98.76754264805429,
+        -56.725,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        83.08198375728018,
+        87.0124987602234,
+        0.1
+      ],
+      "nearestCenterline": 0.37042031901266576
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0-4:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -98.76754264805429,
+        73.275,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        101.79952831294425,
+        87.01249685287476,
+        0.1
+      ],
+      "nearestCenterline": 0.37029949367399895
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0--4:5-y",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": true,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -98.76754264805429,
+        -73.275,
+        0.1
+      ],
+      "plate": 1,
+      "printerPoint": [
+        120.51707286860831,
+        85.93749914169311,
+        0.1
+      ],
+      "nearestCenterline": 0.370184899439176
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0-3:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        56.625,
+        99.08301270189222,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        87.79999923706055,
+        107.46650612535413,
+        0.1
+      ],
+      "nearestCenterline": 0.288938788924439
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0-4:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        73.375,
+        99.08301270189222,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        114.1500015258789,
+        107.46650612535413,
+        0.1
+      ],
+      "nearestCenterline": 0.2889395177012867
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0--4:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -73.375,
+        99.08301270189222,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        138.1500015258789,
+        107.46650612535413,
+        0.1
+      ],
+      "nearestCenterline": 0.28893660259498144
+    },
+    {
+      "part": "fit-0-boundary-0-tier-0--3:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": 0,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -56.625,
+        99.08301270189222,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        164.50000381469727,
+        107.46650612535413,
+        0.1
+      ],
+      "nearestCenterline": 0.2889417040328607
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0-3:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        56.725,
+        98.76754264805429,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        43.099996185302736,
+        145.50877218220347,
+        0.1
+      ],
+      "nearestCenterline": 0.36974520500782543
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0-4:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        73.275,
+        98.76754264805429,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        69.2499984741211,
+        145.50877218220347,
+        0.1
+      ],
+      "nearestCenterline": 0.36974004847010095
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0--4:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -73.275,
+        98.76754264805429,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        93.2500015258789,
+        145.50877218220347,
+        0.1
+      ],
+      "nearestCenterline": 0.36974004847010095
+    },
+    {
+      "part": "fit--0.2-boundary-0-tier-0--3:5-x",
+      "source": "boundary-0-tier-0",
+      "fit": -0.2,
+      "orientation90": false,
+      "label": "divider upper pin hook",
+      "localPoint": [
+        -56.725,
+        98.76754264805429,
+        0.1
+      ],
+      "plate": 2,
+      "printerPoint": [
+        119.40000381469727,
+        145.50877218220347,
+        0.1
+      ],
+      "nearestCenterline": 0.36974520500782543
+    }
+  ]
+}

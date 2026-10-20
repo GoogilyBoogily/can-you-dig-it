@@ -1,14 +1,17 @@
-import { previewCounts, mixedPreviewCounts } from "./assembly";
+import { previewCounts, mixedPreviewCounts, independentRowsPreviewCounts } from "./assembly";
 import { estimateSettings } from "./estimate";
 import { DEFAULTS, K, minimumLaneLength, rearTier, type Options } from "./geometry";
 import { fitSpace, laneNeeds, resolveMixedBuild, type Layout, type Space, type MixedLayout } from "./solver";
-import type { MixedStackRequest } from "./model";
+import { INDEPENDENT_ROWS_LIMITS, type MixedStackRequest, type IndependentLaneRequest, type IndependentRowRequest } from "./model";
+import { resolveIndependentRows, type IndependentRowsLayout } from "./rows";
 import { Viewer } from "./viewer";
 import type { Req, Res, PartOut } from "./worker";
 import { extractProfile, plateSummary, type PackedPlan, type PackedPlacement } from "./export";
 import { hasStoredProfile, loadStoredProfile, saveStoredProfile, clearStoredProfile, type StoredProfile } from "./profile";
-import { LIMITS, optionsFrom, mixedOptionsFrom, mixedStacksFrom, type FormValues } from "./validate";
+import { LIMITS, optionsFrom, mixedOptionsFrom, mixedStacksFrom, independentRowsFrom, independentRowsOptionsFrom, type FormValues } from "./validate";
 import { INDEX_URL, printersOf, machinesFor, processesFor, filamentsFor, vendorsOf, defaultPicks, describePicks, composeProfile, parseConfig, picksFromConfig, bedFromConfig, keepOutFromConfig, type ProfileIndex, type Picks } from "./profiles";
+
+type BuildLayout = Layout | MixedLayout | IndependentRowsLayout;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("form");
@@ -60,24 +63,235 @@ $("showBed").querySelector("input")!.addEventListener("change", (e) => viewer.sh
 $("explode").querySelector("input")!.addEventListener("input", (e) => viewer.explode(Number((e.target as HTMLInputElement).value)));
 let worker = startWorker();
 
-let layouts: (Layout | MixedLayout)[] = [];
-let chosen: Layout | MixedLayout | null = null;
+let layouts: BuildLayout[] = [];
+let chosen: BuildLayout | null = null;
 let chosenIndex = 0; // position in the ranked list; the hash carries it so a shared link opens on the same layout
-let built: { parts: PartOut[]; plan: PackedPlan; nplates: number; layout: Layout | MixedLayout } | null = null;
+let built: { parts: PartOut[]; plan: PackedPlan; nplates: number; layout: BuildLayout } | null = null;
 let buildId = 0, exportId = 0, buildTimer = 0;
 let buildPending = false; // a build is queued or in flight; exporting now would save stale geometry
 let inFlightBuildIdentifier: number | null = null;
-let pendingBuild: Extract<Req, { type: "build" | "build-mixed" }> | null = null;
+let pendingBuild: Extract<Req, { type: "build" | "build-mixed" | "build-rows" }> | null = null;
 let workerDead: string | null = null; // the worker script failed to load: the message every build() shows instead
 let restartedFor = -1; // the build a kernel abort last restarted the worker on
 
 // ------------------------------------------------------------- inputs
 const buildMode = $<HTMLSelectElement>("buildMode");
+const shareWalls = form.elements.namedItem("shareWalls") as HTMLInputElement;
 const stackEditor = $("mixedStacks");
 const canPresets = form.elements.namedItem("preset") as HTMLSelectElement;
 let incomingDesignError: string | null = null;
+// A malformed link flag needs an explicit choice on its own checkbox; unrelated
+// edits must not replace its otherwise valid request with a fallback design.
+const incomingFlagErrors = new Map<string, string>();
+function incomingLinkError(): string | null {
+  const flagNames = buildMode.value === "rows" ? ["rowsShareWalls", "rowsTopCover"]
+    : buildMode.value === "mixed" ? ["shareWalls"] : [];
+  const flagErrors = flagNames.map(name => incomingFlagErrors.get(name)).filter(error => error !== undefined);
+  return incomingDesignError ?? (flagErrors.join("; ") || null);
+}
 let stacksInitialized = false;
-const isMixedLayout = (layout: Layout | MixedLayout): layout is MixedLayout => "mode" in layout && layout.mode === "mixed";
+const isMixedLayout = (layout: BuildLayout): layout is MixedLayout => "mode" in layout && layout.mode === "mixed";
+const isIndependentRowsLayout = (layout: BuildLayout): layout is IndependentRowsLayout => "mode" in layout && layout.mode === "rows";
+// Independent row cards display top-down and left-to-right; requests use the opposite order.
+const customRows = $("customRows");
+const rowsShareWalls = form.elements.namedItem("rowsShareWalls") as HTMLInputElement;
+const rowsTopCover = form.elements.namedItem("rowsTopCover") as HTMLInputElement;
+let independentRowsInitialized = false;
+function customRowCards() { return [...customRows.querySelectorAll<HTMLElement>(":scope > .custom-row-card")].reverse(); }
+function customLaneCards(row: HTMLElement) { return [...row.querySelector<HTMLElement>("[data-row-lanes]")!.children] as HTMLElement[]; }
+function defaultIndependentLane(): IndependentLaneRequest {
+  const usableDepth = Number((form.elements.namedItem("d") as HTMLInputElement).value) - Number((form.elements.namedItem("front") as HTMLInputElement).value);
+  return { canDiameter: DEFAULTS.canD, canHeight: DEFAULTS.canL, depth: Math.min(480, usableDepth), slope: DEFAULTS.slope, lipGap: DEFAULTS.lipGap };
+}
+function defaultIndependentRow(): IndependentRowRequest {
+  return { lanes: [defaultIndependentLane(), defaultIndependentLane()], repeat: 1, rowHeight: "auto", rowSpan: "auto", alignment: "centre", rearLoad: false };
+}
+function independentRowValues() {
+  return customRowCards().map((row, rowIndex) => {
+    const field = (name: string) => row.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-row-field="${name}"]`)!;
+    const lanes = customLaneCards(row).reverse();
+    const requestedCount = Number(field("laneCount").value || NaN);
+    if (!Number.isSafeInteger(requestedCount) || requestedCount < 1 || requestedCount > INDEPENDENT_ROWS_LIMITS.lanesPerRow)
+      throw new Error(`Row ${rowIndex + 1}: lane count must be a whole number from 1 to ${INDEPENDENT_ROWS_LIMITS.lanesPerRow}`);
+    if (requestedCount !== lanes.length) throw new Error(`Row ${rowIndex + 1}: lane count does not match its editable lanes`);
+    const dimension = (name: string) => field(`${name}Mode`).value === "auto" ? "auto" : Number(field(name).value || NaN);
+    return { lanes: lanes.map(lane => {
+      const number = (name: string) => Number(lane.querySelector<HTMLInputElement>(`[data-lane-field="${name}"]`)!.value || NaN);
+      return { canDiameter: number("canDiameter"), canHeight: number("canHeight"), depth: number("depth"), slope: number("slope"), lipGap: number("lipGap") };
+    }), repeat: Number(field("repeat").value || NaN), rowHeight: dimension("rowHeight"), rowSpan: dimension("rowSpan"),
+      alignment: field("alignment").value, rearLoad: (field("rearLoad") as HTMLInputElement).checked };
+  });
+}
+function addIndependentLane(row: HTMLElement, request?: IndependentLaneRequest) {
+  if (!request) {
+    const existingDepth = row.querySelector<HTMLInputElement>('[data-lane-field="depth"]');
+    request = { ...defaultIndependentLane(), ...(existingDepth ? { depth: existingDepth.valueAsNumber } : {}) };
+  }
+  const lane = document.createElement("section"); lane.className = "custom-lane-card";
+  lane.innerHTML = `<h4></h4><label>Can preset<select data-lane-field="preset"></select></label><div class="dims">
+    <label>Can diameter<input data-lane-field="canDiameter" type="number" min="20" max="200" step="0.1"><span>mm</span></label>
+    <label>Can height<input data-lane-field="canHeight" type="number" min="40" max="400" step="0.1"><span>mm</span></label>
+    <label>Exact depth<input data-lane-field="depth" type="number" min="50" max="2000" step="0.1"><span>mm</span></label>
+    <label>Deck slope<input data-lane-field="slope" type="number" min="0" max="10" step="0.5"><span>°</span></label>
+    <label>Lip headroom<input data-lane-field="lipGap" type="number" min="0" max="20" step="0.1"><span>mm</span></label></div>
+    <p class="hint" data-lane-resolution></p><div class="custom-lane-actions">
+    <button type="button" class="stack-action" data-lane-action="left">← Left</button><button type="button" class="stack-action" data-lane-action="right">Right →</button>
+    <button type="button" class="stack-action" data-lane-action="duplicate">Duplicate</button><button type="button" class="stack-action" data-lane-action="remove">Remove</button></div>`;
+  const preset = lane.querySelector<HTMLSelectElement>('[data-lane-field="preset"]')!;
+  preset.replaceChildren(...[...canPresets.options].map(option => option.cloneNode(true)));
+  preset.value = [...canPresets.options].find(option => option.value === `${request.canDiameter},${request.canHeight}`)?.value ?? "custom";
+  for (const field of ["canDiameter", "canHeight", "depth", "slope", "lipGap"] as const)
+    lane.querySelector<HTMLInputElement>(`[data-lane-field="${field}"]`)!.value = String(request[field]);
+  row.querySelector("[data-row-lanes]")!.prepend(lane);
+  row.querySelector<HTMLInputElement>('[data-row-field="laneCount"]')!.value = String(customLaneCards(row).length);
+  return lane;
+}
+function addIndependentRow(request?: IndependentRowRequest) {
+  if (!request) {
+    request = defaultIndependentRow();
+    const adjacentDepth = customRows.firstElementChild?.querySelector<HTMLInputElement>('[data-lane-field="depth"]');
+    if (adjacentDepth) for (const lane of request.lanes) lane.depth = adjacentDepth.valueAsNumber;
+  }
+  const row = document.createElement("section"); row.className = "custom-row-card";
+  row.innerHTML = `<h3 tabindex="-1"></h3><div class="custom-row-actions">
+    <button type="button" class="stack-action" data-row-action="higher">↑ Higher</button><button type="button" class="stack-action" data-row-action="lower">↓ Lower</button>
+    <button type="button" class="stack-action" data-row-action="duplicate">Duplicate row</button><button type="button" class="stack-action" data-row-action="remove">Remove row</button></div>
+    <div class="dims">
+    <label>Lane count<input data-row-field="laneCount" type="number" min="1" max="${INDEPENDENT_ROWS_LIMITS.lanesPerRow}" step="1"></label>
+    <label>Repeat this row<input data-row-field="repeat" type="number" min="1" max="${INDEPENDENT_ROWS_LIMITS.repetitions}" step="1"></label>
+    <label>Row height<select data-row-field="rowHeightMode"><option value="auto">Automatic</option><option value="fixed">Exact</option></select></label>
+    <label data-row-height-fixed>Exact row height<input data-row-field="rowHeight" type="number" min="0.1" max="2000" step="0.1"><span>mm</span></label>
+    <label>Row span<select data-row-field="rowSpanMode"><option value="auto">Compact</option><option value="fixed">Exact</option></select></label>
+    <label data-row-span-fixed>Exact row span<input data-row-field="rowSpan" type="number" min="0.1" max="2000" step="0.1"><span>mm</span></label>
+    <label>Alignment<select data-row-field="alignment"><option value="left">Left</option><option value="centre">Centred</option><option value="right">Right</option></select></label></div>
+    <label class="check"><input data-row-field="rearLoad" type="checkbox"> Load this row from the back</label>
+    <p class="hint">Automatic height uses this row’s tallest lane. A larger span creates empty gaps between complete lanes.</p>
+    <p class="hint" data-row-resolution></p><div class="custom-row-lanes" data-row-lanes></div>
+    <button type="button" class="stack-action" data-row-action="add-lane">Add a lane on the left</button>`;
+  for (const [name, value] of [["repeat", request.repeat], ["alignment", request.alignment]] as const)
+    row.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-row-field="${name}"]`)!.value = String(value);
+  for (const name of ["rowHeight", "rowSpan"] as const) {
+    row.querySelector<HTMLSelectElement>(`[data-row-field="${name}Mode"]`)!.value = request[name] === "auto" ? "auto" : "fixed";
+    row.querySelector<HTMLInputElement>(`[data-row-field="${name}"]`)!.value = request[name] === "auto" ? (name === "rowHeight" ? "100" : "420") : String(request[name]);
+  }
+  row.querySelector<HTMLInputElement>('[data-row-field="rearLoad"]')!.checked = request.rearLoad;
+  for (const lane of request.lanes) addIndependentLane(row, lane);
+  customRows.prepend(row); updateIndependentRowActions();
+  return row;
+}
+function resetIndependentRows(requests = [defaultIndependentRow()]) {
+  customRows.replaceChildren();
+  for (const request of requests) addIndependentRow(request);
+}
+function updateIndependentRowActions() {
+  const rows = customRowCards();
+  for (const [rowIndex, row] of rows.entries()) {
+    row.querySelector("h3")!.textContent = `Row ${rowIndex + 1}${rowIndex === 0 ? " · bottom" : rowIndex === rows.length - 1 ? " · top" : ""}`;
+    for (const action of ["higher", "lower", "duplicate", "remove", "add-lane"]) {
+      const button = row.querySelector<HTMLButtonElement>(`[data-row-action="${action}"]`)!;
+      button.disabled = action === "higher" ? rowIndex === rows.length - 1 : action === "lower" ? rowIndex === 0
+        : action === "remove" ? rows.length <= 1 : action === "duplicate" ? rows.length >= INDEPENDENT_ROWS_LIMITS.requestedRows
+        : customLaneCards(row).length >= INDEPENDENT_ROWS_LIMITS.lanesPerRow;
+      button.setAttribute("aria-label", `${action === "higher" ? "Move higher" : action === "lower" ? "Move lower" : action === "duplicate" ? "Duplicate" : action === "remove" ? "Remove" : "Add a lane to"} row ${rowIndex + 1}`);
+    }
+    const lanes = customLaneCards(row).reverse();
+    for (const [laneIndex, lane] of lanes.entries()) {
+      lane.querySelector("h4")!.textContent = `Lane ${laneIndex + 1}${laneIndex === 0 ? " · right" : laneIndex === lanes.length - 1 ? " · left" : ""}`;
+      for (const action of ["left", "right", "duplicate", "remove"]) {
+        const button = lane.querySelector<HTMLButtonElement>(`[data-lane-action="${action}"]`)!;
+        button.disabled = action === "left" ? laneIndex === lanes.length - 1 : action === "right" ? laneIndex === 0
+          : action === "duplicate" ? lanes.length >= INDEPENDENT_ROWS_LIMITS.lanesPerRow : lanes.length <= 1;
+        button.setAttribute("aria-label", `${action === "left" || action === "right" ? `Move ${action}` : action === "duplicate" ? "Duplicate" : "Remove"} lane ${laneIndex + 1} in row ${rowIndex + 1}`);
+      }
+    }
+  }
+  $<HTMLButtonElement>("addIndependentRow").disabled = rows.length >= INDEPENDENT_ROWS_LIMITS.requestedRows;
+  updateIndependentRowSummaries();
+}
+function updateIndependentRowSummaries() {
+  const rows = customRowCards(), map = $("independentRowOrder");
+  map.replaceChildren();
+  for (const row of rows.slice().reverse()) {
+    const rowIndex = rows.indexOf(row), band = document.createElement("div"); band.className = "custom-row-band";
+    const title = document.createElement("strong"); title.textContent = `Row ${rowIndex + 1}`; band.append(title);
+    for (const lane of customLaneCards(row)) {
+      const label = document.createElement("span");
+      label.textContent = `${lane.querySelector<HTMLInputElement>('[data-lane-field="canHeight"]')!.value} mm`;
+      band.append(label);
+    }
+    map.append(band);
+    row.querySelector<HTMLElement>("[data-row-height-fixed]")!.hidden = row.querySelector<HTMLSelectElement>('[data-row-field="rowHeightMode"]')!.value === "auto";
+    row.querySelector<HTMLElement>("[data-row-span-fixed]")!.hidden = row.querySelector<HTMLSelectElement>('[data-row-field="rowSpanMode"]')!.value === "auto";
+  }
+}
+function cloneIndependentCard(source: HTMLElement): HTMLElement {
+  const copy = source.cloneNode(true) as HTMLElement;
+  const sourceFields = source.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input,select");
+  copy.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input,select").forEach((field, index) => {
+    field.value = sourceFields[index].value;
+    if (field instanceof HTMLInputElement && field.type === "checkbox") field.checked = (sourceFields[index] as HTMLInputElement).checked;
+  });
+  return copy;
+}
+function moveIndependentCard(card: HTMLElement, earlier: boolean) {
+  const neighbor = earlier ? card.previousElementSibling : card.nextElementSibling;
+  if (!neighbor) return;
+  const focused = card.contains(document.activeElement) ? document.activeElement as HTMLButtonElement : null;
+  card.parentElement!.insertBefore(card, earlier ? neighbor : neighbor.nextElementSibling);
+  updateIndependentRowActions();
+  const focus = focused?.disabled ? card.querySelector<HTMLButtonElement>("button:not([disabled])") : focused;
+  focus?.focus({ preventScroll: true }); card.scrollIntoView({ block: "nearest" });
+  $("independentRowOrderStatus").textContent = "Row and lane order updated. Row 1 is at the bottom; Lane 1 is on the right.";
+  editDesign();
+}
+$("addIndependentRow").addEventListener("click", () => {
+  if (customRowCards().length >= INDEPENDENT_ROWS_LIMITS.requestedRows) return;
+  addIndependentRow(); editDesign();
+});
+customRows.addEventListener("click", event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>("[data-row-action],[data-lane-action]");
+  if (!button || button.disabled) return;
+  const row = button.closest<HTMLElement>(".custom-row-card")!, lane = button.closest<HTMLElement>(".custom-lane-card");
+  const action = button.dataset.laneAction ?? button.dataset.rowAction;
+  if (action === "higher" || action === "left") { moveIndependentCard(lane ?? row, true); return; }
+  if (action === "lower" || action === "right") { moveIndependentCard(lane ?? row, false); return; }
+  if (action === "duplicate") (lane ?? row).after(cloneIndependentCard(lane ?? row));
+  else if (action === "remove") (lane ?? row).remove();
+  else if (action === "add-lane") addIndependentLane(row);
+  if (lane) row.querySelector<HTMLInputElement>('[data-row-field="laneCount"]')!.value = String(customLaneCards(row).length);
+  updateIndependentRowActions(); editDesign();
+});
+customRows.addEventListener("keydown", event => {
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const button = (event.target as Element).closest<HTMLButtonElement>("[data-row-action],[data-lane-action]");
+  if (!button) return;
+  const lane = button.closest<HTMLElement>(".custom-lane-card"), row = button.closest<HTMLElement>(".custom-row-card")!;
+  const earlier = lane ? event.key === "ArrowLeft" : event.key === "ArrowUp";
+  const later = lane ? event.key === "ArrowRight" : event.key === "ArrowDown";
+  if (!earlier && !later) return;
+  event.preventDefault(); moveIndependentCard(lane ?? row, earlier);
+});
+function editIndependentRowInput(input: HTMLInputElement | HTMLSelectElement) {
+  const lane = input.closest<HTMLElement>(".custom-lane-card");
+  if (lane) {
+    if (input.dataset.laneField === "preset" && input.value !== "custom") {
+      const [diameter, height] = input.value.split(",");
+      lane.querySelector<HTMLInputElement>('[data-lane-field="canDiameter"]')!.value = diameter;
+      lane.querySelector<HTMLInputElement>('[data-lane-field="canHeight"]')!.value = height;
+    } else if (input.dataset.laneField === "canDiameter" || input.dataset.laneField === "canHeight")
+      lane.querySelector<HTMLSelectElement>('[data-lane-field="preset"]')!.value = "custom";
+  }
+  if (input.dataset.rowField === "laneCount") {
+    const row = input.closest<HTMLElement>(".custom-row-card")!, count = Number(input.value || NaN);
+    if (Number.isSafeInteger(count) && count >= 1 && count <= INDEPENDENT_ROWS_LIMITS.lanesPerRow) {
+      while (customLaneCards(row).length < count) addIndependentLane(row);
+      while (customLaneCards(row).length > count) customLaneCards(row)[0].remove();
+      updateIndependentRowActions();
+    }
+  }
+  updateIndependentRowSummaries(); editDesign();
+}
+
 function sharedStackOptions() {
   const checkbox = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).checked;
   const number = (name: string) => Number((form.elements.namedItem(name) as HTMLInputElement).value || NaN);
@@ -109,7 +323,19 @@ function updateStackActions() {
       button.disabled = action === "earlier" ? index === 0 : action === "later" ? index === rows.length - 1 : action === "duplicate" ? rows.length >= 8 : rows.length <= 2;
       button.setAttribute("aria-label", action === "earlier" ? `Move stack ${index + 1} up` : action === "later" ? `Move stack ${index + 1} down` : `${button.textContent} stack ${index + 1}`);
     }
-    row.querySelector<HTMLElement>(".fixed-tiers")!.hidden = row.querySelector<HTMLSelectElement>('[data-stack-field="tierMode"]')!.value === "auto";
+    const automatic = row.querySelector<HTMLSelectElement>('[data-stack-field="tierMode"]')!.value === "auto";
+    row.querySelector<HTMLElement>(".fixed-tiers")!.hidden = automatic;
+    const singleTier = !automatic && row.querySelector<HTMLInputElement>('[data-stack-field="tiers"]')!.valueAsNumber === 1;
+    const feeding = row.querySelector<HTMLInputElement>('[data-stack-field="cascade"]')!;
+    if (singleTier && !feeding.disabled) {
+      feeding.dataset.multipleTierChoice = String(feeding.checked);
+      feeding.checked = false;
+    } else if (!singleTier && feeding.disabled) {
+      feeding.checked = feeding.dataset.multipleTierChoice === "true";
+      delete feeding.dataset.multipleTierChoice;
+    }
+    feeding.disabled = singleTier;
+    row.querySelector<HTMLElement>("[data-stack-feeding-note]")!.hidden = !singleTier;
   });
   $<HTMLButtonElement>("addStack").disabled = rows.length >= 8;
   updateStackSummaries();
@@ -129,6 +355,7 @@ function addStack(request: MixedStackRequest, after?: HTMLElement) {
     <label>Lip headroom<input data-stack-field="lipGap" type="number" min="0" max="20" step="1"><span>mm</span></label>
     </div>
     <label class="check"><input data-stack-field="cascade" type="checkbox"> Auto-feed between tiers</label>
+    <small class="hint" data-stack-feeding-note hidden>A single tier loads from the front. Auto-feed between tiers requires at least two tiers.</small>
     <label class="check"><input data-stack-field="cover" type="checkbox"> Cover on the top tier</label>
     <label class="check"><input data-stack-field="rearLoad" type="checkbox"> Load from the back</label>
     <label class="check"><input data-stack-field="stackable" type="checkbox"> Join another tier on top</label>
@@ -160,19 +387,24 @@ function resetStacks(requests = defaultStacks()) {
 }
 
 function syncMode() {
-  const mixed = buildMode.value === "mixed";
+  const mixed = buildMode.value === "mixed", rows = buildMode.value === "rows";
   if (!mixed) finishStackDrag(true);
   if (mixed && !stacksInitialized) { resetStacks(); stacksInitialized = true; }
-  $("uniformCan").hidden = mixed;
+  if (rows && !independentRowsInitialized) { resetIndependentRows(); independentRowsInitialized = true; }
+  $("uniformCan").hidden = mixed || rows;
   $("mixedEditor").hidden = !mixed;
-  $("outerJoins").hidden = mixed;
-  $("outerJoinsHint").hidden = mixed;
-  $("gridAlignment").hidden = mixed;
-  $("uniformAssembly").hidden = mixed;
+  $("rowsEditor").hidden = !rows;
+  $("baseOptions").hidden = rows;
+  $("outerJoins").hidden = mixed || rows;
+  $("outerJoinsHint").hidden = mixed || rows;
+  $("gridAlignment").hidden = mixed || rows;
+  $("uniformAssembly").hidden = mixed || rows;
   $("mixedAssembly").hidden = !mixed;
-  for (const id of ["sharedCascade", "sharedCover", "sharedRearLoad", "sharedSlope", "sharedLipGap", "sharedStackable"]) $(id).hidden = mixed;
-  $("optionsLegend").textContent = mixed ? "Customize all stacks" : "Customize";
-  $("feedingOptions").hidden = mixed;
+  $("sharedWallAssembly").hidden = true;
+  $("rowsAssembly").hidden = !rows;
+  for (const id of ["sharedCascade", "sharedCover", "sharedRearLoad", "sharedSlope", "sharedLipGap", "sharedStackable"]) $(id).hidden = mixed || rows;
+  $("optionsLegend").textContent = rows ? "Customize all rows" : mixed ? "Customize all stacks" : "Customize";
+  $("feedingOptions").hidden = mixed || rows;
   updateControlSummaries();
 }
 
@@ -233,7 +465,7 @@ function updateControlSummaries() {
   $("patternSample").dataset.pattern = checked("solid") ? "solid" : value("pattern");
   const standsOn = value("base");
   $("baseSummary").textContent = `${standsOn === "flat" ? "Flat on shelf" : standsOn === "feet" ? "24 mm feet" : "Gridfinity"}${checked("magnets") && standsOn !== "flat" ? " · magnet pockets" : ""}`;
-  $("gridAlignment").hidden = buildMode.value === "mixed" || standsOn !== "gridfinity";
+  $("gridAlignment").hidden = buildMode.value === "mixed" || buildMode.value === "rows" || standsOn !== "gridfinity";
   (form.elements.namedItem("magnets") as HTMLInputElement).closest("label")!.hidden = standsOn === "flat";
   $("fitSummary").textContent = `${Number(value("fit")).toFixed(2)} mm added clearance`;
 }
@@ -241,7 +473,7 @@ function updateControlSummaries() {
 function editDesign() {
   updateControlSummaries();
   updateStackSummaries();
-  incomingDesignError = null;
+  updateIndependentRowSummaries();
   refit();
   queueHash();
 }
@@ -380,7 +612,7 @@ stackEditor.addEventListener("click", (event) => {
   }
   updateStackActions(); editDesign();
 });
-resetStacks(); syncMode();
+resetStacks(); resetIndependentRows(); syncMode();
 
 /** The form as the solver takes it; throws naming a bad field. */
 function readOptions(): FormValues {
@@ -394,6 +626,7 @@ form.addEventListener("input", (e) => {
   const t = e.target as HTMLInputElement | HTMLSelectElement;
   // Profile controls have their own change handlers. Only bed inputs change geometry.
   if (t.closest(".profile")) return;
+  if (t.closest("#customRows")) { editIndependentRowInput(t); return; }
   const stack = t.closest<HTMLElement>(".stack-card");
   if (stack) {
     const preset = stack.querySelector<HTMLSelectElement>('[data-stack-field="preset"]')!;
@@ -417,8 +650,12 @@ form.addEventListener("input", (e) => {
   if (t.name === "fit") (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number(t.value).toFixed(2);
   if (t.name === "lipGap") (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = t.value;
   if (t.name === "base") syncJoins();
-  if (t.name === "buildMode") syncMode();
-  if (t.dataset.stackField === "tierMode") updateStackActions();
+  incomingFlagErrors.delete(t.name);
+  if (t.name === "buildMode") {
+    incomingDesignError = null;
+    syncMode();
+  }
+  if (t.dataset.stackField === "tierMode" || t.dataset.stackField === "tiers") updateStackActions();
   editDesign(); // first refit resets the chosen layout, which the hash carries
 });
 
@@ -434,7 +671,25 @@ form.addEventListener("submit", (e) => e.preventDefault());
 function refit(want = 0) {
   exportId++; // any new intent also retires a file already being prepared
   if (buildMode.value === "mixed") updateStackDepthControls();
-  if (incomingDesignError) { rejectDesign(incomingDesignError); return; }
+  if (buildMode.value === "rows") clearIndependentRowsResolution();
+  const incomingError = incomingLinkError();
+  if (incomingError) { rejectDesign(incomingError); return; }
+  if (buildMode.value === "rows") {
+    try {
+      const fields = new FormData(form);
+      const { space, request } = independentRowsOptionsFrom(name => { const value = fields.get(name); return value === null ? null : String(value); }, independentRowValues());
+      request.shared.bedKeepOut = keepOut;
+      const layout = resolveIndependentRows(space, request);
+      renderIndependentRowsResolution(layout);
+      layouts = [layout];
+      const box = $("layouts"); box.replaceChildren();
+      const heading = document.createElement("h2"); heading.textContent = "Your custom rows";
+      const details = document.createElement("p"); details.className = "hint";
+      details.textContent = `${layout.rows.length} rows · ${layout.cans} cans · ${layout.footprint.map(dimension => dimension.toFixed(1)).join(" × ")} mm`;
+      box.append(heading, details); choose(0);
+    } catch (error) { rejectDesign(reason(error)); }
+    return;
+  }
   if (buildMode.value === "mixed") {
     try {
       const fields = new FormData(form);
@@ -499,6 +754,16 @@ function rejectDesign(message: string, prefix = "Check your design") {
 function choose(i: number) {
   $("viewerMessage").hidden = true;
   chosen = layouts[i];
+  const hasSharedWalls = isMixedLayout(chosen) && chosen.boundaries?.some((boundary) => boundary.kind === "shared") === true;
+  $("sharedWallAssembly").hidden = !hasSharedWalls;
+  $("mixedAssembly").hidden = !isMixedLayout(chosen) || hasSharedWalls;
+  $("rowsAssembly").hidden = !isIndependentRowsLayout(chosen);
+  if (isIndependentRowsLayout(chosen)) {
+    $("rowsAssembly").querySelector<HTMLElement>('[data-row-assembly="connections"]')!.hidden = !chosen.rows.some(row => row.layout.connections.length > 0);
+    $("rowsAssembly").querySelector<HTMLElement>('[data-row-assembly="shared"]')!.hidden = !chosen.rows.some(row => row.layout.boundaries?.some(boundary => boundary.kind === "shared"));
+    const hasTransitions = chosen.transitions.length > 0;
+    $("rowsAssembly").querySelectorAll<HTMLElement>('[data-row-assembly="transitions"]').forEach(step => { step.hidden = !hasTransitions; });
+  }
   chosenIndex = i;
   // Retire the in-flight build here, not when the debounce fires. chosen has already
   // moved on, so a result still carrying the old id would be welded to the new layout:
@@ -522,6 +787,10 @@ function dropBuild() {
   buildPending = false;
   pendingEstimate = null;
   chosen = null; chosenIndex = 0; built = null;
+  $("sharedWallAssembly").hidden = true;
+  $("mixedAssembly").hidden = buildMode.value !== "mixed";
+  $("rowsAssembly").hidden = buildMode.value !== "rows";
+  $("rowsAssembly").querySelectorAll<HTMLElement>("[data-row-assembly]").forEach(step => { step.hidden = true; });
   for (const id of ["dl3mf", "dlstl"]) $<HTMLButtonElement>(id).disabled = true; // nothing to export
   $("results").hidden = true;
   $("printRecovery").hidden = false;
@@ -550,7 +819,9 @@ function build() {
   setBuildPending(true);
   setStatus("Building parts…", true);
   const settings = estimateSettings(profile?.config, index ?? undefined);
-  const req: Req = isMixedLayout(chosen)
+  const req: Req = isIndependentRowsLayout(chosen)
+    ? { type: "build-rows", id, layout: chosen, keepOut, estimateSettings: settings }
+    : isMixedLayout(chosen)
     ? { type: "build-mixed", id, layout: chosen, keepOut, estimateSettings: settings }
     : { type: "build", id, options: chosen.options, keepOut, estimateSettings: settings };
   pendingBuild = req;
@@ -599,7 +870,7 @@ function restartWorker(r: Extract<Res, { type: "error" }>) {
 
 function onWorkerMessage(e: MessageEvent<Res>) {
   const r = e.data;
-  if (r.type === "built" || (r.type === "error" && (r.of === "build" || r.of === "build-mixed"))) {
+  if (r.type === "built" || (r.type === "error" && (r.of === "build" || r.of === "build-mixed" || r.of === "build-rows"))) {
     if (r.id === inFlightBuildIdentifier) inFlightBuildIdentifier = null;
     if (!(r.type === "error" && r.fatal)) sendPendingBuild();
   }
@@ -623,11 +894,11 @@ function onWorkerMessage(e: MessageEvent<Res>) {
     if (r.fatal) { restartWorker(r); return; }
     // A superseded build's error is about numbers no longer on screen: it would overwrite
     // "Building parts…" or the build that replaced it with news about neither.
-    if ((r.of === "build" || r.of === "build-mixed") && r.id !== buildId) { console.warn(`superseded build #${r.id} failed: ${r.message}`); return; }
+    if ((r.of === "build" || r.of === "build-mixed" || r.of === "build-rows") && r.id !== buildId) { console.warn(`superseded build #${r.id} failed: ${r.message}`); return; }
     // The build on screen failed, so take it off: leaving it up re-enables the downloads
     // over the previous build's geometry, under an error about this one. An export's
     // error leaves the build alone.
-    if (r.of === "build" || r.of === "build-mixed") { setBuildPending(false); dropBuild(); }
+    if (r.of === "build" || r.of === "build-mixed" || r.of === "build-rows") { setBuildPending(false); dropBuild(); }
     fail(`Something went wrong: ${r.message}`);
     return;
   }
@@ -666,7 +937,7 @@ function onWorkerError(e: ErrorEvent) {
 
 // ------------------------------------------------------------- stage
 function partLabel(name: string) {
-  return name.replace(/^stack-(\d+)-/, "Stack $1 · ").replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return name.replace(/^row-(\d+)-stack-(\d+)-/, "Level $1 · Lane $2 · ").replace(/^row-(\d+)-/, "Level $1 · ").replace(/^transition-(\d+)-/, "Transition $1 · ").replace(/^stack-(\d+)-/, "Stack $1 · ").replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function filterParts() {
@@ -720,12 +991,13 @@ function showTab(key: string) {
   $("partIdentifier").textContent = key.startsWith("part:") ? key.slice(5) : key === "assembly" ? "Assembly" : `Plate ${Number(key.slice(6)) + 1}`;
   $("plates").querySelectorAll(".plate").forEach((b) => b.setAttribute("aria-pressed", String(b.getAttribute("data-key") === key)));
   const { layout, parts, plan } = built;
-  const bed = isMixedLayout(layout) ? layout.request.shared.bed : layout.options.bed;
+  const bed = isMixedLayout(layout) || isIndependentRowsLayout(layout) ? layout.request.shared.bed : layout.options.bed;
   $("showCans").hidden = $("explode").hidden = key !== "assembly";
   // the plate view is the bed, so its toggles make no sense there
   $("showGrid").hidden = $("showBed").hidden = key.startsWith("plate:");
   if (key === "assembly") {
-    if (isMixedLayout(layout)) viewer.showMixedAssembly(parts, layout);
+    if (isIndependentRowsLayout(layout)) viewer.showIndependentRowsAssembly(parts, layout);
+    else if (isMixedLayout(layout)) viewer.showMixedAssembly(parts, layout);
     else viewer.showAssembly(parts, layout.options, layout.derived);
   }
   else if (key.startsWith("part:")) { const p = parts.find((x) => x.name === key.slice(5)); if (p) viewer.showPart(p, bed); }
@@ -771,7 +1043,8 @@ function renderResults() {
   // Retain the actual action nodes and their export listeners across result refreshes.
   printActions.remove();
   const g = (n: number) => `${n.toFixed(0)} g`;
-  if (isMixedLayout(layout)) renderMixedSummary(layout, parts, nplates);
+  if (isIndependentRowsLayout(layout)) renderIndependentRowsSummary(layout, parts, nplates);
+  else if (isMixedLayout(layout)) renderMixedSummary(layout, parts, nplates);
   else {
   const d = layout.derived, o = layout.options;
   const grams = totalGrams(parts);
@@ -855,6 +1128,23 @@ function renderMixedSummary(layout: MixedLayout, parts: PartOut[], plates: numbe
     ["Footprint", `${layout.footprint.map((dimension) => dimension.toFixed(1)).join(" × ")} mm`],
     ["Filament", `~${(totalGrams(parts) / 1000).toFixed(2)} kg (${estimatedGrams ? "estimated" : materialEstimate})`],
     ["Plates", `${plates} on a ${shared.bed[0]} × ${shared.bed[1]} mm bed`]]);
+  if (layout.request.shareCompatibleWalls) {
+    const boundaries = layout.boundaries;
+    if (!boundaries) throw new Error("Wall sharing is missing its resolved boundary plan");
+    const sharedCount = boundaries.filter((boundary) => boundary.kind === "shared").length;
+    const result = document.createElement("section"); result.id = "wallSharingResult"; result.className = "wall-sharing-result";
+    const description = document.createElement("p");
+    description.textContent = `${sharedCount} of ${boundaries.length} adjacent boundaries share a wall · ${(sharedCount * (shared.wall + K.gangGap)).toFixed(1)} mm width saved.${sharedCount === 0 ? " No compatible boundaries; both walls are retained at every boundary." : ""}`;
+    result.append(description);
+    const retained = document.createElement("ul");
+    for (const boundary of boundaries) if (boundary.kind === "retained") {
+      const item = document.createElement("li");
+      item.textContent = `Stacks ${boundary.firstStackIndex + 1} and ${boundary.secondStackIndex + 1} keep both walls: ${boundary.reason}`;
+      retained.append(item);
+    }
+    if (retained.children.length) result.append(retained);
+    summary.append(result);
+  }
   for (const [index, stack] of layout.stacks.entries()) {
     const options = stack.options;
     const section = document.createElement("section"); section.className = "stack-summary";
@@ -877,6 +1167,84 @@ function renderMixedSummary(layout: MixedLayout, parts: PartOut[], plates: numbe
     note.textContent = `Preview samples the assembly; capacity and export quantities include every part and all ${preview.cans} cans.`; summary.append(note);
   }
   for (const warning of layout.warnings) { const note = document.createElement("p"); note.className = "warn"; note.textContent = warning; summary.append(note); }
+}
+
+function clearIndependentRowsResolution() {
+  for (const row of customRowCards()) {
+    row.querySelector("[data-row-resolution]")!.textContent = "";
+    for (const lane of customLaneCards(row)) lane.querySelector("[data-lane-resolution]")!.textContent = "";
+  }
+}
+function independentRowGaps(row: IndependentRowsLayout["rows"][number]): string {
+  return row.gaps.map((gap, index) => row.layout.boundaries?.[index]?.kind === "shared" ? "shared wall" : `${gap.toFixed(1)} mm`).join(" / ") || "one lane; no internal gap";
+}
+function renderIndependentRowsResolution(layout: IndependentRowsLayout) {
+  const cards = customRowCards();
+  for (const row of layout.rows) {
+    if (row.repeatIndex !== 0) continue;
+    const card = cards[row.requestIndex];
+    if (!card) throw new Error(`Resolved Row ${row.requestIndex + 1} has no editor card`);
+    card.querySelector("[data-row-resolution]")!.textContent = `Resolved height ${row.height.toFixed(1)} mm · span ${row.span.toFixed(1)} mm · ${independentRowGaps(row)}`;
+    const lanes = customLaneCards(card).reverse();
+    for (const lane of row.lanes) lanes[lane.index].querySelector("[data-lane-resolution]")!.textContent = `Natural height ${lane.naturalHeight.toFixed(1)} mm · added headroom ${lane.heightPadding.toFixed(1)} mm · ${lane.cans} cans`;
+  }
+}
+function renderIndependentRowsSummary(layout: IndependentRowsLayout, parts: PartOut[], plates: number) {
+  const summary = $("summary"); summary.replaceChildren();
+  const heading = document.createElement("h2"); heading.textContent = "What you get"; summary.append(heading);
+  const details = (parent: HTMLElement, entries: [string, string][]) => {
+    const list = document.createElement("dl");
+    for (const [label, value] of entries) {
+      const term = document.createElement("dt"); term.textContent = label;
+      const description = document.createElement("dd"); description.textContent = value; list.append(term, description);
+    }
+    parent.append(list);
+  };
+  details(summary, [["Capacity", `${layout.cans} cans in ${layout.rows.length} row${layout.rows.length === 1 ? "" : "s"}`],
+    ["Footprint", `${layout.footprint.map(dimension => dimension.toFixed(1)).join(" × ")} mm`],
+    ["Filament", `~${(totalGrams(parts) / 1000).toFixed(2)} kg (${estimatedGrams ? "estimated" : "recalculating for print settings"})`],
+    ["Plates", `${plates} on a ${layout.request.shared.bed[0]} × ${layout.request.shared.bed[1]} mm bed`]]);
+  const transition = document.createElement("p"); transition.className = "hint";
+  const heights = layout.transitions.map((item, index) => `Transition ${index + 1}: ${item.carrierThickness.toFixed(1)} mm carrier + ${item.shoeHeight.toFixed(1)} mm shoes`).join("; ");
+  transition.textContent = `${layout.transitions.length} carrier transition${layout.transitions.length === 1 ? "" : "s"}${heights ? ` · ${heights}` : ""}. Every support is included in the footprint, filament estimate and downloads. Top cover ${layout.request.topCover ? "on" : "off"}.`;
+  summary.append(transition);
+  for (const row of layout.rows.slice().reverse()) {
+    const section = document.createElement("section"); section.className = "custom-row-result"; section.dataset.resolvedRow = String(row.index);
+    const title = document.createElement("h3");
+    title.textContent = `Level ${row.index + 1} · Row ${row.requestIndex + 1}${row.request.repeat > 1 ? `, copy ${row.repeatIndex + 1} of ${row.request.repeat}` : ""}`;
+    section.append(title);
+    details(section, [["Height", `${row.height.toFixed(1)} mm (${row.request.rowHeight === "auto" ? "automatic" : "exact"}; minimum ${row.minimumHeight.toFixed(1)} mm)`],
+      ["Span", `${row.span.toFixed(1)} mm (${row.request.rowSpan === "auto" ? "compact" : "exact"})`],
+      ["Gaps between lanes", independentRowGaps(row)], ["Alignment", row.request.alignment], ["Loading", row.request.rearLoad ? "from the back" : "from the front of this row"]]);
+    for (const lane of row.lanes.slice().reverse()) {
+      const title = document.createElement("h4"); title.textContent = `Lane ${lane.index + 1}`; section.append(title);
+      details(section, [["Can", `${lane.options.canD} mm diameter × ${lane.options.canL} mm height`],
+        ["Depth", `${lane.derived.L} mm`], ["Capacity", `${lane.cans} cans`],
+        ["Headroom added to fit row", `${lane.heightPadding.toFixed(1)} mm`], ["Deck slope", `${lane.options.slope}°`], ["Lip headroom", `${lane.options.lipGap} mm`]]);
+    }
+    if (layout.request.shareCompatibleWalls) {
+      const boundaries = row.layout.boundaries;
+      if (!boundaries) throw new Error(`Row ${row.requestIndex + 1} is missing its wall-sharing plan`);
+      const sharing = document.createElement("p");
+      const count = boundaries.filter(boundary => boundary.kind === "shared").length;
+      sharing.textContent = `${count} of ${boundaries.length} adjacent boundaries share a wall${count === 0 ? "; no eligible shared boundary in this row" : ""}.`;
+      section.append(sharing);
+      const reasons = document.createElement("ul");
+      for (const boundary of boundaries) if (boundary.kind === "retained") {
+        const item = document.createElement("li"); item.textContent = `Lanes ${boundary.firstStackIndex + 1} and ${boundary.secondStackIndex + 1} keep both walls: ${boundary.reason}`; reasons.append(item);
+      }
+      if (reasons.children.length) section.append(reasons);
+    }
+    summary.append(section);
+  }
+  const preview = independentRowsPreviewCounts(layout);
+  if (preview.sampled) {
+    const note = document.createElement("p"); note.className = "hint";
+    note.textContent = `Preview samples the assembly; capacity and export quantities include every row, support and all ${preview.cans} cans.`; summary.append(note);
+  }
+  for (const warning of layout.warnings) {
+    const note = document.createElement("p"); note.className = "warn"; note.textContent = warning; summary.append(note);
+  }
 }
 
 // ------------------------------------------------------------- downloads
@@ -1095,6 +1463,7 @@ loadProfile();
 // Every field readOptions() consumes, plus the layout the user clicked. Checkboxes are
 // written as on/off rather than through FormData, which omits an unchecked box entirely,
 // so a link with cascade turned off used to load with it back on.
+const ROW_KEYS = ["w", "d", "h", "front", "bedX", "bedY", "bedZ", "solid", "design", "pattern", "hexR", "hexAuto", "fit"];
 const KEYS = ["w", "d", "h", "front", "canD", "canL", "bedX", "bedY", "bedZ", "cascade", "cover", "rearLoad", "stackable", "left", "right", "solid", "design", "pattern", "base", "magnets", "across", "along", "hexR", "hexAuto", "slope", "lipGap", "fit"];
 // replaceState is rate limited - Chrome drops past ~100 in 30 s, Safari throws - and the
 // hash write used to run once per input event while the build was debounced. Holding an
@@ -1110,18 +1479,26 @@ function syncHash() {
   clearTimeout(hashTimer); // a queued write would only repeat this one
   // Navigation changes location before hashchange runs. A queued edit must not
   // replace that incoming link while its event is still waiting in the task queue.
-  if (location.hash !== appliedHash) { loadHashNavigation(); return !incomingDesignError; }
-  if (incomingDesignError) return false;
+  if (location.hash !== appliedHash) { loadHashNavigation(); return !incomingLinkError(); }
+  if (incomingLinkError()) return false;
   const q = new URLSearchParams();
-  for (const k of KEYS) {
+  for (const k of buildMode.value === "rows" ? ROW_KEYS : KEYS) {
     const el = form.elements.namedItem(k) as HTMLInputElement;
     q.set(k, el.type === "checkbox" ? (el.checked ? "on" : "off") : el.value);
   }
-  if (buildMode.value === "mixed") {
+  if (buildMode.value === "rows") {
+    try {
+      const fields = new FormData(form);
+      const { request } = independentRowsOptionsFrom(name => { const value = fields.get(name); return value === null ? null : String(value); }, independentRowValues());
+      q.set("v", "5"); q.set("mode", "rows"); q.set("rows", JSON.stringify(request.rows));
+      q.set("shareWalls", request.shareCompatibleWalls ? "on" : "off"); q.set("topCover", request.topCover ? "on" : "off");
+    } catch (error) { console.info(`Shared link is waiting for valid row inputs: ${reason(error)}`); return false; }
+  } else if (buildMode.value === "mixed") {
     try {
       const fields = new FormData(form);
       const { request } = mixedOptionsFrom((name) => { const value = fields.get(name); return value === null ? null : String(value); }, stackValues());
-      q.set("v", "3"); q.set("mode", "mixed"); q.set("stacks", JSON.stringify(request.stacks));
+      q.set("v", request.shareCompatibleWalls ? "4" : "3"); q.set("mode", "mixed"); q.set("stacks", JSON.stringify(request.stacks));
+      if (request.shareCompatibleWalls) q.set("shareWalls", "on");
     } catch (error) {
       console.info(`Shared link is waiting for valid stack inputs: ${reason(error)}`);
       return false;
@@ -1149,13 +1526,15 @@ function syncHash() {
 function loadHash() {
   hashPicks = null;
   incomingDesignError = null;
-  stacksInitialized = false;
+  incomingFlagErrors.clear();
+  stacksInitialized = false; independentRowsInitialized = false;
+  shareWalls.checked = false; rowsShareWalls.checked = false; rowsTopCover.checked = true;
   buildMode.value = "uniform";
-  resetStacks();
+  resetStacks(); resetIndependentRows();
   syncMode();
   if (!location.hash.length) return;
   const q = new URLSearchParams(location.hash.slice(1));
-  for (const k of KEYS) {
+  for (const k of q.get("mode") === "rows" ? ROW_KEYS : KEYS) {
     const el = form.elements.namedItem(k) as HTMLInputElement | null; if (!el || !q.has(k)) continue;
     if (el.type === "checkbox") el.checked = q.get(k) === "on"; else el.value = q.get(k)!;
   }
@@ -1165,15 +1544,53 @@ function loadHash() {
   (form.elements.namedItem("preset") as HTMLSelectElement).value = "custom";
   (form.elements.namedItem("fitOut") as HTMLOutputElement).value = Number((form.elements.namedItem("fit") as HTMLInputElement).value).toFixed(2);
   (form.elements.namedItem("lipGapOut") as HTMLOutputElement).value = (form.elements.namedItem("lipGap") as HTMLInputElement).value;
-  if (q.has("mode") || q.has("v")) {
+  if (q.get("mode") === "rows" || q.get("v") === "5") {
+    buildMode.value = "rows";
+    try {
+      if (q.getAll("mode").length !== 1 || q.getAll("v").length !== 1 || q.get("mode") !== "rows" || q.get("v") !== "5")
+        throw new Error("This custom-row link has an unsupported version or mode");
+      if (q.getAll("rows").length !== 1) throw new Error("A version-5 link must contain one row request");
+      resetIndependentRows(independentRowsFrom(JSON.parse(q.get("rows")!)));
+      independentRowsInitialized = true;
+      for (const [name, input, label] of [["shareWalls", rowsShareWalls, "Share compatible walls"],
+        ["topCover", rowsTopCover, "Cover the top row"]] as const) {
+        try {
+          const values = q.getAll(name);
+          if (values.length !== 1 || !["on", "off"].includes(values[0]))
+            throw new Error(`${name} in a version-5 link must be explicitly on or off`);
+          input.checked = values[0] === "on";
+        } catch (error) {
+          console.warn(`Rejected the custom-row link's ${name} flag`, error);
+          incomingFlagErrors.set(input.name, `Couldn't read this custom-row link: ${reason(error)}. Change “${label}” to choose its value.`);
+        }
+      }
+    } catch (error) {
+      console.warn("Rejected the custom-row link", error);
+      incomingDesignError = `Couldn't read this custom-row link: ${reason(error)}. Open a valid link or change Build mode to start a new design.`;
+    }
+    syncMode();
+  } else if (q.has("mode") || q.has("v")) {
     buildMode.value = "mixed";
     try {
-      if (q.get("mode") !== "mixed" || !["2", "3"].includes(q.get("v") ?? "")) throw new Error("This mixed-organizer link has an unsupported version or mode");
-      // Restore the request independently of unsupported shared settings. Fixing the
-      // base or printer must keep the stack dimensions carried by this link.
+      if (q.get("mode") !== "mixed" || !["2", "3", "4"].includes(q.get("v") ?? "")) throw new Error("This mixed-organizer link has an unsupported version or mode");
+      // Restore independently valid stack settings before checking link flags.
       resetStacks(mixedStacksFrom(JSON.parse(q.get("stacks") ?? "null")));
       stacksInitialized = true;
-    } catch (error) { incomingDesignError = `Couldn't read this mixed-organizer link: ${reason(error)}`; }
+      if (q.get("v") === "4") {
+        try {
+          const flags = q.getAll("shareWalls");
+          if (flags.length !== 1 || !["on", "off"].includes(flags[0]))
+            throw new Error("Wall sharing in a version-4 link must be explicitly on or off");
+          shareWalls.checked = flags[0] === "on";
+        } catch (error) {
+          console.warn("Rejected the mixed-organizer link's wall-sharing flag", error);
+          incomingFlagErrors.set(shareWalls.name, `Couldn't read this mixed-organizer link: ${reason(error)}. Change “Share compatible walls” to choose its value.`);
+        }
+      }
+    } catch (error) {
+      console.warn("Rejected the mixed-organizer link", error);
+      incomingDesignError = `Couldn't read this mixed-organizer link: ${reason(error)}. Open a valid link or change Build mode to start a new design.`;
+    }
     syncMode();
   }
   return Number(q.get("layout") ?? 0);

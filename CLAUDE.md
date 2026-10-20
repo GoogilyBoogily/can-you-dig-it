@@ -62,9 +62,15 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   positions); `buildDeck`, `buildWall`, `buildEndWall` in the lane frame, `layWall` /
   `layEndWall` to put them flat; `splitDeck`, `splitWall`, `buildLanePlates`, `buildLip`,
   `buildRiser`, `buildCover`, `buildAll`.
-- `src/mixed-geometry.ts` — mixed-build manifest sources, including distinct facing
-  bottom walls and the connection spline segments; upper flat tiers retain their
-  ordinary shared wall sources. The worker packs the entire build atomically.
+- `src/mixed-geometry.ts` — mixed-build manifest sources, including retained facing
+  bottom-wall channels, connection splines and explicit shared-boundary sources.
+  The worker packs the entire build atomically.
+- `src/shared-walls.ts` — kernel-free whole-boundary compatibility and support/catch
+  allocation, print-envelope and shelf-headroom checks before reducing shelf width.
+- `src/shared-wall-geometry.ts` — demand-driven neutral dividers and coordinated
+  deck/end-wall/cover variants consuming the planned world-side schedules.
+  `src/features/shared-wall.ts` owns the qualified 0.6 mm pin crest, collar and cover
+  chamber pair. Existing outer/retained-side joints keep their original geometry.
 - `src/features/` — the pieces `geometry.ts` composes, each built at a local origin (x
   along the lane, y the wall's centreline, z = 0 at the deck underside) and placed with
   `.translate()` / `.mirror([0,1,0])`. `joints.ts`: every joint from one spec — `earJoint`,
@@ -84,6 +90,14 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   can count (`laneLengthFor`, the inverse of `solve()`'s deck count), so a lane never
   carries deck that holds no can. Hand room is `space.front`, a form field, not a constant:
   40 mm baked in once cost a 12-inch shelf its fourth can. Slope is the user's too.
+- `src/rows.ts` — `resolveIndependentRows(space, request)` resolves exact independent
+  horizontal rows, height padding, span/gaps, alignment and explicit repetition.
+  `src/row-transitions.ts` owns kernel-free carrier/shoe/key support plans;
+  `src/row-transition-geometry.ts` builds those parts and `src/rows-geometry.ts`
+  consumes the typed row manifest, including matching upper-wall bottom receivers.
+  `independentRowsPartManifest` and the placement generators in `src/assembly.ts`
+  own geometry sources, quantities and transforms for preview and export together.
+  Repeated sources may share meshes; filenames are labels, never manufacturing logic.
 - `src/export.ts` — mesh validation, shelf packer, binary STL and 3MF writer (Bambu
   plate grid + `model_settings.config`). `packPlan` shares geometry between rigid copy
   placements; `pack` materializes coordinates for compatibility. Validate actual mesh
@@ -198,7 +212,7 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   supersedes the empty-notch acceptance of 2026-09-30. A flat stack opens its top tier
   only; every tier from the back would need per-tier parts, and nobody needs it. A can
   fills the tier over the deck there (~3 mm spare), so no stop, strip or bar fits.
-- Long lanes use a shared symmetric seam plan (2026-10-17), preserving x=0 when
+- Long lanes initially use a shared symmetric seam plan (2026-10-17), preserving x=0 when
   two sections fit and adding sections when needed. The shelf sets assembled depth;
   the printer constrains each section including its tongue, bed margins and profile
   exclusions. Section spans must fit in both arithmetic and emitted Float32 bounds;
@@ -284,11 +298,14 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   build, with per-stack presets or custom can dimensions, exact depths and fixed or
   automatic tiers. Each stack also controls cascade feeding, slope, lip headroom,
   cover, rear loading and top stacking. Printer, material, fit, design and pattern
-  remain shared. New links use version 3; version-2 mixed links remain readable,
-  with omitted row controls inheriting their carried shared settings. Effective row
+  remain shared. New ordinary mixed links use version 3; links requesting compatible
+  wall sharing use version 4 even when no boundaries share. Version-2/version-3
+  mixed links always keep sharing off; omitted row controls inherit their carried
+  shared settings. Effective row
   options determine geometry, height and loading checks; hidden legacy slope or
-  headroom does not constrain a row that overrides it. Fronts align at the existing
-  3 mm side gap. Only flat bases and walls at least 5.75 mm thick are supported.
+  headroom does not constrain a row that overrides it. Fronts align; retained
+  boundaries keep the 3 mm side gap. Only flat bases and walls at least 5.75 mm thick
+  are supported.
   Facing bottom walls
   intentionally have blind diamond undercuts with 45° printable roofs, reserved
   whole-cell bands, and wall-plane spring gates. A segmented spline joins those
@@ -299,6 +316,100 @@ can Ø×L, printer bed; gets a Bambu/Orca multi-plate 3MF or STL zip. No server.
   and printed fit, creep and loaded strength are unqualified. Support loaded builds
   underneath. Assembly, dimensions and fresh evidence:
   [mixed wall spline notes](prototypes/mixed-wall-spline.md).
+- Custom rows (2026-10-19) use `IndependentRowsBuildRequest`: an ordered array of
+  rows with independent lane arrays, explicit `repeat`, `rowHeight`/`rowSpan`
+  (`"auto"` or a positive exact value), `alignment` and row-level rear loading.
+  Lane requests carry exact can diameter/height, depth, slope and lip headroom.
+  Canonical rows run bottom to top and lanes right to left; the editor reverses both
+  for the front view. No automatic shelf-height fill, cascade or per-lane tiers.
+  Fixed 1 tier in the legacy editor disables inapplicable auto-feed without losing
+  the remembered choice for multiple tiers.
+  Height resolves against the tallest lane; `solve(options, minimumWallHeight)`
+  derives padded walls and their printable section/pattern plans without changing
+  the requested cans or deck line. A larger span spreads complete lane modules;
+  it does not stretch can dimensions or introduce imaginary supporting walls.
+  Flat bases, one optional top cover and shared printer/material/fit/pattern apply.
+  Expanded repeats are labelled by physical Level, with editor Row/copy context
+  in resolved diagnostics; internal part/source identities remain unchanged.
+  Every accepted vertical transition has explicit carrier panels, concealed keys,
+  lower catches and retained shoes. The current 8.1 mm carrier + 6 mm shoe adds
+  14.1 mm between row wall planes; actual support bounds and final closure height
+  feed shelf fit. Common lane/transition depths and safe supported/printable hosts
+  are required. Unsupported requests fail with row/lane context, preserve entered
+  settings and disable exports; never reinterpret them as aligned legacy columns.
+  Multi-row sharing currently retains both walls with a visible reason because the
+  carrier requires retained wall hosts. A single physical row remains eligible for
+  ordinary compatible shared boundaries.
+  Custom-row links require exactly one `v=5`, `mode=rows`, row JSON and explicit
+  `shareWalls=on|off` / `topCover=on|off`. Strict readers reject ambiguous flags,
+  unsupported row settings and expansion limits; legacy uniform/v2/v3/v4 modes
+  retain their existing parsing. Restore valid row/stack JSON independently of
+  malformed sharing/cover flags. Each bad flag blocks builds/hash writes until
+  its own checkbox changes; unrelated edits cannot accept defaults. Malformed
+  JSON/version errors remain blocked until explicit mode change or valid navigation.
+  Unknown flags survive mode round trips and block only their mode. Structural
+  errors explain recovery; only a new incoming link resets all flag errors.
+  Manual mode changes retain mixed sharing; incoming legacy links reset it off.
+  Row assembly guidance includes joining keys or shared dividers only when the
+  resolved row actually generates those connections. Carrier/shoe steps require
+  at least one physical transition. Rejecting a design clears conditional row
+  steps so the previous layout's instructions cannot remain visible.
+  Shelf/front-gap fields and selected profile keys
+  share the existing navigation/latest-intent lifecycle. `build-rows` is a distinct
+  worker request; preview sampling never changes manufacturing quantities.
+  Mechanics, supported envelopes and qualification limits:
+  [independent row design](docs/superpowers/specs/2026-10-19-independent-can-rows.md).
+- Shared mixed-stack walls (2026-10-17) are an explicit opt-in on
+  `MixedBuildRequest.shareCompatibleWalls`. A complete boundary shares every tier
+  only when the actual resolved X/Z interfaces and a safe joint schedule agree;
+  unequal IW is allowed, unlike depths/heights/tier/feeding/closure schedules remain
+  independent with retained walls and a visible reason. Eligibility, bearing/catch
+  allocation, actual asymmetric Float32 print envelopes and the additional 0.6 mm
+  top pin/cover headroom resolve before cumulative Y origins and shelf width.
+  Sharing preserves automatic/fixed tier counts and can paths; there is no partial
+  depth/height sharing. Each shared boundary saves `wall + K.gangGap` (9 mm at 6 mm).
+  The boundary owns its divider and hidden keys; adjacent decks/end walls/covers
+  consume both world-side schedules, including cascade reversal. All divider tabs
+  use one world -Y print face. Physically identical role/hand sources share meshes;
+  retained spline identity stays the original first-stack index after filtering.
+  Joint sites use a 0.1 mm planning grid and a bounded family of distributions.
+  Each owner retains bearings in every section, at least two overall. The limit for
+  an unsupported end/bearing interval is the greater of the production-derived
+  specimen's 92/126 mm digital baseline and the original lane's corresponding span.
+  These are geometry bounds, not a physical strength rating. Common pin roots protect
+  actual end cross-laps and collar fingers avoid the primary loading window.
+  Neighboring covers and primary-ear/follower-rail faces have `clearanceOf(o)`
+  separation; relieve the follower rail rather than reducing the primary ear's
+  bearing or slot frame. Follower cover fingers preserve their root overlap after
+  that clearance cut. A split covered boundary retains both walls if trimming the
+  follower cover would leave less than `K.ligMin` around its original seam-key
+  socket. Print envelopes charge the collar only to the follower, including its
+  asymmetric Float32 endpoints; a primary-only stack keeps its original width.
+  Current centered vertical loading paths clear; inherited rounded window corners
+  can clip at full axial can play and remain physically unqualified. Stored-can
+  axial extremes stay clear. Geometry/toolpaths and the physical evidence limits:
+  [shared-wall qualification](docs/superpowers/specs/2026-10-17-shared-stack-walls-qualification.md).
+- Joint-aware shared-wall planning (2026-10-20) preserves successful schedules first.
+  Flat two-section components that fail joint allocation or adapted printer fit use a bounded difference-
+  constraint search over cut position and all site orderings: each section has one
+  pin and one bearing per owner, optionally one extra bearing in either section.
+  `src/shared-joint-planner.ts` solves on the same 0.1 mm grid. Freeze bearing/end
+  limits from the ORIGINAL lane; alternative cuts must retain its outer-wall tabs
+  and protect ordinary pin roots. A memoized contiguous-partition search selects
+  the greatest number of shared boundaries within the supported candidate family.
+  Only selected shared components adopt a common cut atomically; a tight neighbor
+  can keep both walls while a valid pair shares. Real profile margins/exclusions
+  and Float32 span validation still apply.
+  A component containing an already-successful shared boundary keeps its existing
+  cut and schedule. Independent components retain their separate allocations.
+  `solve` accepts an explicit manufacturing cut only for an originally two-section,
+  flat, non-cascading lane; it protects the original outer bearings and pin roots.
+  Unprintable requests retain a failing section check. Single Custom rows use the
+  same search unless an explicit span already requires separate walls; carrier/shoe rows retain their existing sharing restriction.
+  This fallback currently covers flat lanes with one cut; unsuccessful cascades,
+  multi-cut plans and incompatible section counts still retain walls. Search failure
+  is not an impossibility proof. Shelf errors distinguish an unresolved printable
+  shared layout from the wider retained-wall fallback.
 - Two designs, `o.design`, and `solid` overrides both. Minimal keeps every joint and
   `solve()` — same `gangPitch`, same layouts, gangs with standard lanes — and changes
   only the `!o.solid` block: web 1.7 mm, 2.5 mm deck fins at the inner edge of the
